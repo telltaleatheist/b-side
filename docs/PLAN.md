@@ -145,8 +145,8 @@ BookForge/Bookshelf - find it there and reuse the idea before inventing anything
       Built 2026-10-04 on branch `phase4-crucible-setup`, ported from Foundry's app
       (`electron/crucible-install*.ts`, `crucible-local.ts`, `crucible-uninstall.ts`,
       `shared/crucible-install-wire.ts`, `shared/uninstall-wire.ts`,
-      `src/app/components/crucible-setup/`), `@crucible/bootstrap` 1.0.99 vendored
-      beside the client. Desktop-only, over the preload bridge (never the hub): the
+      `src/app/components/crucible-setup/`), `@crucible/bootstrap` vendored beside the
+      client (1.0.100 for both since the merge, 53c8fda). Desktop-only, over the preload bridge (never the hub): the
       studio's first-run card offers the ONE act this computer needs (Install /
       Start / Use the Crucible on this computer) plus "add an existing server" by
       pairing line; Settings' servers card adds install-the-newest and remove.
@@ -155,8 +155,12 @@ BookForge/Bookshelf - find it there and reuse the idea before inventing anything
       reducer, tray-step fold, uninstall plan reader, registry adoption), and the
       read-only probes against the PC's Crucible 1.0.99 (local status: running,
       pairing file read, plan sentence, uninstall availability, running version).
+      After the merge, in the Electron app with an empty profile: the studio's
+      first-run card found the PC's Crucible and offered "Use the Crucible on this
+      computer"; pressing it registered `crucible@owens-pc-wsl` as active and the
+      form loaded from it; Settings drew the setup section.
       NOT verified: an actual install, start, retry, restart or uninstall (Crucible
-      is in use on the PC; needs a clean machine), and the UI has not been opened.
+      is in use on the PC; needs a clean machine).
       Found on the PC: the tray's install door cannot be asked (`host_no_token`:
       `%LOCALAPPDATA%\Crucible\config.toml` has only `[orchestrator]`); Settings
       says so in one quiet line.
