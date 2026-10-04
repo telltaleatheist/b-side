@@ -244,25 +244,33 @@ clients of Crucible; a desktop hub is optional, never required.
 Owen, 2026-10-04, from the design canvas (claude.ai artifact "B-Side redesign": Listen,
 Now playing, Make, Album, Library, Phone full, Desktop). Build in this order; each step is
 usable and committed on its own.
-- [ ] 8.1 The shell: Night Deck look (Big Shoulders Display, Instrument Sans, IBM Plex
+- [x] 8.1 The shell: Night Deck look (Big Shoulders Display, Instrument Sans, IBM Plex
       Mono; warm near-black, cyan, amber for "in progress"); phone: bottom tabs Listen /
       Make / Library / Settings and a mini player; desktop: the same parts with a sidebar,
       a right panel (now playing, up next) and a bottom player bar; full-screen Now
-      Playing (big art, scrubber, controls, up next).
-- [ ] 8.2 Instant cover art: every song, playlist and album gets art drawn from its tags
+      Playing (big art, scrubber, controls, up next). 58c8000; seen in the desktop app and
+      the iPhone simulator.
+- [x] 8.2 Instant cover art: every song, playlist and album gets art drawn from its tags
       and seed (no server, the same song always the same art).
-- [ ] 8.3 Make: Songs (today's generator) with presets as a row (pick / save as preset,
+- [x] 8.3 Make: Songs (today's generator) with presets as a row (pick / save as preset,
       the server's presets) and tags in an accordion.
-- [ ] 8.4 Albums: describe or pick tags -> a chat model writes the plan in ONE call (album
+- [x] 8.4 Albums: describe or pick tags -> a chat model writes the plan in ONE call (album
       title, artist name, cover prompt, tracks: name, tag variation, lyrics when sung) ->
       the image model paints the cover -> tracks render in order until the album passes
       its length (30/60/90 min). An album is a playlist with a cover, artist and plan; it
-      fills in as you listen. Save album / Delete.
-- [ ] 8.5 The phone makes songs itself AND links a B-Side computer as its cloud (no more
+      fills in as you listen. Save album / Delete. 1686d92. Seen: a 30-min album on the PC
+      headless (qwen3.8-27b wrote "Static Bloom" by Velvet Circuit, 15 tracks; qwen-image
+      painted the cover; two tracks filed under their names). Sung albums (lyrics) are
+      built but not yet run.
+- [x] 8.5 The phone makes songs itself AND links a B-Side computer as its cloud (no more
       either/or): Save album uploads it (natively) to the computer's library; cloud albums
-      stream or download for offline; removing a download keeps the cloud copy.
-- [ ] 8.6 Space: albums not in a cloud count against a phone limit (2 GB default,
-      Settings); full -> Make shows "make room" (save to the cloud, or delete).
+      stream or download for offline; removing a download keeps the cloud copy. Seen in the
+      simulator with the desktop app as the cloud: an album made on the phone ("Neon Rain on
+      Shinjuku"), Save to cloud (audio, sidecar, cover filed on the desktop; the phone's copy
+      removed), streamed back, then Keep on this phone downloaded it again.
+- [x] 8.6 Space: albums not in a cloud count against a phone limit (2 GB default,
+      Settings); full -> Make shows "make room" (save to the cloud, or delete). Built; the
+      full state itself not yet seen (it needs 2 GB of albums).
 - [ ] Later: Stations (a description that keeps two songs ahead, forever).
 
 ### Later

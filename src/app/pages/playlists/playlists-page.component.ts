@@ -71,7 +71,7 @@ import { PlayerService } from '../../core/player.service';
                 <button type="button" class="ghost" (click)="stopAlbum(playlist)">Stop making</button>
               }
               @if (!isCloud()) {
-                <button type="button" class="icon-btn outlined" aria-label="Rename" title="Rename" (click)="renaming.set('playlist')"><app-icon name="bookmark" [size]="18" /></button>
+                <button type="button" class="icon-btn outlined" aria-label="Rename" title="Rename" (click)="renaming.set('playlist')"><app-icon name="edit" [size]="18" /></button>
               }
               <button type="button" class="icon-btn outlined" [attr.aria-label]="isCloud() ? 'Delete from the cloud' : 'Delete'" [title]="isCloud() ? 'Delete from the cloud' : 'Delete'" (click)="deletePlaylist(playlist)"><app-icon name="trash" [size]="18" /></button>
             </div>
@@ -107,7 +107,7 @@ import { PlayerService } from '../../core/player.service';
               <div class="actions">
                 <button type="button" class="icon-btn" aria-label="Move up" title="Move up" [disabled]="at === 0" (click)="move(playlist, at, -1)"><app-icon name="down" [size]="18" class="flip-v" /></button>
                 <button type="button" class="icon-btn" aria-label="Move down" title="Move down" [disabled]="at === songs().length - 1" (click)="move(playlist, at, 1)"><app-icon name="down" [size]="18" /></button>
-                <button type="button" class="icon-btn" aria-label="Rename" title="Rename" (click)="renaming.set(song.id)"><app-icon name="bookmark" [size]="16" /></button>
+                <button type="button" class="icon-btn" aria-label="Rename" title="Rename" (click)="renaming.set(song.id)"><app-icon name="edit" [size]="16" /></button>
                 @if (isDesktop) {
                   <button type="button" class="icon-btn" aria-label="Save a copy" title="Save a copy…" (click)="saveCopy(song)"><app-icon name="save" [size]="18" /></button>
                   <button type="button" class="icon-btn" aria-label="Show in folder" title="Show in folder" (click)="reveal(song)"><app-icon name="library" [size]="18" /></button>

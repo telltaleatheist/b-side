@@ -4,7 +4,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { nodeDisk } from '../electron/node-disk';
-import { ADOPTED_PLAYLIST, Library, type NewSong } from '../shared/core/library';
+import { ADOPTED_PLAYLIST, Library, type ImportedAlbum, type NewSong } from '../shared/core/library';
+import type { AlbumMeta } from '../shared/types';
 
 let dir: string;
 let scratch: string;
@@ -35,6 +36,7 @@ function song(seed: number, at: Date): NewSong {
     effective: { seed, audio_seconds: 181.5 },
     createdAt: at.toISOString(),
     audioFrom: audio,
+    bytes: 5,
   };
 }
 
@@ -134,4 +136,43 @@ test('a sidecar that does not read is a listed problem, never deleted; foreign .
 test('an id cannot climb out of the library folder', async () => {
   await expect(library.rename('../servers', 'x')).rejects.toThrow('not a song');
   expect(() => library.audioPath('..\\..\\secret.flac')).toThrow();
+});
+
+const ALBUM: AlbumMeta = {
+  artist: 'Velvet Circuit', blurb: 'Rain.', cover: null,
+  ask: { description: 'trip-hop', tags: [], minutes: 30, sung: false },
+  plan: null, stage: 'done', sent: 2, madeS: 186, refusal: null, server: 'pc', writer: 'qwen3.8-27b',
+};
+
+test('an album sent from a phone is filed with its songs, and sending it again replaces it', async () => {
+  // A phone's library, to take the sidecars from (as the phone would send them).
+  const phoneDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bside-phone-'));
+  const phone = new Library(nodeDisk, phoneDir);
+  const made = await phone.createAlbum('Static Bloom', ALBUM);
+  const one = await phone.saveTo(made.id, null, song(1, new Date(2026, 9, 4, 1, 0, 0)));
+  const sidecar = JSON.parse(fs.readFileSync(path.join(phoneDir, `${one.id}.json`), 'utf8'));
+  // The files arrive first, then the album.
+  fs.copyFileSync(path.join(phoneDir, one.file), library.importPath(one.file));
+  const sent: ImportedAlbum = { id: made.id, name: 'Static Bloom', createdAt: made.createdAt, album: ALBUM, songs: [sidecar] };
+  await library.importAlbum(sent);
+  await library.importAlbum(sent);
+  const view = await library.list();
+  expect(view.playlists.map((p) => [p.id, p.name, p.songs, p.album?.artist])).toEqual([[made.id, 'Static Bloom', [one.id], 'Velvet Circuit']]);
+  expect(view.songs.map((s) => [s.title, s.bytes])).toEqual([['Song 1', 5]]);
+  fs.rmSync(phoneDir, { recursive: true, force: true });
+});
+
+test('an album whose audio did not arrive is refused, and nothing is filed', async () => {
+  const sent: ImportedAlbum = {
+    id: 'a1', name: 'X', createdAt: new Date().toISOString(), album: ALBUM,
+    songs: [{ id: '20261004-010000-1', title: 'T', file: '20261004-010000-1.mp3', model: 'yue2-3b', params: { tags: null, lyrics: null, instrumental: true, cfg: null, seed: 1 }, server: { name: 'pc', url: 'http://pc:7100' }, jobId: 'j', createdAt: new Date().toISOString(), durationS: 1, batch: null, album: null, bytes: 1, effective: null }],
+  };
+  await expect(library.importAlbum(sent)).rejects.toThrow('did not arrive');
+  expect((await library.list()).playlists).toEqual([]);
+});
+
+test('an upload can only land as a song or a cover inside the library', () => {
+  expect(() => library.importPath('../evil.mp3')).toThrow();
+  expect(() => library.importPath('notes.txt')).toThrow();
+  expect(library.importPath('abc-1.cover.png')).toBe(path.join(dir, 'abc-1.cover.png'));
 });
