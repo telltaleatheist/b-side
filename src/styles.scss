@@ -1,0 +1,259 @@
+/* The whole palette, in one place — Foundry's (app/src/styles.scss), token for
+   token, so B-Side reads as its sibling: warm charcoal neutrals, cyan accent,
+   1px borders, small radii. Foundry is dark-only, and so is B-Side.
+
+   A component asks for a ROLE (--bg-sunken, --border-subtle); the mapping to a
+   palette entry lives here and only here. */
+:root {
+  --bg-sunken: #0e0d0c;
+  --bg-base: #181715;
+  --bg-elevated: #211f1c;
+  --bg-input: #2a2824;
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-active: rgba(255, 255, 255, 0.08);
+  --bg-overlay: rgba(24, 23, 21, 0.9);
+
+  --border-subtle: #2a2824;
+  --border-default: #403c36;
+  --border-strong: #565149;
+
+  --text-primary: #faf9f7;
+  --text-secondary: #928b7f;
+  --text-tertiary: #706a60;
+  --text-muted: #565149;
+  /* For text ON a filled accent: cyan is too bright for white. */
+  --text-inverse: #181715;
+
+  --accent: #22d3ee;
+  --accent-hover: #67e8f9;
+  --accent-active: #a5f3fc;
+  --accent-strong: #06b6d4;
+  --accent-soft: rgba(6, 182, 212, 0.2);
+  --accent-faint: rgba(6, 182, 212, 0.12);
+
+  /* Foundry's audio-owner amber. In B-Side it marks the one thing that is
+     different from everything else on screen: the song playing now. */
+  --audio: #f0a860;
+  --audio-bright: #ffc78a;
+  --audio-soft: rgba(240, 168, 96, 0.15);
+
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --error: #f87171;
+  --ok-soft: rgba(74, 222, 128, 0.12);
+  --warn-soft: rgba(251, 191, 36, 0.12);
+  --error-soft: rgba(248, 113, 113, 0.12);
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+
+  --focus-ring: 0 0 0 2px rgba(34, 211, 238, 0.4);
+
+  --scrollbar-track: #2a2824;
+  --scrollbar-thumb: #06b6d4;
+  --scrollbar-thumb-hover: #22d3ee;
+
+  /* The stacks, not webfonts: the app runs offline, so Segoe UI is what
+     resolves on Windows; Outfit / DM Sans / JetBrains Mono win where present. */
+  --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font: 13px/1.5 var(--font-body);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+
+code, pre, kbd, samp { font-family: var(--font-mono); }
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* A button nobody styled must still be readable: a floor, not a style.
+   Component rules win on specificity. (Foundry's rule, unchanged.) */
+button {
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--border-strong); background: var(--bg-hover); }
+button:disabled { opacity: 0.5; cursor: default; }
+
+/* The text-field floor: for things you type into, not ticks or radios. */
+input:not([type='checkbox']):not([type='radio']), select, textarea {
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  width: 100%;
+  transition: border-color 100ms cubic-bezier(0, 0, 0.2, 1),
+              box-shadow 100ms cubic-bezier(0, 0, 0.2, 1);
+}
+/* A tick is as big as a tick. Stated so that the flex row it usually sits in
+   cannot squeeze it, which is the other half of what went wrong above. */
+input[type='checkbox'], input[type='radio'] { flex: none; margin: 0; }
+input::placeholder, textarea::placeholder { color: var(--text-muted); }
+input:hover:not(:focus), select:hover, textarea:hover:not(:focus) {
+  border-color: var(--border-strong);
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+/* Chromium on Windows does not give <option> the page's colours, so the popup
+   list has to be told twice. */
+select option { background: var(--bg-input); color: var(--text-primary); }
+
+/* The select arrow is drawn here; the platform one is the ugly part. The
+   stroke is a literal (#8a8f98) because a data URI cannot read variables. */
+select {
+  cursor: pointer;
+  color-scheme: dark;
+  appearance: none;
+  -webkit-appearance: none;
+  /* Room for the chevron, so a long option does not run underneath it. */
+  padding-right: 30px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' fill='none' stroke='%238a8f98' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  /* The field treatment above sets `background` shorthand, which would otherwise
+     drop the image; naming the colour again keeps both. */
+  background-color: var(--bg-input);
+}
+select:hover, select:focus { background-color: var(--bg-input); }
+/* A select with nowhere to go is not a control. Kept legible rather than dimmed
+   into unreadability, and without the chevron, which would promise a list. */
+select:disabled { cursor: default; background-image: none; opacity: 0.7; }
+
+:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+:focus:not(:focus-visible) { outline: none; box-shadow: none; }
+
+::selection { background: var(--accent-soft); color: var(--text-primary); }
+
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+* { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track); }
+
+/* ── B-Side's shared pieces ─────────────────────────────────────────────────
+   Foundry dresses these per component; B-Side has few enough screens that one
+   definition here is the plainer choice. Same values as Foundry's cards and
+   buttons (servers-card, settings page). */
+
+.card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.card-title { font-family: var(--font-display); font-weight: 600; font-size: 13px; margin: 0; }
+.label {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text-tertiary);
+}
+.hint { font-size: 11px; color: var(--text-tertiary); margin: 0; }
+.detail { margin: 0; font-size: 12px; color: var(--text-secondary); }
+.mono { font-family: var(--font-mono); word-break: break-all; }
+
+.primary, .ghost, .danger {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 28px; padding: 0 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px; font-weight: 500; line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 100ms cubic-bezier(0, 0, 0.2, 1),
+              border-color 100ms cubic-bezier(0, 0, 0.2, 1);
+}
+.primary { border: none; background: var(--accent); color: var(--text-inverse); }
+.primary:hover:not(:disabled) { background: var(--accent-hover); }
+.ghost { background: var(--bg-input); border: 1px solid var(--border-default); color: var(--text-primary); }
+.ghost:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--border-strong); }
+.danger { background: transparent; border: 1px solid var(--error); color: var(--error); }
+.danger:hover:not(:disabled) { background: var(--error-soft); }
+.primary:disabled, .ghost:disabled, .danger:disabled { opacity: 0.5; cursor: not-allowed; }
+.small { height: 24px; padding: 0 9px; font-size: 11px; }
+
+/* A server refusal: its code, then its sentence. */
+.refusal {
+  display: flex; flex-direction: column; gap: 2px;
+  border: 1px solid var(--error);
+  background: var(--error-soft);
+  border-radius: var(--radius-sm);
+  padding: 6px 9px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.refusal code { color: var(--error); font-size: 11px; }
+.notice {
+  border: 1px solid var(--border-default);
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  padding: 6px 9px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* A progress bar; .indeterminate when the fraction is not known. */
+.bar {
+  position: relative; height: 4px; overflow: hidden;
+  border-radius: 999px; background: var(--bg-input);
+}
+.bar > span {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 0;
+  background: var(--accent); border-radius: 999px;
+  transition: width 300ms ease;
+}
+.bar.indeterminate > span { width: 30%; animation: bar-slide 1.2s ease-in-out infinite; }
+@keyframes bar-slide { from { left: -30%; } to { left: 100%; } }
+
+/* A switch: a checkbox drawn as a toggle. */
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; }
+.switch input {
+  appearance: none; -webkit-appearance: none; width: 30px; height: 17px; margin: 0;
+  border-radius: 999px; background: var(--bg-input); border: 1px solid var(--border-default);
+  position: relative; cursor: pointer; transition: background-color 120ms ease;
+}
+.switch input::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px;
+  border-radius: 50%; background: var(--text-secondary);
+  transition: transform 120ms ease, background-color 120ms ease;
+}
+.switch input:checked { background: var(--accent-strong); border-color: var(--accent-strong); }
+.switch input:checked::after { transform: translateX(13px); background: var(--text-primary); }
