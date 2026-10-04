@@ -136,6 +136,19 @@ export class ServerRegistry {
     return { name, servers: await this.setActive(name) };
   }
 
+  /**
+   * Store a server paired by its address, and answer the name it is under.
+   * Pairing the same address again is the repair for a rotated token: the entry
+   * keeps its name and takes the new token. It becomes the one in use only when
+   * none is; switching is the person's choice, in Settings.
+   */
+  async addPaired(pairing: { name: string; url: string; token: string }): Promise<string> {
+    const existing = this.atAddress(pairing.url);
+    const name = existing?.name ?? pairing.name;
+    await this.put({ name, url: pairing.url, token: pairing.token }, existing?.name ?? null);
+    return name;
+  }
+
   async add(input: ServerInput): Promise<ServerView[]> {
     const name = input.name.trim();
     if (this.read().servers.some((server) => server.name === name)) {

@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import type { Outcome, RefusalView, ServerInput, ServerProbe, ServerView } from '@shared/types';
 
 import { CrucibleSetupComponent } from '../../components/crucible-setup/crucible-setup.component';
+import { PairServerComponent } from '../../components/pair-server/pair-server.component';
 import { ConfirmService } from '../../core/confirm.service';
 import { HubService } from '../../core/hub.service';
 
@@ -16,9 +17,10 @@ interface Editing {
 /**
  * The Crucible servers B-Side can use, and the one it does.
  *
- * Add one by pasting its pairing line (`crucible://<name>@<host>:<port>/#<token>`,
- * what Crucible's console and `crucible pair` print) or by typing its address
- * and token — or, on the desktop, install, start or use the Crucible on this
+ * Add one by its address (app-pair-server: the server hands B-Side a token),
+ * by pasting its pairing line (`crucible://<name>@<host>:<port>/#<token>`, what
+ * Crucible's console and `crucible pair` print), or by typing its address and
+ * token — or, on the desktop, install, start or use the Crucible on this
  * computer (app-crucible-setup; a phone or a browser tab is told where to do
  * that). The token field is write-only: this card is never told a stored token,
  * so editing a server leaves the token box empty and empty keeps it.
@@ -26,7 +28,7 @@ interface Editing {
 @Component({
   selector: 'app-servers-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CrucibleSetupComponent],
+  imports: [CrucibleSetupComponent, PairServerComponent],
   template: `
     <div class="card">
       <h2 class="card-title">Crucible servers</h2>
@@ -74,7 +76,7 @@ interface Editing {
           }
         </div>
       } @empty {
-        <p class="notice">No server yet. Install Crucible on this computer, or paste a pairing line below.</p>
+        <p class="notice">No server yet. Install Crucible on this computer, or add one by its address below.</p>
       }
 
       <div class="add">
@@ -83,26 +85,19 @@ interface Editing {
       </div>
 
       <div class="add">
-        <span class="label">Add a server from its pairing line</span>
+        <span class="label">Add a server by its address</span>
+        <app-pair-server />
+        <p class="hint">Its name on your network, its IP address, or http://server:7100. B-Side keeps every server you add here; "Use this server" switches between them.</p>
+      </div>
+
+      <details class="add">
+        <summary class="label">…or paste its pairing line</summary>
         <div class="line">
           <input type="password" autocomplete="off" spellcheck="false" placeholder="crucible://name@host:7100/#token"
                  [value]="pairing()" (input)="pairing.set($any($event.target).value)" (keydown.enter)="addPairing()" />
           <button type="button" class="primary" [disabled]="pairing().trim() === ''" (click)="addPairing()">Add</button>
         </div>
         <p class="hint">The line holds the server's token, so the box hides it. Crucible prints it on its console page and with "crucible pair".</p>
-      </div>
-
-      <details class="add">
-        <summary class="label">…or enter an address and token by hand</summary>
-        <div class="grid">
-          <label class="field"><span class="label">Name</span>
-            <input type="text" placeholder="PC" [value]="handName()" (input)="handName.set($any($event.target).value)" /></label>
-          <label class="field"><span class="label">Address</span>
-            <input type="text" placeholder="http://192.168.1.20:7100" [value]="handUrl()" (input)="handUrl.set($any($event.target).value)" /></label>
-          <label class="field"><span class="label">Token</span>
-            <input type="password" autocomplete="off" [value]="handToken()" (input)="handToken.set($any($event.target).value)" /></label>
-        </div>
-        <div class="actions"><button type="button" class="primary small" (click)="addByHand()">Add server</button></div>
       </details>
 
       @if (addRefusal(); as refused) {

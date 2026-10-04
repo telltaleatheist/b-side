@@ -8,6 +8,7 @@
  */
 import {
   CrucibleAuthError,
+  CrucibleConnectionError,
   CrucibleError,
   CrucibleNotACrucible,
   CruciblePairingError,
@@ -46,6 +47,8 @@ export function refusalOf(error: unknown): RefusalView {
   if (error instanceof CrucibleUnreachable) return { code: 'unreachable', message: error.message };
   if (error instanceof CrucibleNotACrucible) return { code: 'not_a_crucible', message: error.message };
   if (error instanceof CruciblePairingError) return { code: 'invalid_pairing', message: error.message };
+  // Pairing by address: `invalid_address`, `connection_unreachable`, `not_crucible`, `pairing_unavailable`, ...
+  if (error instanceof CrucibleConnectionError) return { code: error.code, message: error.message };
   if (error instanceof CrucibleError) return { code: 'crucible_error', message: error.message };
   // Installing Crucible on this computer: the installer's own names (`release_channel_unreadable`,
   // `host_unreachable`, `step_failed`, ...) and its sentences, which already say what to do.

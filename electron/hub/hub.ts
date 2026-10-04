@@ -30,10 +30,11 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { clientFor, deletePreset, listPresets, probe, savePreset, songPage } from '../crucible';
+import { CLIENT_NAME, clientFor, deletePreset, listPresets, probe, savePreset, songPage } from '../crucible';
 import { describe } from '../describe';
 import { JobRunner } from '../jobs';
 import { Library } from '../library';
+import { PairingSessions } from '../pairing';
 import { Refusal } from '../refusal';
 import { ServerRegistry } from '../servers';
 import { AppSettings, type StoredSettings } from '../settings';
@@ -110,6 +111,7 @@ export class Hub {
   readonly registry: ServerRegistry;
   readonly takes: TakeStore;
   readonly jobs: JobRunner;
+  private readonly pairing: PairingSessions;
   private library!: Library;
   private readonly clients: ClientTracker;
   private readonly routes: Route[] = [];
@@ -120,6 +122,11 @@ export class Hub {
     this.info = { app: 'b-side', version: options.version, hostname: os.hostname() };
     this.settings = new AppSettings(path.join(options.userData, 'settings.json'), options.defaultLibraryDir);
     this.registry = new ServerRegistry(path.join(options.userData, 'servers.json'));
+    this.pairing = new PairingSessions(CLIENT_NAME, async (pairing) => {
+      const name = await this.registry.addPaired(pairing);
+      this.serversChanged();
+      return name;
+    });
     this.takes = new TakeStore(path.join(options.userData, 'takes'), {
       perClient: TAKES_PER_CLIENT,
       bytes: TAKE_CACHE_BYTES,
@@ -445,6 +452,13 @@ export class Hub {
     this.route('GET', '/api/servers', () => this.registry.views());
     this.route('POST', '/api/servers/pairing', async (request) =>
       this.serversChanged(await this.registry.addPairing(text((await request.body())['line'], 'line'))));
+    // By address alone: begin, then poll at `pollAfterMs` until it is not pending.
+    this.route('POST', '/api/servers/pair', async (request) => this.pairing.begin(text((await request.body())['address'], 'address')));
+    this.route('POST', '/api/servers/pair/:id', (request) => this.pairing.poll(request.params['id'] as string));
+    this.route('DELETE', '/api/servers/pair/:id', (request) => {
+      this.pairing.cancel(request.params['id'] as string);
+      return null;
+    });
     this.route('POST', '/api/servers', async (request) =>
       this.serversChanged(await this.registry.add((await request.body()) as unknown as ServerInput)));
     this.route('PUT', '/api/servers/:name', async (request) =>
