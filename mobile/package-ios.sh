@@ -63,6 +63,7 @@ xcodebuild \
   -configuration Debug \
   -destination "id=$DEVICE_UDID" \
   -allowProvisioningUpdates \
+  -allowProvisioningDeviceRegistration \
   DEVELOPMENT_TEAM="$TEAM" \
   build
 
