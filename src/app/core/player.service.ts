@@ -105,6 +105,15 @@ export class PlayerService {
     const current = this.current();
     return current === null ? -1 : this.items().findIndex((item) => item.key === current.key);
   });
+  /** Playing an album that is still being made: at its end, wait for the next track, as on the playing list. */
+  private readonly albumFilling = computed(() => {
+    const source = this.source();
+    if (source.kind !== 'playlist') return false;
+    const stage = this.library.playlist(source.id)?.album?.stage;
+    return stage === 'planning' || stage === 'cover' || stage === 'making';
+  });
+  /** An album this device just asked for: it starts playing the moment its first track lands. */
+  private readonly autoplay = signal<string | null>(null);
   readonly hasPrevious = computed(() => this.current() !== null);
   /** What plays after the current song, in order (Now Playing's "Up next"). */
   readonly upNext = computed<PlayItem[]>(() => this.items().slice(this.index() + 1));
@@ -113,7 +122,7 @@ export class PlayerService {
   /** Next is offered while there is a song after this one, or (on the playing list) one generating to wait for. */
   readonly hasNext = computed(
     () => this.current() !== null
-      && (this.index() < this.items().length - 1 || (this.source().kind === 'takes' && this.jobs.generating())),
+      && (this.index() < this.items().length - 1 || (this.source().kind === 'takes' && this.jobs.generating()) || this.albumFilling()),
   );
 
   constructor() {
@@ -130,8 +139,9 @@ export class PlayerService {
         this.duration.set(duration);
       },
       finished: (): void => {
-        // Nothing after it yet: on the playing list, the next take to land plays the moment it does.
-        if (this.source().kind === 'takes') this.waiting.set(true);
+        // Nothing after it yet: on the playing list, or an album still being made,
+        // the next song to land plays the moment it does.
+        if (this.source().kind === 'takes' || this.albumFilling()) this.waiting.set(true);
         this.paused.set(true);
       },
       error: (message: string): void => this.problem.set(message),
@@ -153,7 +163,25 @@ export class PlayerService {
     // the output's queue follows; a song that left the list stops.
     effect(() => {
       const items = this.items();
-      untracked(() => this.follow(items));
+      untracked(() => {
+        this.follow(items);
+        // Waiting at the end of an album being made, and its next track just landed: play it.
+        if (this.waiting() && this.source().kind === 'playlist') {
+          const next = items[this.index() + 1] ?? (this.current() === null ? items[0] : undefined);
+          if (next !== undefined) this.play(next);
+        }
+      });
+    });
+    // An album just asked for: play it as soon as it has a song.
+    effect(() => {
+      const id = this.autoplay();
+      if (id === null) return;
+      const playlist = this.library.playlist(id);
+      if (playlist === null || playlist.songs.length === 0) return;
+      untracked(() => {
+        this.autoplay.set(null);
+        this.playPlaylist(id);
+      });
     });
     this.hub.onTake((take) => {
       if (this.source().kind !== 'takes') return;
@@ -207,6 +235,11 @@ export class PlayerService {
     } else {
       await this.useOutput(wanted, false);
     }
+  }
+
+  /** Start an album this device just asked for the moment its first track lands. */
+  playWhenReady(albumId: string): void {
+    this.autoplay.set(albumId);
   }
 
   /** Play a cloud playlist from `song` (or its first song). */

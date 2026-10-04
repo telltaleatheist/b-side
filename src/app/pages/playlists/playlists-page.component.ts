@@ -130,9 +130,9 @@ import { PlayerService } from '../../core/player.service';
             </div>
           }
           @if (playlist.album?.stage === 'planning') {
-            <p class="hint">{{ playlist.album?.ask?.sung && playlist.album?.plan ? 'Writing the lyrics…' : 'Writing the album: its name, the artist, the tracks…' }}</p>
-          } @else if (playlist.album?.stage === 'cover') {
-            <p class="hint">Painting the cover…</p>
+            <p class="hint">{{ playlist.album?.ask?.sung && playlist.album?.plan ? 'Writing the lyrics while the first tracks play…' : 'Making the first tracks now; the album\'s name, artist and the rest are written meanwhile.' }}</p>
+          } @else if (playlist.album?.stage === 'making' && !playlist.album?.cover) {
+            <p class="hint">The cover is painted once the next tracks are on their way.</p>
           }
         </div>
       } @else {

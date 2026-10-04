@@ -222,6 +222,15 @@ export class HubCore {
         this.jobs.generate(server, { id: albumClient(id), kind: 'desktop' }, { params, count: 1 }, this.preferences.songFormat, { id, track });
       },
       inFlight: (id) => this.jobs.list(albumClient(id)).filter((job) => !ENDED_PHASES.includes(job.phase)).length,
+      retitle: async (id, titles) => {
+        const view = await this.libraryView();
+        const songs = view.playlists.find((p) => p.id === id)?.songs ?? [];
+        for (const [at, title] of titles.entries()) {
+          const songId = songs[at];
+          if (songId !== undefined) await this.library.rename(songId, title);
+        }
+        if (titles.length > 0) await this.libraryChanged();
+      },
       cancelInFlight: async (id) => {
         for (const job of this.jobs.list(albumClient(id)).filter((j) => !ENDED_PHASES.includes(j.phase))) {
           await this.jobs.cancel(job.key).catch((err: unknown) => console.error(`[albums] could not cancel ${job.key}:`, err));

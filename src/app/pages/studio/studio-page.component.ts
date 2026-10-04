@@ -14,6 +14,7 @@ import { TagInputComponent } from '../../components/tag-input/tag-input.componen
 import { bytesText } from '../../core/format';
 import { desktop, HubService } from '../../core/hub.service';
 import { JobsService } from '../../core/jobs.service';
+import { PlayerService } from '../../core/player.service';
 import { LibraryService } from '../../core/library.service';
 import { StudioService } from '../../core/studio.service';
 
@@ -263,6 +264,7 @@ export class StudioPageComponent {
   protected readonly library = inject(LibraryService);
   protected readonly jobs = inject(JobsService);
   private readonly router = inject(Router);
+  private readonly player = inject(PlayerService);
   protected readonly mode = signal<'songs' | 'album'>('songs');
   protected readonly albumMinutes = ALBUM_MINUTES;
   protected readonly albumLength = signal(60);
@@ -324,7 +326,10 @@ export class StudioPageComponent {
     });
     this.albumSending.set(false);
     this.albumRefusal.set(outcome.ok ? null : outcome.refusal);
-    if (outcome.ok) void this.router.navigate(['/library', outcome.value.id]);
+    if (outcome.ok) {
+      this.player.playWhenReady(outcome.value.id);
+      void this.router.navigate(['/library', outcome.value.id]);
+    }
   }
 
   protected readonly makingCount = computed(() => this.jobs.jobs().filter((job) => !ENDED_PHASES.includes(job.phase)).length);

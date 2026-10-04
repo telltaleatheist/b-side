@@ -34,6 +34,18 @@ const LYRICS_PER_CALL = 4;
 const AHEAD = 2;
 /** This many failed tracks in a row stops the album. */
 const FAILURES_TO_STOP = 3;
+/**
+ * Tracks sent the moment an album starts, before the plan exists, so music
+ * starts in one song's time: two, so the second covers the plan being written.
+ * Always instrumental (lyrics need the writer); the plan names them.
+ */
+const OPENERS = 2;
+
+/** An opener's tags: what was asked, as the singer model reads tags. */
+function openerTags(ask: AlbumAsk): string {
+  const asked = ask.tags.length > 0 ? ask.tags.join(', ') : ask.description.trim();
+  return /instrumental/i.test(asked) ? asked : `${asked}, instrumental`;
+}
 
 /** The chat model to write with: the biggest text model the server has and can load. */
 export async function chooseWriter(client: CrucibleClient): Promise<string> {
@@ -107,7 +119,7 @@ function planPrompt(ask: AlbumAsk, count: number, page: SongPage | null): string
     : `\nStyle words the singer model knows (examples, not a closed list): ${page.suggestions.flatMap((group) => group.tags).slice(0, 120).join(', ')}.`;
   return [
     'You plan a whole music album for an AI music model (YuE). Reply with JSON only.',
-    `Make exactly ${count} tracks. ${ask.sung ? 'The album is sung (a singer, with lyrics written later).' : 'The album is instrumental: no vocals.'}`,
+    `Make exactly ${count} tracks. ${ask.sung ? 'The album is sung (a singer, with lyrics written later), except tracks 1 and 2, which open it as instrumental pieces (an intro and a second instrumental): name and tag those two as instrumental.' : 'The album is instrumental: no vocals.'}`,
     'title: a creative album title, 1-5 words, not generic.',
     'artist: an invented band or artist name that fits the sound, not a real artist.',
     'blurb: one sentence about the record, like a liner note.',
@@ -207,6 +219,8 @@ export interface AlbumHooks {
   render(id: string, track: number, server: StoredServer, params: { tags: string; lyrics?: string; instrumental: boolean }): void;
   /** How many of this album's tracks are on the server and not ended. */
   inFlight(id: string): number;
+  /** Name the album's first songs (made before the plan had names), in order. */
+  retitle(id: string, titles: readonly string[]): Promise<void>;
   /** Cancel this album's tracks still on the server. */
   cancelInFlight(id: string): Promise<void>;
 }
@@ -265,12 +279,23 @@ export class AlbumMaker {
       const server = this.hooks.server(meta.server);
       const client = clientFor(server);
       if (meta.stage === 'planning') {
+        // Music first (Owen: "get the music going as soon as possible"): the openers go to
+        // the server before any chat model runs, made straight from what was asked.
+        if (meta.openers == null) {
+          for (let track = 0; track < OPENERS; track += 1) {
+            this.hooks.render(id, track, server, { tags: openerTags(meta.ask), instrumental: true });
+          }
+          meta = { ...meta, openers: OPENERS, sent: OPENERS };
+          await this.hooks.update(id, meta);
+        }
         const writer = meta.writer ?? (await chooseWriter(client));
         let plan = meta.plan ?? (await writePlan(client, writer, meta.ask, await this.hooks.page(server)));
-        meta = { ...meta, writer, plan, artist: plan.artist, blurb: plan.blurb };
+        meta = { ...(await this.hooks.meta(id) ?? meta), writer, plan, artist: plan.artist, blurb: plan.blurb };
         await this.hooks.update(id, meta, plan.title);
+        // The openers were made before they had names: they take the plan's first.
+        await this.hooks.retitle(id, plan.tracks.slice(0, OPENERS).map((track) => track.title));
         if (meta.ask.sung) {
-          for (let at = 0; at < plan.tracks.length; at += LYRICS_PER_CALL) {
+          for (let at = OPENERS; at < plan.tracks.length; at += LYRICS_PER_CALL) {
             const batch = plan.tracks.slice(at, at + LYRICS_PER_CALL);
             if (batch.every((t) => t.lyrics !== null)) continue;
             const lyrics = await writeLyrics(client, writer, plan, meta.ask, batch);
@@ -278,32 +303,40 @@ export class AlbumMaker {
               ...plan,
               tracks: plan.tracks.map((t, i) => (i >= at && i < at + LYRICS_PER_CALL ? { ...t, lyrics: lyrics.get(t.title.toLowerCase()) ?? t.lyrics } : t)),
             };
-            meta = { ...meta, plan };
+            meta = { ...(await this.hooks.meta(id) ?? meta), plan };
             await this.hooks.update(id, meta);
             if ((await this.hooks.meta(id)) === null) return;
           }
         }
-        meta = { ...meta, stage: 'cover' };
+        meta = { ...(await this.hooks.meta(id) ?? meta), stage: 'making' };
         await this.hooks.update(id, meta);
       }
+      // An album from before the cover moved behind the tracks may stand at `cover`: carry on making.
       if (meta.stage === 'cover') {
-        const model = await chooseCoverModel(client);
-        let cover: string | null = meta.cover;
-        if (model !== null && meta.plan !== null && cover === null) {
-          try {
-            cover = await this.hooks.paint(id, server, model, `${meta.plan.coverPrompt}. Square album cover art, no text, no letters, no words.`);
-          } catch (error) {
-            // A cover that will not paint leaves the drawn one; the music matters more.
-            console.error(`[albums] the cover for ${id} did not paint:`, error);
-          }
-        }
-        meta = { ...meta, cover, stage: 'making' };
+        meta = { ...meta, stage: 'making' };
         await this.hooks.update(id, meta);
       }
-      if (meta.stage === 'making') await this.topUp(id, meta);
+      if (meta.stage === 'making') {
+        await this.topUp(id, meta);
+        // The cover is painted behind the tracks already sent: it never holds up the music.
+        if (meta.cover === null && meta.plan !== null) void this.paintLater(id, server, meta.plan.coverPrompt);
+      }
     } catch (error) {
       const current = await this.hooks.meta(id);
       if (current !== null) await this.hooks.update(id, { ...current, stage: 'failed', refusal: refusalOf(error) });
+    }
+  }
+
+  private async paintLater(id: string, server: StoredServer, prompt: string): Promise<void> {
+    try {
+      const model = await chooseCoverModel(clientFor(server));
+      if (model === null) return;
+      const cover = await this.hooks.paint(id, server, model, `${prompt}. Square album cover art, no text, no letters, no words.`);
+      const meta = await this.hooks.meta(id);
+      if (meta !== null) await this.hooks.update(id, { ...meta, cover });
+    } catch (error) {
+      // A cover that will not paint leaves the drawn one; the music matters more.
+      console.error(`[albums] the cover for ${id} did not paint:`, error);
     }
   }
 
