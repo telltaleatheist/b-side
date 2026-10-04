@@ -90,7 +90,8 @@ import { PlayerService } from './core/player.service';
     .gate .card { max-width: 560px; margin: 0 auto; }
     .trouble { padding: 6px 16px; font-size: 12px; color: var(--warn); background: var(--bg-sunken); border-bottom: 1px solid var(--border-subtle); }
     @media (max-width: 600px) {
-      .top { gap: 10px; padding: 0 10px; }
+      /* Sides only: the top padding is the notch's safe-area inset. */
+      .top { gap: 10px; padding-left: 10px; padding-right: 10px; }
       .brand { display: none; }
     }
   `],
