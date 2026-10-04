@@ -3,7 +3,7 @@
  *
  * The flow is the Crucible playground's (crucible/ui/playground.js), through the SDK:
  *
- *   submit   `POST /v1/jobs {type: "audio", model: "yue2-3b", params}`. Jobs are
+ *   submit   `audio()` (`POST /v1/jobs {type: "audio", model: "yue2-3b", params}`). Jobs are
  *            sent one after another through one line, so the server's queue holds
  *            them in the order they were asked for — across presses, too.
  *   install  a `409 installing` refusal names the install task the server began
@@ -308,7 +308,7 @@ export class JobRunner {
     for (let round = 0; jobId === null; round += 1) {
       if (job.gone) return;
       try {
-        jobId = await client.submit({ type: 'audio', model: SONG_MODEL, params: { ...job.view.params }, inputs: {} });
+        jobId = await client.audio({ model: SONG_MODEL, ...job.view.params });
       } catch (error) {
         if (job.gone) return;
         if (!isInstalling(error) || round >= INSTALL_ROUNDS) {

@@ -170,8 +170,12 @@ BookForge/Bookshelf - find it there and reuse the idea before inventing anything
       Now Playing written on changes only.
 
 ### Phase 6 - Crucible SDK gaps (in the crucible repo)
-- [ ] `@crucible/client`: helpers for the playground routes (`GET /v1/playground`,
-      presets) and an `instrumental` option on `audio()`; then repin B-Side.
+- [x] `@crucible/client`: helpers for the playground routes (`GET /v1/playground`,
+      presets) and an `instrumental` option on `audio()`; then repin B-Side. Crucible
+      b8b1926, cut as v1.0.100 (prerelease; SDK only, the server is unchanged, so not
+      deployed or promoted). B-Side pins 1.0.100; `electron/crucible.ts` has no hand-made
+      fetch left; jobs go through `audio()`. Verified on the PC: song page + presets read,
+      and an instrumental render came back with `instrumental: true`.
 
 ### Later
 - [ ] Albums with cover art (the `album` seam is already on every song).
