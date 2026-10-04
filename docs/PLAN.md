@@ -240,6 +240,31 @@ clients of Crucible; a desktop hub is optional, never required.
       (`preferences.json`, `/api/preferences`, Settings' "Song format"). Seed 4242: 2.4 MB
       mp3 vs 16.5 MB flac.
 
+### Phase 8 - a proper music app: Night Deck, albums, the computer as a cloud
+Owen, 2026-10-04, from the design canvas (claude.ai artifact "B-Side redesign": Listen,
+Now playing, Make, Album, Library, Phone full, Desktop). Build in this order; each step is
+usable and committed on its own.
+- [ ] 8.1 The shell: Night Deck look (Big Shoulders Display, Instrument Sans, IBM Plex
+      Mono; warm near-black, cyan, amber for "in progress"); phone: bottom tabs Listen /
+      Make / Library / Settings and a mini player; desktop: the same parts with a sidebar,
+      a right panel (now playing, up next) and a bottom player bar; full-screen Now
+      Playing (big art, scrubber, controls, up next).
+- [ ] 8.2 Instant cover art: every song, playlist and album gets art drawn from its tags
+      and seed (no server, the same song always the same art).
+- [ ] 8.3 Make: Songs (today's generator) with presets as a row (pick / save as preset,
+      the server's presets) and tags in an accordion.
+- [ ] 8.4 Albums: describe or pick tags -> a chat model writes the plan in ONE call (album
+      title, artist name, cover prompt, tracks: name, tag variation, lyrics when sung) ->
+      the image model paints the cover -> tracks render in order until the album passes
+      its length (30/60/90 min). An album is a playlist with a cover, artist and plan; it
+      fills in as you listen. Save album / Delete.
+- [ ] 8.5 The phone makes songs itself AND links a B-Side computer as its cloud (no more
+      either/or): Save album uploads it (natively) to the computer's library; cloud albums
+      stream or download for offline; removing a download keeps the cloud copy.
+- [ ] 8.6 Space: albums not in a cloud count against a phone limit (2 GB default,
+      Settings); full -> Make shows "make room" (save to the cloud, or delete).
+- [ ] Later: Stations (a description that keeps two songs ahead, forever).
+
 ### Later
 - [ ] Copy/sync playlists between the phone's library and a desktop's.
 - [ ] Albums with cover art (the `album` seam is already on every song).
