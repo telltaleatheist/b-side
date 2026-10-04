@@ -36,13 +36,49 @@ BookForge/Bookshelf - find it there and reuse the idea before inventing anything
   requests.
 - Talk to the hub safely the way Bookshelf does (pairing/token, LAN or tailnet address).
 
+## The hub design (worked out 2026-10-04 overnight, from the architecture above)
+
+- **One transport: HTTP + SSE to the hub, for every client, the desktop window included.**
+  The plan first said "IPC on desktop, HTTP on web/iOS"; two transports means two code
+  paths that drift (BookForge has three players for exactly this reason). So main runs the
+  hub server always (on 127.0.0.1 alone until sharing is turned on), and the Electron
+  window is just its first client. The preload bridge shrinks to the acts only a desktop
+  can do: pick the library folder, show a song in its folder, save a copy through a dialog.
+- **The hub server** (mirrors Bookshelf's): `node:http` in main, the built Angular app at
+  `/`, the API at `/api`. Every `/api` request carries the hub key (`X-BSide-Key`, or
+  `?key=` where an `<audio>` src or EventSource cannot set a header). Wildcard CORS,
+  because the Capacitor app calls from `capacitor://localhost`. Bind: 127.0.0.1 by default;
+  Settings -> "Share on my network" binds 0.0.0.0 and shows the link (with key) to open on
+  a phone or another computer.
+- **Clients** have an id and a kind. The desktop window is `desktop`. A browser tab makes
+  a random id in sessionStorage (dies with the tab). The iOS app keeps its id.
+- **Takes** = generated songs nobody saved. The hub fetches each finished job's audio into
+  `<userData>/takes/` (audio + sidecar naming its client). A client's **playing list** is
+  its takes, oldest first. Retention, all FIFO (oldest first), all well under any limit:
+  - per client: desktop 200 takes, iOS 60, web 40;
+  - all takes together: 4 GB on the hub's disk (a 3-minute YuE song is ~35 MB);
+  - a web client's takes are deleted 10 minutes after its tab stops listening (the grace
+    is for a reload or a network blip) - "clears when the browser closes".
+- **Playlists** live in the library folder (`playlists.json`) and their songs are the
+  library's songs (audio + sidecar, as v1). "Save to playlist" copies a take into the
+  library (once - a take saved to a second playlist reuses the same song). A song that
+  leaves its last playlist is deleted (the UI says so before it does). v1 library songs
+  that are in no playlist are adopted into a playlist named "Saved before playlists".
+
 ## Tasks
 
 ### Phase 0 - review v1
-- [ ] Review the v1 built 2026-10-04 (all of `electron/`, `src/`, `shared/`): correctness,
-      no fallbacks/band-aids, matches Foundry's patterns.
-- [ ] Prove the receive side (done event -> artifact -> library) with ONE real render.
+- [x] Review the v1 built 2026-10-04 (all of `electron/`, `src/`, `shared/`): correctness,
+      no fallbacks/band-aids, matches Foundry's patterns. Findings: the code is sound (the
+      job runner's submit line, install follow, reconnect-with-last-event-id and atomic
+      library writes are right); the one structural problem is the architecture, not the
+      code - every finished job lands straight in the library and the renderer is IPC-only,
+      which the hub design above replaces.
+- [x] Prove the receive side (done event -> artifact -> library) with ONE real render.
       Owen gave the GPU go for B-Side test renders on 2026-10-04 ("GPU is yours").
+      Done 2026-10-04 01:27 on the PC: JobRunner + Library driven headless (no Electron),
+      queued -> composing -> synthesizing -> decoding -> done in ~60 s, 34.2 s of audio,
+      6.5 MB FLAC fetched and filed with its sidecar (seed 2481639261).
 
 ### Phase 1 - playing list vs playlists
 - [ ] Split the model: the playing list (ephemeral session queue) vs named playlists.
