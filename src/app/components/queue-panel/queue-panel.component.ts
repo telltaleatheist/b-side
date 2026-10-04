@@ -6,6 +6,8 @@ import { bytesText, clockText, secondsText } from '../../core/format';
 import { JobsService } from '../../core/jobs.service';
 import { LibraryService } from '../../core/library.service';
 import { PlayerService } from '../../core/player.service';
+import { CoverComponent } from '../cover/cover.component';
+import { IconComponent } from '../icon/icon.component';
 import { SaveMenuComponent } from '../save-menu/save-menu.component';
 
 type Row =
@@ -24,30 +26,24 @@ type Row =
 @Component({
   selector: 'app-queue-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SaveMenuComponent],
+  imports: [SaveMenuComponent, CoverComponent, IconComponent],
   template: `
     <div class="head">
-      <span class="label">Playing list</span>
-      <span class="count">{{ library.takes().length }} {{ library.takes().length === 1 ? 'song' : 'songs' }}@if (generatingCount() > 0) {, {{ generatingCount() }} generating}</span>
+      <h2 class="section-title">Playing list</h2>
+      <span class="count mono">{{ library.takes().length }} {{ library.takes().length === 1 ? 'song' : 'songs' }}@if (generatingCount() > 0) { · <span class="amber">{{ generatingCount() }} making</span>}</span>
     </div>
-    <p class="hint">Songs play in this order. Only songs you save to a playlist are kept; the oldest here clear on their own.</p>
     <div class="list">
       @for (row of rows(); track row.kind === 'take' ? row.take.id : row.job.key) {
         @if (row.kind === 'take') {
           <div class="item playable" [class.current]="isCurrent(row.take)" (click)="play(row.take, $event)">
+            <app-cover class="art" [key]="row.take.id + (row.take.params.tags ?? '')" />
             <div class="main">
-              <div class="title">
-                <span class="num">{{ row.number }}</span>
-                @if (isCurrent(row.take)) { <span class="now">{{ player.paused() ? '❚❚' : '▶︎' }}</span> }
-                {{ row.take.title }}
-              </div>
+              <div class="title">{{ row.take.title }}</div>
               <div class="sub">{{ row.take.params.tags ?? '' }}</div>
-              <div class="meta">
+              <div class="meta mono">
                 {{ clock(row.take.durationS) }}
-                @if (row.take.batch; as batch) { · {{ batch.index }} of {{ batch.of }} }
-                @if (row.take.params.seed !== null) { · seed {{ row.take.params.seed }} }
                 @if (row.take.params.instrumental) { · instrumental }
-                @if (savedIn(row.take); as where) { · <span class="saved">saved in {{ where }}</span> }
+                @if (savedIn(row.take); as where) { · <span class="saved">in {{ where }}</span> }
               </div>
               @if (saving() === row.take.id) {
                 <app-save-menu [take]="row.take" (closed)="saving.set(null)" />
@@ -57,25 +53,23 @@ type Row =
               }
             </div>
             <div class="actions">
-              <button type="button" class="ghost small" title="Keep this song: save it to a playlist"
-                      (click)="saving.set(saving() === row.take.id ? null : row.take.id)">Save</button>
-              <button type="button" class="icon" title="Remove from the playing list" (click)="remove(row.take)">×</button>
+              <button type="button" class="icon-btn" aria-label="Save to a playlist" title="Keep this song: save it to a playlist"
+                      (click)="saving.set(saving() === row.take.id ? null : row.take.id)"><app-icon name="plus" [size]="20" /></button>
+              <button type="button" class="icon-btn" aria-label="Remove from the playing list" title="Remove from the playing list" (click)="remove(row.take)"><app-icon name="close" [size]="18" /></button>
             </div>
           </div>
         } @else {
           <div class="item" [class.ended]="ended(row.job)">
+            <div class="art making"><span class="mono">{{ row.number }}</span></div>
             <div class="main">
-              <div class="title">
-                <span class="num">{{ row.number }}</span>
-                {{ jobTitle(row.job) }}
-              </div>
+              <div class="title">{{ jobTitle(row.job) }}</div>
               <div class="sub">{{ row.job.params.tags ?? '' }}</div>
               @if (!ended(row.job)) {
-                <div class="bar" [class.indeterminate]="share(row.job) === null">
+                <div class="bar making-bar" [class.indeterminate]="share(row.job) === null">
                   <span [style.width.%]="(share(row.job) ?? 0) * 100"></span>
                 </div>
               }
-              <div class="meta">{{ status(row.job) }}</div>
+              <div class="meta" [class.amber]="!ended(row.job)">{{ status(row.job) }}</div>
               @if (row.job.install?.line; as line) { <div class="meta mono">{{ line }}</div> }
               @if (row.job.refusal; as refused) {
                 <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
@@ -89,47 +83,41 @@ type Row =
                 <button type="button" class="ghost small" (click)="cancel(row.job)">Cancel</button>
               }
               @if (ended(row.job)) {
-                <button type="button" class="icon" title="Remove from the list" (click)="jobs.dismiss(row.job.key)">×</button>
+                <button type="button" class="icon-btn" aria-label="Remove from the list" (click)="jobs.dismiss(row.job.key)"><app-icon name="close" [size]="18" /></button>
               }
             </div>
           </div>
         }
       } @empty {
-        <p class="empty">Nothing yet. Generated songs line up here and play in turn.</p>
+        <p class="empty">Nothing yet. Songs you make line up here and play in turn; only the ones you save are kept.</p>
       }
     </div>
   `,
   styles: [`
-    :host {
-      display: flex; flex-direction: column; gap: 6px; min-height: 0; height: 100%;
-      padding: 12px; border-left: 1px solid var(--border-subtle); background: var(--bg-sunken);
-    }
+    :host { display: flex; flex-direction: column; gap: 10px; }
     .head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
     .count { font-size: 11px; color: var(--text-tertiary); }
-    .list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px; }
-    .item {
-      display: flex; gap: 8px; padding: 8px 10px;
-      border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
-      background: var(--bg-elevated);
-    }
+    .amber { color: var(--audio); }
+    .list { display: flex; flex-direction: column; gap: 2px; }
+    .item { display: flex; align-items: flex-start; gap: 12px; padding: 8px; border-radius: var(--radius-md); }
     .item.playable { cursor: pointer; }
-    .item.playable:hover { border-color: var(--border-default); }
-    .item.current { border-color: var(--audio); background: var(--audio-soft); }
+    .item.playable:hover { background: var(--bg-hover); }
+    .item.current { background: var(--accent-faint); }
+    .item.current .title { color: var(--accent); }
     .item.ended { opacity: 0.85; }
-    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-    .title { font-size: 12.5px; font-weight: 600; color: var(--text-primary); overflow-wrap: anywhere; }
-    .num { color: var(--text-tertiary); font-weight: 500; margin-right: 4px; font-variant-numeric: tabular-nums; }
-    .now { color: var(--audio); margin-right: 4px; font-size: 10px; }
-    .sub { font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .meta { font-size: 11.5px; color: var(--text-secondary); }
-    .saved { color: var(--ok); }
-    .actions { display: flex; align-items: flex-start; gap: 2px; }
-    .icon {
-      border: 0; background: transparent; color: var(--text-tertiary);
-      font-size: 14px; line-height: 1; padding: 3px 5px; border-radius: var(--radius-sm);
+    .art { width: 52px; --cover-radius: 6px; }
+    .art.making {
+      aspect-ratio: 1; border-radius: 6px; border: 1px dashed var(--audio);
+      display: flex; align-items: center; justify-content: center; color: var(--audio); font-size: 12px; flex: none;
     }
-    .icon:hover:not(:disabled) { color: var(--accent); background: var(--bg-hover); }
-    .empty { font-size: 12px; color: var(--text-tertiary); margin: 6px 0; }
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+    .title { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+    .sub { font-size: 12px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .meta { font-size: 11px; color: var(--text-tertiary); }
+    .making-bar > span { background: var(--audio); }
+    .saved { color: var(--ok); }
+    .actions { display: flex; align-items: center; gap: 0; }
+    .empty { font-size: 13px; color: var(--text-tertiary); margin: 6px 0; }
   `],
 })
 export class QueuePanelComponent {
@@ -162,7 +150,7 @@ export class QueuePanelComponent {
   }
 
   protected clock(seconds: number | null): string {
-    return seconds === null ? 'length unknown' : clockText(seconds);
+    return seconds === null ? '–:––' : clockText(seconds);
   }
 
   protected ended(job: JobView): boolean {

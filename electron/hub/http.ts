@@ -154,3 +154,35 @@ export async function sendApp(req: IncomingMessage, res: ServerResponse, root: s
   }
   await sendFile(req, res, index, 'no-cache');
 }
+
+/** The most one uploaded file may be: a long FLAC is well under it. */
+const MOST_UPLOAD_BYTES = 400_000_000;
+
+/**
+ * Stream a request's body to `target`: written beside it, then renamed into
+ * place, so a broken upload never sits under the real name.
+ */
+export async function receiveFile(req: IncomingMessage, target: string): Promise<void> {
+  const temporary = `${target}.writing`;
+  await fs.promises.mkdir(path.dirname(target), { recursive: true });
+  let received = 0;
+  await new Promise<void>((resolve, reject) => {
+    const out = fs.createWriteStream(temporary);
+    req.on('data', (chunk: Buffer) => {
+      received += chunk.length;
+      if (received > MOST_UPLOAD_BYTES) {
+        req.destroy();
+        out.destroy();
+        reject(new Refusal('upload_too_big', 'That file is bigger than any song B-Side makes.', 413));
+      }
+    });
+    req.on('error', reject);
+    out.on('error', reject);
+    out.on('finish', () => resolve());
+    req.pipe(out);
+  }).catch(async (error: unknown) => {
+    await fs.promises.rm(temporary, { force: true });
+    throw error;
+  });
+  await fs.promises.rename(temporary, target);
+}

@@ -27,7 +27,7 @@
 import { basename, join, type Disk } from './disk';
 import { Refusal } from './refusal';
 import { AUDIO_FILE, checkId, stamp } from './takes';
-import type { LibraryView, Playlist, Song, SongFacts } from '../types';
+import type { AlbumMeta, LibraryView, Playlist, Song, SongFacts } from '../types';
 
 /** Marks a sidecar as B-Side's, and its shape's version. */
 const SIDECAR_VERSION = 1;
@@ -46,9 +46,19 @@ interface PlaylistsDocument {
   readonly playlists: Playlist[];
 }
 
+/** An album as another B-Side sends it: the playlist, its details, and each song's sidecar. */
+export interface ImportedAlbum {
+  readonly id: string;
+  readonly name: string;
+  readonly createdAt: string;
+  readonly album: AlbumMeta;
+  readonly songs: readonly (Song & { readonly effective: unknown })[];
+}
+
 /** A song to file: its facts, and the audio file to copy in (a take's). */
 export interface NewSong extends Omit<SongFacts, 'id' | 'file'> {
   readonly audioFrom: string;
+  readonly bytes: number | null;
   readonly effective: unknown;
 }
 
@@ -65,6 +75,7 @@ function songOf(sidecar: Sidecar): Song {
     durationS: sidecar.durationS,
     batch: sidecar.batch,
     album: sidecar.album,
+    bytes: typeof sidecar.bytes === 'number' ? sidecar.bytes : null,
   };
 }
 
@@ -210,6 +221,7 @@ export class Library {
       durationS: song.durationS,
       batch: song.batch,
       album: null,
+      bytes: song.bytes,
       effective: song.effective,
     };
     await this.disk.writeText(this.sidecarPath(id), `${JSON.stringify(sidecar, null, 2)}\n`);
@@ -273,6 +285,88 @@ export class Library {
     });
   }
 
+  // ── albums: playlists with `album` details ────────────────────────────────
+
+  /** Start an album: an empty playlist named for now, its details beside it. */
+  async createAlbum(name: string, album: AlbumMeta): Promise<Playlist> {
+    return this.serial(async () => {
+      const playlists = await this.readPlaylists();
+      const playlist: Playlist = { id: crypto.randomUUID(), name: cleanName(name), songs: [], createdAt: new Date().toISOString(), album };
+      await this.disk.mkdir(this.dir);
+      await this.writePlaylists([...playlists, playlist]);
+      return playlist;
+    });
+  }
+
+  /** An album's details, or null when there is no such album (deleted, or a plain playlist). */
+  async album(id: string): Promise<AlbumMeta | null> {
+    return (await this.readPlaylists()).find((playlist) => playlist.id === id)?.album ?? null;
+  }
+
+  /** Write an album's details, and its name once the plan has one. A deleted album is left deleted. */
+  async setAlbum(id: string, album: AlbumMeta, name?: string): Promise<void> {
+    await this.serial(async () => {
+      const playlists = await this.readPlaylists();
+      const at = playlists.findIndex((playlist) => playlist.id === id);
+      if (at < 0) return;
+      const playlist = playlists[at] as Playlist;
+      playlists[at] = { ...playlist, album, ...(name === undefined ? {} : { name: cleanName(name) }) };
+      await this.writePlaylists(playlists);
+    });
+  }
+
+  /**
+   * File an album another B-Side sent (a phone saving to its cloud). Its audio
+   * files and cover are already in the folder (sent first); this writes each
+   * song's sidecar and the playlist. Sending the same album again replaces it.
+   */
+  async importAlbum(album: ImportedAlbum): Promise<Playlist> {
+    return this.serial(async () => {
+      if (album.songs.length === 0) throw new Refusal('import_empty', 'That album has no songs to save.');
+      for (const song of album.songs) {
+        checkId(song.id, 'song');
+        if (!(await this.disk.exists(this.audioPath(song.file)))) {
+          throw new Refusal('import_audio_missing', `${song.file} did not arrive; send the album again.`);
+        }
+        const existing = await this.disk.readText(this.sidecarPath(song.id));
+        if (existing !== null && (JSON.parse(existing) as Partial<Sidecar>).jobId !== song.jobId) {
+          throw new Refusal('import_song_clash', `This library already has a different song named ${song.id}.`);
+        }
+      }
+      if (album.album.cover !== null && !(await this.disk.exists(this.coverPath(album.album.cover)))) {
+        throw new Refusal('import_cover_missing', 'The album cover did not arrive; send the album again.');
+      }
+      for (const song of album.songs) {
+        const sidecar: Sidecar = { ...song, bside: SIDECAR_VERSION };
+        await this.disk.writeText(this.sidecarPath(song.id), `${JSON.stringify(sidecar, null, 2)}\n`);
+      }
+      const playlists = (await this.readPlaylists()).filter((playlist) => playlist.id !== album.id);
+      const playlist: Playlist = {
+        id: checkId(album.id, 'playlist'),
+        name: cleanName(album.name),
+        songs: album.songs.map((song) => song.id),
+        createdAt: album.createdAt,
+        album: album.album,
+      };
+      await this.writePlaylists([...playlists, playlist]);
+      return playlist;
+    });
+  }
+
+  /** Where a file an import sends lands: a song's audio or an album cover, by its name. */
+  importPath(name: string): string {
+    return /\.cover\.(png|jpe?g|webp)$/i.test(name) ? this.coverPath(name) : this.audioPath(name);
+  }
+
+  /** Where an album's painted cover lives, by its file name. */
+  coverPath(file: string): string {
+    const name = basename(file);
+    if (name !== file || !/^[A-Za-z0-9-]+\.cover\.(png|jpe?g|webp)$/i.test(name)) {
+      throw new Refusal('cover_file_invalid', `${file} is not an album cover.`);
+    }
+    return join(this.dir, name);
+  }
+
   async renamePlaylist(id: string, name: string): Promise<void> {
     await this.serial(async () => {
       const clean = cleanName(name);
@@ -320,9 +414,11 @@ export class Library {
     return this.serial(async () => {
       const playlists = await this.readPlaylists();
       const at = this.playlistIndex(playlists, id);
-      const songs = (playlists[at] as Playlist).songs;
+      const gone = playlists[at] as Playlist;
+      const songs = gone.songs;
       playlists.splice(at, 1);
       await this.writePlaylists(playlists);
+      if (gone.album?.cover) await this.disk.remove(this.coverPath(gone.album.cover));
       let deleted = 0;
       for (const song of songs) if (await this.deleteIfLoose(playlists, [song])) deleted += 1;
       return deleted;

@@ -41,6 +41,7 @@ export class PhoneHub {
       dataDir: PHONE_DATA,
       takeLimits: { perClient: TAKES_PER_CLIENT, bytes: TAKE_CACHE_BYTES },
       clientName: CLIENT_NAME,
+      limitsAlbumSpace: true,
       info: { app: 'b-side', version, hostname: 'this phone' },
       sink: {
         send: (to, event) => {

@@ -42,6 +42,13 @@ export function openWindow(hubUrl: string): BrowserWindow {
     },
   });
 
+  // Settings' Output list names your audio devices; Chromium only shows their
+  // names to a page allowed `media`. Allowed for B-Side's own window (the hub
+  // it loads, or the dev server), and only that one permission is touched.
+  const ours = new Set([new URL(hubUrl).origin, DEV_SERVER]);
+  mainWindow.webContents.session.setPermissionCheckHandler((_contents, permission, origin) =>
+    permission === 'media' ? ours.has(origin) : true);
+
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.on('closed', () => {
     mainWindow = null;

@@ -94,6 +94,8 @@ export interface Landed {
 export interface JobHooks {
   /** Every change to a job, for the renderer. */
   publish(job: JobView): void;
+  /** A job ended without a song (failed, refused, removed, cancelled): an album skips the track. */
+  ended?(job: JobView): void;
   /** Keep a finished song as a take in its client's playing list; answers the take. */
   land(landed: Landed): Promise<Take>;
   /** Find a server again by name (to resume a pending job after a restart). */
@@ -148,6 +150,7 @@ export class JobRunner {
     asker: { readonly id: string; readonly kind: ClientKind },
     request: GenerateRequest,
     format: SongFormat,
+    album: { readonly id: string; readonly track: number } | null = null,
   ): JobView[] {
     const seeds = batchSeeds(typeof request.params.seed === 'number' ? request.params.seed : null, request.count);
     const client = clientFor(server);
@@ -183,6 +186,7 @@ export class JobRunner {
           takeId: null,
           since: Date.now(),
           ended: null,
+          album,
         },
       };
       this.jobs.set(job.view.key, job);
@@ -306,6 +310,7 @@ export class JobRunner {
     this.publish(job);
     // A finished job IS its take now; the playing list shows the take, so the job is done with.
     if (phase === 'done') this.jobs.delete(job.view.key);
+    else this.hooks.ended?.({ ...job.view });
     void this.savePending();
   }
 
