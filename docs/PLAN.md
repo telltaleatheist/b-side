@@ -42,7 +42,7 @@ BookForge/Bookshelf - find it there and reuse the idea before inventing anything
 - [ ] Review the v1 built 2026-10-04 (all of `electron/`, `src/`, `shared/`): correctness,
       no fallbacks/band-aids, matches Foundry's patterns.
 - [ ] Prove the receive side (done event -> artifact -> library) with ONE real render.
-      **Needs Owen's go for the GPU** - do not run it without one.
+      Owen gave the GPU go for B-Side test renders on 2026-10-04 ("GPU is yours").
 
 ### Phase 1 - playing list vs playlists
 - [ ] Split the model: the playing list (ephemeral session queue) vs named playlists.
