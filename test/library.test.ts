@@ -3,7 +3,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { ADOPTED_PLAYLIST, Library, type NewSong } from '../electron/library';
+import { nodeDisk } from '../electron/node-disk';
+import { ADOPTED_PLAYLIST, Library, type NewSong } from '../shared/core/library';
 
 let dir: string;
 let scratch: string;
@@ -12,7 +13,7 @@ let library: Library;
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bside-library-'));
   scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'bside-take-'));
-  library = new Library(dir);
+  library = new Library(nodeDisk, dir);
 });
 
 afterEach(() => {
@@ -44,7 +45,7 @@ test('saving to a playlist files the song (audio + sidecar) and lists it back af
   const sidecar = JSON.parse(fs.readFileSync(path.join(dir, `${saved.id}.json`), 'utf8'));
   expect(sidecar).toMatchObject({ bside: 1, jobId: 'job-7', album: null, effective: { seed: 7 } });
 
-  const reopened = await new Library(dir).list();
+  const reopened = await new Library(nodeDisk, dir).list();
   expect(reopened.songs.map((s) => s.id)).toEqual([saved.id]);
   expect(reopened.playlists).toEqual([{ ...playlist, songs: [saved.id] }]);
   expect(reopened.problems).toEqual([]);

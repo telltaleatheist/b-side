@@ -11,7 +11,7 @@ import { CrucibleClient, type PlaygroundField, type PlaygroundPreset } from '@cr
 
 import { Refusal } from './refusal';
 import type { StoredServer } from './servers';
-import { SONG_MODEL, type NumberField, type Preset, type ServerProbe, type SongForm, type SongPage } from '../shared/types';
+import { SONG_MODEL, type NumberField, type Preset, type ServerProbe, type SongForm, type SongPage } from '../types';
 
 export const CLIENT_NAME = 'b-side';
 

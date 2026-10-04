@@ -5,8 +5,9 @@ import * as path from 'node:path';
 
 import type { Pairing, PairingRequest, PairingResult } from '@crucible/client';
 
-import { PairingSessions } from '../electron/pairing';
-import { ServerRegistry } from '../electron/servers';
+import { PairingSessions } from '../shared/core/pairing';
+import { fileVault } from '../electron/node-disk';
+import { ServerRegistry } from '../shared/core/servers';
 
 // Made-up credentials for the fixture: never real ones.
 const TOKEN = 'not-a-real-token-123';
@@ -25,9 +26,10 @@ let dir: string;
 let registry: ServerRegistry;
 let now: number;
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bside-pairing-'));
-  registry = new ServerRegistry(path.join(dir, 'servers.json'));
+  registry = new ServerRegistry(fileVault(path.join(dir, 'servers.json')));
+  await registry.open();
   now = 1_000_000;
 });
 

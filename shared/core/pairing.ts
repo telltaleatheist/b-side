@@ -12,11 +12,10 @@
  * A session's id is the only handle a client gets; it is random, and the hub's
  * key already gates every call that can name one.
  */
-import { randomUUID } from 'node:crypto';
 
 import { pollPairing, startPairing, type Pairing, type PairingRequest } from '@crucible/client';
 
-import type { PairingProgress } from '../shared/types';
+import type { PairingProgress } from '../types';
 
 interface Session {
   readonly request: PairingRequest;
@@ -43,7 +42,7 @@ export class PairingSessions {
     }
     const request = await this.beginRequest(address, this.clientName);
     const view: PairingProgress = {
-      id: randomUUID(),
+      id: crypto.randomUUID(),
       name: request.name,
       url: request.url,
       userCode: request.userCode,

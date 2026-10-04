@@ -17,15 +17,15 @@
  * drops it. The store holds its index in memory (read from the sidecars once at
  * open); the sidecars are the truth and are written atomically.
  *
- * Like `Library`, this takes its folder rather than asking Electron, so it runs
- * under a test without an Electron process.
+ * Like `Library`, this takes its folder and its `Disk` rather than asking for
+ * either, so it runs on the desktop, on the phone and under a test alike.
  */
-import { promises as fsp } from 'node:fs';
-import * as path from 'node:path';
-
-import { writeAtomically } from './atomic';
+import { basename, join, type Disk } from './disk';
 import { Refusal } from './refusal';
-import type { ClientKind, SongFacts, Take, TakeGoneReason } from '../shared/types';
+import type { ClientKind, SongFacts, Take, TakeGoneReason } from '../types';
+
+/** The audio B-Side keeps: what Crucible's song model renders. */
+export const AUDIO_FILE = /\.(flac|wav|mp3)$/i;
 
 /** Marks a take sidecar, and its shape's version. */
 const TAKE_VERSION = 1;
@@ -41,7 +41,8 @@ export interface NewTake extends Omit<SongFacts, 'id' | 'file'> {
   readonly client: string;
   readonly kind: ClientKind;
   readonly extension: string;
-  readonly bytes: Uint8Array;
+  /** Write the audio to this file and answer its size (the job runner's fetcher: natively on the phone). */
+  readonly fill: (file: string) => Promise<number>;
   readonly effective: unknown;
 }
 
@@ -95,6 +96,7 @@ export class TakeStore {
   private line: Promise<unknown> = Promise.resolve();
 
   constructor(
+    private readonly disk: Disk,
     readonly dir: string,
     private readonly limits: TakeLimits,
   ) {}
@@ -108,32 +110,33 @@ export class TakeStore {
    * a broken cache entry, not a song anyone saved: it is removed, and said so.
    */
   async open(): Promise<void> {
-    await fsp.mkdir(this.dir, { recursive: true });
-    const names = await fsp.readdir(this.dir);
+    await this.disk.mkdir(this.dir);
+    const names = (await this.disk.list(this.dir)) ?? [];
     for (const name of names) {
       if (name.endsWith('.writing')) {
         // A write the last run never finished.
-        await fsp.rm(path.join(this.dir, name), { force: true });
+        await this.disk.remove(join(this.dir, name));
         continue;
       }
       if (!name.endsWith('.json')) continue;
       const id = name.slice(0, -'.json'.length);
       try {
-        const sidecar = JSON.parse(await fsp.readFile(path.join(this.dir, name), 'utf8')) as TakeSidecar;
+        const text = await this.disk.readText(join(this.dir, name));
+        const sidecar = JSON.parse(text ?? '') as TakeSidecar;
         if (sidecar.bsideTake !== TAKE_VERSION || sidecar.id !== id) throw new Error('not a B-Side take sidecar');
-        await fsp.access(this.audioFile(sidecar));
+        if (!(await this.disk.exists(this.audioFile(sidecar)))) throw new Error(`its audio ${sidecar.file} is missing`);
         this.takes.set(id, sidecar);
       } catch (err) {
         console.error(`[takes] ${name} is a broken cache entry (${(err as Error).message}); removing it`);
-        await fsp.rm(path.join(this.dir, name), { force: true });
+        await this.disk.remove(join(this.dir, name));
       }
     }
     // Audio whose sidecar is gone (a crash between the two removals).
     const known = new Set([...this.takes.values()].map((take) => take.file));
     for (const name of names) {
-      if (/\.(flac|wav)$/i.test(name) && !known.has(name)) {
+      if (AUDIO_FILE.test(name) && !known.has(name)) {
         console.error(`[takes] ${name} has no sidecar; removing it`);
-        await fsp.rm(path.join(this.dir, name), { force: true });
+        await this.disk.remove(join(this.dir, name));
       }
     }
     await this.serial(() => this.enforceBytes());
@@ -167,8 +170,8 @@ export class TakeStore {
   async add(input: NewTake): Promise<Take> {
     return this.serial(async () => {
       const extension = input.extension.toLowerCase();
-      if (extension !== 'flac' && extension !== 'wav') {
-        throw new Refusal('song_format', `B-Side keeps flac or wav audio, not .${input.extension}.`);
+      if (!AUDIO_FILE.test(`.${extension}`)) {
+        throw new Refusal('song_format', `B-Side keeps flac, wav or mp3 audio, not .${input.extension}.`);
       }
       const base = `${stamp(new Date(input.createdAt))}-${input.params.seed ?? 'noseed'}`;
       let id = base;
@@ -187,17 +190,21 @@ export class TakeStore {
         createdAt: input.createdAt,
         durationS: input.durationS,
         batch: input.batch,
-        bytes: input.bytes.byteLength,
+        bytes: 0,
         savedAs: null,
         effective: input.effective,
       };
       // Audio first, then the sidecar: a crash between leaves audio with no sidecar, which open() clears.
-      await writeAtomically(this.audioFile(sidecar), input.bytes);
-      await writeAtomically(this.sidecarFile(id), `${JSON.stringify(sidecar, null, 2)}\n`);
-      this.takes.set(id, sidecar);
+      // The audio arrives under a temporary name, so a half-fetched song never sits under its own.
+      const audio = this.audioFile(sidecar);
+      const bytes = await input.fill(`${audio}.writing`);
+      await this.disk.move(`${audio}.writing`, audio);
+      const filed: TakeSidecar = { ...sidecar, bytes };
+      await this.disk.writeText(this.sidecarFile(id), `${JSON.stringify(filed, null, 2)}\n`);
+      this.takes.set(id, filed);
       await this.enforceClient(input.client, input.kind, id);
       await this.enforceBytes(id);
-      return takeOf(sidecar);
+      return takeOf(filed);
     });
   }
 
@@ -205,7 +212,7 @@ export class TakeStore {
   async markSaved(id: string, songId: string): Promise<Take> {
     return this.serial(async () => {
       const sidecar: TakeSidecar = { ...this.sidecar(id), savedAs: songId };
-      await writeAtomically(this.sidecarFile(id), `${JSON.stringify(sidecar, null, 2)}\n`);
+      await this.disk.writeText(this.sidecarFile(id), `${JSON.stringify(sidecar, null, 2)}\n`);
       this.takes.set(id, sidecar);
       return takeOf(sidecar);
     });
@@ -244,11 +251,11 @@ export class TakeStore {
   }
 
   private sidecarFile(id: string): string {
-    return path.join(this.dir, `${checkId(id, 'take')}.json`);
+    return join(this.dir, `${checkId(id, 'take')}.json`);
   }
 
   private audioFile(sidecar: TakeSidecar): string {
-    return path.join(this.dir, path.basename(sidecar.file));
+    return join(this.dir, basename(sidecar.file));
   }
 
   private serial<T>(work: () => Promise<T>): Promise<T> {
@@ -259,8 +266,8 @@ export class TakeStore {
 
   /** The sidecar goes first: a crash between leaves audio with no sidecar, which open() clears. */
   private async drop(sidecar: TakeSidecar, reason: TakeGoneReason): Promise<void> {
-    await fsp.rm(this.sidecarFile(sidecar.id), { force: true });
-    await fsp.rm(this.audioFile(sidecar), { force: true });
+    await this.disk.remove(this.sidecarFile(sidecar.id));
+    await this.disk.remove(this.audioFile(sidecar));
     this.takes.delete(sidecar.id);
     const take = takeOf(sidecar);
     for (const listener of this.goneListeners) listener(take, reason);

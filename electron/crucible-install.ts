@@ -38,10 +38,10 @@ import {
   type Runner,
 } from '@crucible/bootstrap';
 
-import { probe } from './crucible';
+import { probe } from '../shared/core/crucible';
 import { installPlatform, runningCrucibleVersion, useLocal } from './crucible-local';
 import { Refusal } from './refusal';
-import type { ServerRegistry } from './servers';
+import type { ServerRegistry } from '../shared/core/servers';
 import { machineSentence } from './system-probe';
 import type {
   CrucibleInstallEvent,

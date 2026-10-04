@@ -1,24 +1,31 @@
 /**
  * servers — the Crucible servers B-Side knows, and which one it uses.
  *
- * Stored as `<userData>/servers.json`:
+ * One document, kept in a `Vault` (`<userData>/servers.json` on the desktop, the
+ * Keychain on the phone):
  *
  *   { "active": "<name>" | null, "servers": [{ "name", "url", "token" }] }
  *
  * The NAME is the key (it is what a pairing line carries and what a song's
- * sidecar records). Tokens live only here and in main's memory: every view the
- * renderer gets says `hasToken`, never the token itself.
+ * sidecar records). Tokens live only here and in the hub's memory: every view a
+ * screen gets says `hasToken`, never the token itself.
  *
- * The class takes its file path rather than asking Electron for it, so the
- * tests run it without an Electron process.
+ * `open()` reads the document once; after that the list is answered from memory
+ * and every change is written through before it is answered.
  */
-import * as fs from 'node:fs';
-
 import { parsePairing } from '@crucible/client';
 
-import { writeAtomically } from './atomic';
 import { Refusal } from './refusal';
-import type { ServerInput, ServerView } from '../shared/types';
+import type { ServerInput, ServerView } from '../types';
+
+/** Where the server list (tokens included) is kept. */
+export interface Vault {
+  /** Where it is, for a sentence about it. */
+  readonly where: string;
+  /** The stored text, or null when nothing is stored yet. */
+  read(): Promise<string | null>;
+  write(text: string): Promise<void>;
+}
 
 export interface StoredServer {
   readonly name: string;
@@ -47,23 +54,23 @@ export function normaliseUrl(raw: string): string {
 }
 
 export class ServerRegistry {
-  constructor(private readonly file: string) {}
+  private document: Document | null = null;
 
-  /** The file as stored, or an empty registry when there is none yet. */
-  private read(): Document {
-    let text: string;
-    try {
-      text = fs.readFileSync(this.file, 'utf8');
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { active: null, servers: [] };
-      throw err;
+  constructor(private readonly vault: Vault) {}
+
+  /** Read the stored list (an empty one when there is none yet). */
+  async open(): Promise<void> {
+    const text = await this.vault.read();
+    if (text === null) {
+      this.document = { active: null, servers: [] };
+      return;
     }
     const parsed: unknown = JSON.parse(text);
     if (typeof parsed !== 'object' || parsed === null || !Array.isArray((parsed as Document).servers)) {
-      throw new Refusal('servers_unreadable', `${this.file} is not a B-Side server list; move it aside to start over.`);
+      throw new Refusal('servers_unreadable', `${this.vault.where} is not a B-Side server list; move it aside to start over.`);
     }
     const document = parsed as Document;
-    return {
+    this.document = {
       active: typeof document.active === 'string' ? document.active : null,
       servers: document.servers.filter(
         (s): s is StoredServer =>
@@ -72,8 +79,15 @@ export class ServerRegistry {
     };
   }
 
+  /** A copy of the list to change; `write` makes it the list. */
+  private read(): Document {
+    if (this.document === null) throw new Error('ServerRegistry.open() was not awaited');
+    return { active: this.document.active, servers: [...this.document.servers] };
+  }
+
   private async write(document: Document): Promise<void> {
-    await writeAtomically(this.file, `${JSON.stringify(document, null, 2)}\n`);
+    await this.vault.write(`${JSON.stringify(document, null, 2)}\n`);
+    this.document = document;
   }
 
   views(): ServerView[] {

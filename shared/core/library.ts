@@ -21,17 +21,13 @@
  * audio, so a song whose audio exists always has its sidecar. The id is the file
  * stem and never changes: renaming a song changes its `title` only.
  *
- * Like `TakeStore`, this takes its folder rather than asking Electron, so it runs
- * under a test without an Electron process.
+ * Like `TakeStore`, this takes its folder and its `Disk`, so it runs on the
+ * desktop (the library folder) and on the phone (the app's own storage) alike.
  */
-import { randomUUID } from 'node:crypto';
-import { promises as fsp } from 'node:fs';
-import * as path from 'node:path';
-
-import { writeAtomically } from './atomic';
+import { basename, join, type Disk } from './disk';
 import { Refusal } from './refusal';
-import { checkId, stamp } from './takes';
-import type { LibraryView, Playlist, Song, SongFacts } from '../shared/types';
+import { AUDIO_FILE, checkId, stamp } from './takes';
+import type { LibraryView, Playlist, Song, SongFacts } from '../types';
 
 /** Marks a sidecar as B-Side's, and its shape's version. */
 const SIDECAR_VERSION = 1;
@@ -83,7 +79,10 @@ export class Library {
   /** Writes, one at a time: a playlist edit reads what the last one wrote. */
   private line: Promise<unknown> = Promise.resolve();
 
-  constructor(readonly dir: string) {}
+  constructor(
+    private readonly disk: Disk,
+    readonly dir: string,
+  ) {}
 
   private serial<T>(work: () => Promise<T>): Promise<T> {
     const next = this.line.then(work);
@@ -92,28 +91,21 @@ export class Library {
   }
 
   private sidecarPath(id: string): string {
-    return path.join(this.dir, `${checkId(id, 'song')}.json`);
+    return join(this.dir, `${checkId(id, 'song')}.json`);
   }
 
   /** The audio file a song's sidecar names, or a refusal when it is not a library file. */
   audioPath(file: string): string {
-    const name = path.basename(file);
-    if (name !== file || !/\.(flac|wav)$/i.test(name)) {
+    const name = basename(file);
+    if (name !== file || !AUDIO_FILE.test(name)) {
       throw new Refusal('song_file_invalid', `${file} is not a library audio file.`);
     }
-    return path.join(this.dir, name);
+    return join(this.dir, name);
   }
 
   private async readSidecar(id: string): Promise<Sidecar> {
-    let text: string;
-    try {
-      text = await fsp.readFile(this.sidecarPath(id), 'utf8');
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new Refusal('song_missing', `The song ${id} is no longer in ${this.dir}.`, 404);
-      }
-      throw err;
-    }
+    const text = await this.disk.readText(this.sidecarPath(id));
+    if (text === null) throw new Refusal('song_missing', `The song ${id} is no longer in ${this.dir}.`, 404);
     const parsed = JSON.parse(text) as Sidecar;
     if (parsed.bside !== SIDECAR_VERSION || parsed.id !== id) {
       throw new Refusal('song_unreadable', `${id}.json is not a B-Side song sidecar.`);
@@ -122,18 +114,13 @@ export class Library {
   }
 
   private async readPlaylists(): Promise<Playlist[]> {
-    let text: string;
-    try {
-      text = await fsp.readFile(path.join(this.dir, PLAYLISTS_FILE), 'utf8');
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
-      throw err;
-    }
+    const text = await this.disk.readText(join(this.dir, PLAYLISTS_FILE));
+    if (text === null) return [];
     const parsed = JSON.parse(text) as Partial<PlaylistsDocument>;
     if (parsed.bsidePlaylists !== PLAYLISTS_VERSION || !Array.isArray(parsed.playlists)) {
       throw new Refusal(
         'playlists_unreadable',
-        `${path.join(this.dir, PLAYLISTS_FILE)} is not a B-Side playlist file; move it aside to start over.`,
+        `${join(this.dir, PLAYLISTS_FILE)} is not a B-Side playlist file; move it aside to start over.`,
       );
     }
     return parsed.playlists;
@@ -141,19 +128,14 @@ export class Library {
 
   private async writePlaylists(playlists: Playlist[]): Promise<void> {
     const document: PlaylistsDocument = { bsidePlaylists: PLAYLISTS_VERSION, playlists };
-    await writeAtomically(path.join(this.dir, PLAYLISTS_FILE), `${JSON.stringify(document, null, 2)}\n`);
+    await this.disk.writeText(join(this.dir, PLAYLISTS_FILE), `${JSON.stringify(document, null, 2)}\n`);
   }
 
   /** Every saved song (oldest first) and every playlist. A sidecar that will not read is listed as a problem, never removed. */
   async list(): Promise<LibraryView> {
     const playlists = await this.readPlaylists();
-    let names: string[];
-    try {
-      names = await fsp.readdir(this.dir);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { dir: this.dir, songs: [], playlists, problems: [] };
-      throw err;
-    }
+    const names = await this.disk.list(this.dir);
+    if (names === null) return { dir: this.dir, songs: [], playlists, problems: [] };
     const songs: Song[] = [];
     const problems: string[] = [];
     for (const name of names) {
@@ -161,7 +143,7 @@ export class Library {
       const id = name.slice(0, -'.json'.length);
       let sidecar: Sidecar;
       try {
-        const parsed = JSON.parse(await fsp.readFile(path.join(this.dir, name), 'utf8')) as Partial<Sidecar>;
+        const parsed = JSON.parse((await this.disk.readText(join(this.dir, name))) ?? '') as Partial<Sidecar>;
         // Not ours (some other app's .json in the same folder): not a problem, just not a song.
         if (parsed.bside === undefined) continue;
         sidecar = await this.readSidecar(id);
@@ -169,9 +151,7 @@ export class Library {
         problems.push(`${name}: ${(err as Error).message}`);
         continue;
       }
-      try {
-        await fsp.access(this.audioPath(sidecar.file));
-      } catch {
+      if (!(await this.disk.exists(this.audioPath(sidecar.file)))) {
         problems.push(`${name}: its audio file ${sidecar.file} is missing`);
         continue;
       }
@@ -198,7 +178,7 @@ export class Library {
         const found = playlists[at] as Playlist;
         playlists[at] = { ...found, songs: [...found.songs, ...loose] };
       } else {
-        playlists.push({ id: randomUUID(), name: ADOPTED_PLAYLIST, songs: loose, createdAt: new Date().toISOString() });
+        playlists.push({ id: crypto.randomUUID(), name: ADOPTED_PLAYLIST, songs: loose, createdAt: new Date().toISOString() });
       }
       await this.writePlaylists(playlists);
       console.log(`[library] adopted ${loose.length} song(s) into "${ADOPTED_PLAYLIST}"`);
@@ -207,15 +187,16 @@ export class Library {
 
   /** File a song: the sidecar first, then the audio (copied from the take), each atomically. */
   private async addSong(song: NewSong): Promise<Song> {
-    await fsp.mkdir(this.dir, { recursive: true });
-    const extension = path.extname(song.audioFrom).slice(1).toLowerCase();
-    if (extension !== 'flac' && extension !== 'wav') {
-      throw new Refusal('song_format', `B-Side keeps flac or wav audio, not .${extension}.`);
+    await this.disk.mkdir(this.dir);
+    const from = basename(song.audioFrom);
+    const extension = from.slice(from.lastIndexOf('.') + 1).toLowerCase();
+    if (!AUDIO_FILE.test(`.${extension}`)) {
+      throw new Refusal('song_format', `B-Side keeps flac, wav or mp3 audio, not .${extension}.`);
     }
     // Unique, sortable, readable: when it was made and which take it was.
     const base = `${stamp(new Date(song.createdAt))}-${song.params.seed ?? 'noseed'}`;
     let id = base;
-    for (let n = 2; await exists(path.join(this.dir, `${id}.json`)); n += 1) id = `${base}-${n}`;
+    for (let n = 2; await this.disk.exists(join(this.dir, `${id}.json`)); n += 1) id = `${base}-${n}`;
     const sidecar: Sidecar = {
       bside: SIDECAR_VERSION,
       id,
@@ -231,11 +212,8 @@ export class Library {
       album: null,
       effective: song.effective,
     };
-    await writeAtomically(this.sidecarPath(id), `${JSON.stringify(sidecar, null, 2)}\n`);
-    const target = this.audioPath(sidecar.file);
-    const temporary = `${target}.writing`;
-    await fsp.copyFile(song.audioFrom, temporary);
-    await fsp.rename(temporary, target);
+    await this.disk.writeText(this.sidecarPath(id), `${JSON.stringify(sidecar, null, 2)}\n`);
+    await this.disk.copy(song.audioFrom, this.audioPath(sidecar.file));
     return songOf(sidecar);
   }
 
@@ -288,8 +266,8 @@ export class Library {
       if (playlists.some((playlist) => playlist.name.toLowerCase() === clean.toLowerCase())) {
         throw new Refusal('playlist_name_taken', `There is already a playlist named ${clean}.`);
       }
-      const playlist: Playlist = { id: randomUUID(), name: clean, songs: [], createdAt: new Date().toISOString() };
-      await fsp.mkdir(this.dir, { recursive: true });
+      const playlist: Playlist = { id: crypto.randomUUID(), name: clean, songs: [], createdAt: new Date().toISOString() };
+      await this.disk.mkdir(this.dir);
       await this.writePlaylists([...playlists, playlist]);
       return playlist;
     });
@@ -356,7 +334,7 @@ export class Library {
       const trimmed = title.trim();
       if (trimmed === '') throw new Refusal('song_title_missing', 'A song needs a title.');
       const sidecar = { ...(await this.readSidecar(id)), title: trimmed };
-      await writeAtomically(this.sidecarPath(id), `${JSON.stringify(sidecar, null, 2)}\n`);
+      await this.disk.writeText(this.sidecarPath(id), `${JSON.stringify(sidecar, null, 2)}\n`);
       return songOf(sidecar);
     });
   }
@@ -385,19 +363,10 @@ export class Library {
         if (err instanceof Refusal && err.code === 'song_missing') continue;
         throw err;
       }
-      await fsp.rm(this.audioPath(sidecar.file), { force: true });
-      await fsp.rm(this.sidecarPath(songId));
+      await this.disk.remove(this.audioPath(sidecar.file));
+      await this.disk.remove(this.sidecarPath(songId));
       any = true;
     }
     return any;
-  }
-}
-
-async function exists(file: string): Promise<boolean> {
-  try {
-    await fsp.access(file);
-    return true;
-  } catch {
-    return false;
   }
 }

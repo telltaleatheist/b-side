@@ -33,7 +33,7 @@ import {
 
 import { connectInstalled, driveCrucibleInstall } from './crucible-install';
 import { Refusal, refusalOf } from './refusal';
-import type { ServerRegistry } from './servers';
+import type { ServerRegistry } from '../shared/core/servers';
 import type {
   CrucibleInstallEvent,
   CrucibleInstallOutcome,

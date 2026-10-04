@@ -24,9 +24,9 @@
 import { localStatus, startLocal } from '@crucible/bootstrap';
 import { CruciblePairingError, cruciblePairingPath, readPairingFile, type Pairing } from '@crucible/client';
 
-import { probe } from './crucible';
+import { probe } from '../shared/core/crucible';
 import { Refusal } from './refusal';
-import type { ServerRegistry } from './servers';
+import type { ServerRegistry } from '../shared/core/servers';
 import type {
   CrucibleFault,
   CrucibleStartResult,

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { clashesIn, composeTags, readFields, tagPrompt, type TagFields } from '../electron/describe';
+import { clashesIn, composeTags, readFields, tagPrompt, type TagFields } from '../shared/core/describe';
 import type { SongPage } from '../shared/types';
 
 const page: SongPage = {

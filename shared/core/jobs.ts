@@ -20,9 +20,11 @@
  * Jobs that have a server id are written to `pending.json`, so a job still
  * generating when B-Side quits is followed again on the next launch (its events
  * replay from the start, so nothing is missed).
+ *
+ * The audio is fetched by the platform's `AudioFetcher`: the SDK on the desktop,
+ * a native download straight to disk on the phone (a 35 MB song must never cross
+ * the WebView bridge as base64).
  */
-import { randomUUID } from 'node:crypto';
-import * as fs from 'node:fs';
 
 import {
   CrucibleRefused,
@@ -34,11 +36,11 @@ import {
   type InstallingDetails,
 } from '@crucible/client';
 
-import { writeAtomically } from './atomic';
 import { clientFor } from './crucible';
+import type { Disk } from './disk';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
-import { batchSeeds } from '../shared/batch';
+import { batchSeeds } from '../batch';
 import {
   ENDED_PHASES,
   SONG_MODEL,
@@ -49,7 +51,7 @@ import {
   type RefusalView,
   type SongParams,
   type Take,
-} from '../shared/types';
+} from '../types';
 
 const INSTALL_ROUNDS = 5;
 const RECONNECT_MS = 2000;
@@ -67,11 +69,18 @@ interface Job {
   gone: boolean;
 }
 
+/**
+ * Fetch a finished job's artifact into `file` and answer its size. A server that
+ * cannot be reached is `CrucibleUnreachable`, which the runner retries.
+ */
+export type AudioFetcher = (server: StoredServer, jobId: string, artifact: string, file: string) => Promise<number>;
+
 /** What a finished job hands the take cache. */
 export interface Landed {
   readonly job: JobView;
   readonly server: StoredServer;
-  readonly bytes: Uint8Array;
+  /** Fetch the audio into this file (retrying while the server cannot be reached); answers its size. */
+  readonly fill: (file: string) => Promise<number>;
   readonly extension: string;
   readonly seed: number;
   readonly durationS: number | null;
@@ -111,7 +120,9 @@ export class JobRunner {
 
   constructor(
     private readonly hooks: JobHooks,
+    private readonly disk: Disk,
     private readonly pendingFile: string,
+    private readonly fetchAudio: AudioFetcher,
   ) {}
 
   /** One client's jobs, oldest first. */
@@ -142,7 +153,7 @@ export class JobRunner {
         taskId: null,
         gone: false,
         view: {
-          key: randomUUID(),
+          key: crypto.randomUUID(),
           client: asker.id,
           clientKind: asker.kind,
           number: this.numbered,
@@ -228,9 +239,10 @@ export class JobRunner {
   async resume(): Promise<void> {
     let entries: PendingEntry[];
     try {
-      entries = JSON.parse(fs.readFileSync(this.pendingFile, 'utf8')) as PendingEntry[];
+      const text = await this.disk.readText(this.pendingFile);
+      if (text === null) return;
+      entries = JSON.parse(text) as PendingEntry[];
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
       console.error(`[jobs] ${this.pendingFile} could not be read; nothing resumed:`, err);
       return;
     }
@@ -296,7 +308,7 @@ export class JobRunner {
       .filter((job) => job.view.jobId !== null && !this.ended(job))
       .map((job) => ({ view: { ...job.view } }));
     try {
-      await writeAtomically(this.pendingFile, `${JSON.stringify(entries, null, 2)}\n`);
+      await this.disk.writeText(this.pendingFile, `${JSON.stringify(entries, null, 2)}\n`);
     } catch (err) {
       console.error(`[jobs] could not record pending jobs in ${this.pendingFile}:`, err);
     }
@@ -474,22 +486,23 @@ export class JobRunner {
     try {
       const result = readAudioResult(done);
       job.view.seed = result.seed;
-      let bytes: Uint8Array | null = null;
-      while (bytes === null) {
-        try {
-          bytes = await this.clientOf(job).artifact(jobId, result.artifact);
-        } catch (error) {
-          if (!(error instanceof CrucibleUnreachable)) throw error;
-          job.view.message = 'Fetching the song: the server is not answering, trying again';
-          this.publish(job);
-          await pause(RECONNECT_MS);
+      const fill = async (file: string): Promise<number> => {
+        for (;;) {
+          try {
+            return await this.fetchAudio(job.server, jobId, result.artifact, file);
+          } catch (error) {
+            if (!(error instanceof CrucibleUnreachable)) throw error;
+            job.view.message = 'Fetching the song: the server is not answering, trying again';
+            this.publish(job);
+            await pause(RECONNECT_MS);
+          }
         }
-      }
+      };
       const extension = result.artifact.slice(result.artifact.lastIndexOf('.') + 1);
       const take = await this.hooks.land({
         job: { ...job.view },
         server: job.server,
-        bytes,
+        fill,
         extension,
         seed: result.seed,
         durationS: result.audioSeconds,

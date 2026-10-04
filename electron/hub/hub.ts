@@ -8,11 +8,11 @@
  * browser tab on the network is another, the iOS app another. One UI, one
  * transport, one code path.
  *
- * What the hub holds, and nobody else does:
- *   - the Crucible server registry (tokens never leave main: the hub proxies);
- *   - the job runner (a client asks; the hub submits, follows and fetches);
- *   - the take cache — every client's playing list (`TakeStore`);
- *   - the library folder — saved songs and playlists (`Library`).
+ * What the hub holds — the server registry, the job runner, the take cache and
+ * the library — and the `/api` routes over them are the shared core's
+ * (shared/core/hub-core.ts), which the phone runs too. This file is the
+ * desktop's door onto it: HTTP, the event stream, audio files with ranges, and
+ * the settings only the desktop has (the library folder, sharing, the key).
  *
  * Safety, as Bookshelf does it: every `/api` request carries the hub key
  * (`X-BSide-Key`, or `?key=` where an `<audio>` src or EventSource cannot set a
@@ -26,37 +26,29 @@
  * reconnects gets a fresh snapshot, so nothing missed while it was away matters.
  */
 import { timingSafeEqual } from 'node:crypto';
+import { promises as fsp } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { CLIENT_NAME, clientFor, deletePreset, listPresets, probe, savePreset, songPage } from '../crucible';
-import { describe } from '../describe';
-import { JobRunner } from '../jobs';
-import { Library } from '../library';
-import { PairingSessions } from '../pairing';
+import { CLIENT_NAME, clientFor } from '../../shared/core/crucible';
+import { HubCore, matchRoute, routeOf, type CoreRequest } from '../../shared/core/hub-core';
+import type { ServerRegistry } from '../../shared/core/servers';
+import type { TakeStore } from '../../shared/core/takes';
+import { fileVault, nodeDisk } from '../node-disk';
 import { Refusal } from '../refusal';
-import { ServerRegistry } from '../servers';
 import { AppSettings, type StoredSettings } from '../settings';
-import { TakeStore } from '../takes';
-import { defaultTitle } from '../titles';
 import { ClientTracker, clientName, type ClientName } from './clients';
 import { readJson, sendApp, sendFile, sendJson, sendRefusal } from './http';
 import {
   HUB_KEY_HEADER,
-  SONG_MODEL,
   TAKE_CACHE_BYTES,
   TAKES_PER_CLIENT,
   WEB_GRACE_MS,
-  type GenerateRequest,
   type HubEvent,
   type HubInfo,
   type HubSettingsView,
-  type HubSnapshot,
-  type LibraryView,
-  type ServerInput,
   type ServerView,
-  type SongForm,
 } from '../../shared/types';
 
 export interface HubOptions {
@@ -67,16 +59,13 @@ export interface HubOptions {
   readonly version: string;
 }
 
-interface Request {
+interface Request extends CoreRequest {
   readonly req: IncomingMessage;
   readonly res: ServerResponse;
   readonly url: URL;
-  readonly params: Record<string, string>;
   /** Whether the caller is this computer. */
   readonly local: boolean;
-  /** The calling device, read from its headers; refuses when it did not say. */
   client(): ClientName;
-  body(): Promise<Record<string, unknown>>;
 }
 
 type Handler = (request: Request) => Promise<unknown> | unknown;
@@ -101,88 +90,57 @@ function sameKey(given: string, key: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-function text(value: unknown, what: string): string {
-  if (typeof value !== 'string') throw new Refusal('body_invalid', `${what} must be text.`);
-  return value;
-}
-
 export class Hub {
   readonly settings: AppSettings;
-  readonly registry: ServerRegistry;
-  readonly takes: TakeStore;
-  readonly jobs: JobRunner;
-  private readonly pairing: PairingSessions;
-  private library!: Library;
+  readonly core: HubCore;
   private readonly clients: ClientTracker;
+  /** The desktop's own routes (events, audio, settings): asked before the core's. */
   private readonly routes: Route[] = [];
   private server: Server | null = null;
-  private readonly info: HubInfo;
 
   constructor(private readonly options: HubOptions) {
-    this.info = { app: 'b-side', version: options.version, hostname: os.hostname() };
+    const info: HubInfo = { app: 'b-side', version: options.version, hostname: os.hostname() };
     this.settings = new AppSettings(path.join(options.userData, 'settings.json'), options.defaultLibraryDir);
-    this.registry = new ServerRegistry(path.join(options.userData, 'servers.json'));
-    this.pairing = new PairingSessions(CLIENT_NAME, async (pairing) => {
-      const name = await this.registry.addPaired(pairing);
-      this.serversChanged();
-      return name;
-    });
-    this.takes = new TakeStore(path.join(options.userData, 'takes'), {
-      perClient: TAKES_PER_CLIENT,
-      bytes: TAKE_CACHE_BYTES,
-    });
     this.clients = new ClientTracker(WEB_GRACE_MS, (client) => {
-      void this.jobs.forgetClient(client);
-      void this.takes.removeClient(client, 'client_closed');
+      void this.core.jobs.forgetClient(client);
+      void this.core.takes.removeClient(client, 'client_closed');
     });
-    this.takes.onGone((take, reason) => this.clients.send(take.client, { type: 'take-gone', id: take.id, reason }));
-    this.jobs = new JobRunner(
-      {
-        publish: (job) => this.clients.send(job.client, { type: 'job', job }),
-        server: (name) => this.registry.get(name),
-        land: async (landed) => {
-          if (this.clients.isClosed(landed.job.client)) {
-            throw new Refusal('client_closed', 'The browser tab that asked for this song has closed; nobody is left to play it.');
-          }
-          const params = landed.job.params;
-          const take = await this.takes.add({
-            client: landed.job.client,
-            kind: landed.job.clientKind,
-            title: defaultTitle(params, landed.seed),
-            extension: landed.extension,
-            bytes: landed.bytes,
-            model: SONG_MODEL,
-            params: {
-              tags: params.tags ?? null,
-              lyrics: params.lyrics ?? null,
-              instrumental: params.instrumental === true,
-              cfg: params.cfg ?? null,
-              seed: landed.seed,
-            },
-            server: { name: landed.server.name, url: landed.server.url },
-            jobId: landed.job.jobId as string,
-            durationS: landed.durationS,
-            batch: landed.job.batch > 1 ? { index: landed.job.index, of: landed.job.batch } : null,
-            effective: landed.effective,
-            createdAt: new Date().toISOString(),
-          });
-          this.clients.send(take.client, { type: 'take', take });
-          return take;
-        },
+    this.core = new HubCore({
+      disk: nodeDisk,
+      vault: fileVault(path.join(options.userData, 'servers.json')),
+      dataDir: options.userData,
+      takeLimits: { perClient: TAKES_PER_CLIENT, bytes: TAKE_CACHE_BYTES },
+      clientName: CLIENT_NAME,
+      info,
+      sink: {
+        send: (client, event) => this.clients.send(client, event),
+        broadcast: (event) => this.clients.broadcast(event),
+        isClosed: (client) => this.clients.isClosed(client),
       },
-      path.join(options.userData, 'pending.json'),
-    );
+      fetchAudio: async (server, jobId, artifact, file) => {
+        const bytes = await clientFor(server).artifact(jobId, artifact);
+        await fsp.writeFile(file, bytes);
+        return bytes.byteLength;
+      },
+    });
     this.defineRoutes();
+  }
+
+  get registry(): ServerRegistry {
+    return this.core.registry;
+  }
+
+  get takes(): TakeStore {
+    return this.core.takes;
   }
 
   /** Read what is on disk, then listen. Refuses (with the port in the sentence) when the port is taken. */
   async start(): Promise<void> {
     await this.settings.ensureKey();
-    await this.takes.open();
-    this.clients.adopt(this.takes.clients());
-    await this.openLibrary(this.settings.view().libraryDir);
+    await this.core.open(this.settings.view().libraryDir);
+    this.clients.adopt(this.core.takes.clients());
     await this.listen();
-    await this.jobs.resume();
+    await this.core.resume();
   }
 
   /** Where this computer reaches the hub, and with what key (for the desktop window). */
@@ -193,15 +151,19 @@ export class Hub {
 
   async setLibraryDir(dir: string | null): Promise<HubSettingsView> {
     const view = await this.settings.setLibraryDir(dir);
-    await this.openLibrary(view.libraryDir);
-    await this.libraryChanged();
+    await this.core.openLibrary(view.libraryDir);
+    await this.core.libraryChanged();
     return this.settingsView(view, true);
   }
 
   /** The audio file of a saved song, for the desktop's "save a copy" and "show in folder". */
-  async songFile(id: string): Promise<{ title: string; file: string }> {
-    const song = await this.library.song(id);
-    return { title: song.title, file: this.library.audioPath(song.file) };
+  songFile(id: string): Promise<{ title: string; file: string }> {
+    return this.core.songFile(id);
+  }
+
+  /** Tell every client the server list changed (the desktop's Crucible setup changes it outside the routes). */
+  serversChanged(servers?: ServerView[]): ServerView[] {
+    return this.core.serversChanged(servers);
   }
 
   async stop(): Promise<void> {
@@ -244,34 +206,6 @@ export class Hub {
     });
   }
 
-  // ── state ───────────────────────────────────────────────────────────────────
-
-  private async openLibrary(dir: string): Promise<void> {
-    this.library = new Library(dir);
-    await this.library.adoptLoose();
-  }
-
-  private async libraryView(): Promise<LibraryView> {
-    return this.library.list();
-  }
-
-  private async libraryChanged(): Promise<LibraryView> {
-    const library = await this.libraryView();
-    this.clients.broadcast({ type: 'library', library });
-    return library;
-  }
-
-  /**
-   * Tell every client the server list changed. The hub's own server routes call
-   * it with the list they wrote; the desktop-only Crucible setup (electron/ipc.ts:
-   * install, start, use, uninstall) changes the registry outside those routes and
-   * calls it with nothing, so the list is read as stored.
-   */
-  serversChanged(servers: ServerView[] = this.registry.views()): ServerView[] {
-    this.clients.broadcast({ type: 'servers', servers });
-    return servers;
-  }
-
   private settingsView(view: StoredSettings, local: boolean): HubSettingsView {
     const links: string[] = [];
     if (view.sharing) {
@@ -290,16 +224,6 @@ export class Hub {
       port: view.port,
       links,
       local,
-    };
-  }
-
-  private async snapshot(client: ClientName): Promise<HubSnapshot> {
-    return {
-      hub: this.info,
-      servers: this.registry.views(),
-      jobs: this.jobs.list(client.id),
-      takes: this.takes.list(client.id),
-      library: await this.libraryView(),
     };
   }
 
@@ -340,66 +264,57 @@ export class Hub {
       return;
     }
     const method = req.method === 'HEAD' ? 'GET' : (req.method ?? 'GET');
-    for (const route of this.routes) {
-      if (route.method !== method) continue;
-      const match = route.pattern.exec(url.pathname);
-      if (match === null) continue;
-      const params: Record<string, string> = {};
-      try {
-        route.names.forEach((name, at) => {
-          params[name] = decodeURIComponent(match[at + 1] as string);
-        });
-      } catch {
-        sendJson(res, 400, { error: { code: 'path_invalid', message: 'That address is not valid.' } });
-        return;
-      }
-      const request: Request = {
-        req,
-        res,
-        url,
-        params,
-        local: LOOPBACK.has(req.socket.remoteAddress ?? ''),
-        client: () => {
-          const name = clientName(
-            req.headers['x-bside-client'] ?? url.searchParams.get('client'),
-            req.headers['x-bside-client-kind'] ?? url.searchParams.get('kind'),
-          );
-          this.clients.note(name);
-          return name;
-        },
-        body: async () => {
-          const body = await readJson(req);
-          if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-            throw new Refusal('body_invalid', 'This request needs a JSON object.');
-          }
-          return body as Record<string, unknown>;
-        },
-      };
-      try {
-        const value = await route.handler(request);
-        if (!route.raw && value !== SENT) sendJson(res, 200, value ?? null);
-      } catch (error) {
-        if (res.headersSent) {
-          console.error(`[hub] ${method} ${url.pathname} failed after it began answering:`, error);
-          res.destroy();
-        } else {
-          sendRefusal(res, error);
-        }
-      }
+    let found: { handler: Handler; params: Record<string, string>; raw: boolean } | null = null;
+    try {
+      const own = matchRoute(this.routes, method, url.pathname);
+      const core = own === null ? matchRoute(this.core.routes, method, url.pathname) : null;
+      if (own !== null) found = { handler: own.route.handler, params: own.params, raw: own.route.raw };
+      else if (core !== null) found = { handler: core.route.handler, params: core.params, raw: false };
+    } catch {
+      sendJson(res, 400, { error: { code: 'path_invalid', message: 'That address is not valid.' } });
       return;
     }
-    sendJson(res, 404, { error: { code: 'not_found', message: `There is no ${method} ${url.pathname}.` } });
+    if (found === null) {
+      sendJson(res, 404, { error: { code: 'not_found', message: `There is no ${method} ${url.pathname}.` } });
+      return;
+    }
+    const request: Request = {
+      req,
+      res,
+      url,
+      params: found.params,
+      local: LOOPBACK.has(req.socket.remoteAddress ?? ''),
+      client: () => {
+        const name = clientName(
+          req.headers['x-bside-client'] ?? url.searchParams.get('client'),
+          req.headers['x-bside-client-kind'] ?? url.searchParams.get('kind'),
+        );
+        this.clients.note(name);
+        return name;
+      },
+      body: async () => {
+        const body = await readJson(req);
+        if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+          throw new Refusal('body_invalid', 'This request needs a JSON object.');
+        }
+        return body as Record<string, unknown>;
+      },
+    };
+    try {
+      const value = await found.handler(request);
+      if (!found.raw && value !== SENT) sendJson(res, 200, value ?? null);
+    } catch (error) {
+      if (res.headersSent) {
+        console.error(`[hub] ${method} ${url.pathname} failed after it began answering:`, error);
+        res.destroy();
+      } else {
+        sendRefusal(res, error);
+      }
+    }
   }
 
   private route(method: string, template: string, handler: Handler, raw = false): void {
-    const names: string[] = [];
-    const pattern = new RegExp(
-      `^${template.replace(/:([a-zA-Z]+)/g, (_, name: string) => {
-        names.push(name);
-        return '([^/]+)';
-      })}$`,
-    );
-    this.routes.push({ method, pattern, names, handler, raw });
+    this.routes.push({ ...routeOf(method, template, handler), raw });
   }
 
   private localOnly(request: Request, what: string): void {
@@ -418,9 +333,18 @@ export class Hub {
         // Tells a buffering proxy to pass each event straight through.
         'X-Accel-Buffering': 'no',
       });
-      const first: HubEvent = { type: 'snapshot', snapshot: await this.snapshot(client) };
+      const first: HubEvent = { type: 'snapshot', snapshot: await this.core.snapshot(client) };
       res.write(`data: ${JSON.stringify(first)}\n\n`);
       this.clients.open(client, res);
+    }, true);
+
+    // ── audio, with ranges ────────────────────────────────────────────────────
+    this.route('GET', '/api/takes/:id/audio', async (request) => {
+      await sendFile(request.req, request.res, this.core.takeAudio(request.params['id'] as string), 'private, max-age=86400');
+    }, true);
+    this.route('GET', '/api/songs/:id/audio', async (request) => {
+      const song = await this.core.songFile(request.params['id'] as string);
+      await sendFile(request.req, request.res, song.file, 'private, max-age=86400');
     }, true);
 
     // ── settings ──────────────────────────────────────────────────────────────
@@ -447,137 +371,5 @@ export class Hub {
       setTimeout(() => this.clients.endAll(), 100);
       return SENT;
     });
-
-    // ── Crucible servers (tokens go in, never come out) ─────────────────────
-    this.route('GET', '/api/servers', () => this.registry.views());
-    this.route('POST', '/api/servers/pairing', async (request) =>
-      this.serversChanged(await this.registry.addPairing(text((await request.body())['line'], 'line'))));
-    // By address alone: begin, then poll at `pollAfterMs` until it is not pending.
-    this.route('POST', '/api/servers/pair', async (request) => this.pairing.begin(text((await request.body())['address'], 'address')));
-    this.route('POST', '/api/servers/pair/:id', (request) => this.pairing.poll(request.params['id'] as string));
-    this.route('DELETE', '/api/servers/pair/:id', (request) => {
-      this.pairing.cancel(request.params['id'] as string);
-      return null;
-    });
-    this.route('POST', '/api/servers', async (request) =>
-      this.serversChanged(await this.registry.add((await request.body()) as unknown as ServerInput)));
-    this.route('PUT', '/api/servers/:name', async (request) =>
-      this.serversChanged(await this.registry.update(request.params['name'] as string, (await request.body()) as unknown as ServerInput)));
-    this.route('DELETE', '/api/servers/:name', async (request) =>
-      this.serversChanged(await this.registry.remove(request.params['name'] as string)));
-    this.route('POST', '/api/servers/:name/activate', async (request) =>
-      this.serversChanged(await this.registry.setActive(request.params['name'] as string)));
-    this.route('POST', '/api/servers/:name/test', (request) => probe(this.registry.get(request.params['name'] as string)));
-
-    // ── the song page and presets (the active server's) ─────────────────────
-    this.route('GET', '/api/song-page', () => songPage(this.registry.active()));
-    this.route('GET', '/api/presets', () => listPresets(this.registry.active()));
-    this.route('POST', '/api/describe', async (request) => {
-      const server = this.registry.active();
-      return describe(clientFor(server), await songPage(server), text((await request.body())['text'], 'text'));
-    });
-    this.route('PUT', '/api/presets/:name', async (request) =>
-      savePreset(this.registry.active(), request.params['name'] as string, (await request.body()) as unknown as SongForm));
-    this.route('DELETE', '/api/presets/:name', (request) =>
-      deletePreset(this.registry.active(), request.params['name'] as string));
-
-    // ── jobs ──────────────────────────────────────────────────────────────────
-    this.route('POST', '/api/jobs', async (request) => {
-      const client = request.client();
-      const body = (await request.body()) as unknown as GenerateRequest;
-      if (typeof body.params !== 'object' || body.params === null || typeof body.count !== 'number') {
-        throw new Refusal('body_invalid', 'A generate request is {params, count}.');
-      }
-      return this.jobs.generate(this.registry.active(), client, body);
-    });
-    this.route('POST', '/api/jobs/:key/cancel', async (request) => {
-      this.ownJob(request);
-      return this.jobs.cancel(request.params['key'] as string);
-    });
-    this.route('DELETE', '/api/jobs/:key', (request) => {
-      this.ownJob(request);
-      this.jobs.dismiss(request.params['key'] as string);
-      return null;
-    });
-
-    // ── takes: the playing list ─────────────────────────────────────────────
-    this.route('DELETE', '/api/takes/:id', async (request) => {
-      await this.takes.remove(request.params['id'] as string, request.client().id);
-      return null;
-    });
-    this.route('GET', '/api/takes/:id/audio', async (request) => {
-      await sendFile(request.req, request.res, this.takes.audioPath(request.params['id'] as string), 'private, max-age=86400');
-    }, true);
-
-    // ── the library: saved songs and playlists ──────────────────────────────
-    this.route('GET', '/api/library', () => this.libraryView());
-    this.route('GET', '/api/songs/:id/audio', async (request) => {
-      const song = await this.library.song(request.params['id'] as string);
-      await sendFile(request.req, request.res, this.library.audioPath(song.file), 'private, max-age=86400');
-    }, true);
-    this.route('PATCH', '/api/songs/:id', async (request) => {
-      await this.library.rename(request.params['id'] as string, text((await request.body())['title'], 'title'));
-      return this.libraryChanged();
-    });
-    this.route('POST', '/api/playlists', async (request) => {
-      await this.library.createPlaylist(text((await request.body())['name'], 'name'));
-      return this.libraryChanged();
-    });
-    this.route('PATCH', '/api/playlists/:id', async (request) => {
-      const id = request.params['id'] as string;
-      const body = await request.body();
-      if (body['name'] !== undefined) await this.library.renamePlaylist(id, text(body['name'], 'name'));
-      if (body['songs'] !== undefined) {
-        const songs = body['songs'];
-        if (!Array.isArray(songs) || !songs.every((song) => typeof song === 'string')) {
-          throw new Refusal('body_invalid', 'songs must be a list of song ids.');
-        }
-        await this.library.reorder(id, songs as string[]);
-      }
-      return this.libraryChanged();
-    });
-    this.route('DELETE', '/api/playlists/:id', async (request) => {
-      await this.library.deletePlaylist(request.params['id'] as string);
-      return this.libraryChanged();
-    });
-    this.route('POST', '/api/playlists/:id/songs', async (request) => {
-      const playlist = request.params['id'] as string;
-      const body = await request.body();
-      if (typeof body['songId'] === 'string') {
-        await this.library.addTo(playlist, body['songId']);
-        return this.libraryChanged();
-      }
-      const takeId = text(body['takeId'], 'takeId');
-      const take = this.takes.get(takeId);
-      const song = await this.library.saveTo(playlist, take.savedAs, {
-        title: take.title,
-        model: take.model,
-        params: take.params,
-        server: take.server,
-        jobId: take.jobId,
-        createdAt: take.createdAt,
-        durationS: take.durationS,
-        batch: take.batch,
-        audioFrom: this.takes.audioPath(takeId),
-        effective: this.takes.effective(takeId),
-      });
-      if (take.savedAs !== song.id) {
-        const marked = await this.takes.markSaved(takeId, song.id);
-        this.clients.send(marked.client, { type: 'take', take: marked });
-      }
-      return this.libraryChanged();
-    });
-    this.route('DELETE', '/api/playlists/:id/songs/:song', async (request) => {
-      await this.library.removeFrom(request.params['id'] as string, request.params['song'] as string);
-      return this.libraryChanged();
-    });
-  }
-
-  /** A job is cancelled or dismissed only by the device that asked for it. */
-  private ownJob(request: Request): void {
-    const owner = this.jobs.owner(request.params['key'] as string);
-    if (owner !== null && owner !== request.client().id) {
-      throw new Refusal('job_not_yours', 'That song is being made for another device.', 403);
-    }
   }
 }

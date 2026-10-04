@@ -2,7 +2,7 @@
  * titles — a new song's first title: its first sung line, or what kind of
  * instrumental it is. Renamable once saved.
  */
-import type { SongParams } from '../shared/types';
+import type { SongParams } from '../types';
 
 export function defaultTitle(params: SongParams, seed: number): string {
   const sung = (params.lyrics ?? '')

@@ -10,8 +10,8 @@ test('no seed means the server chooses one for every job', () => {
   expect(batchSeeds(null, 4)).toEqual([null, null, null, null]);
 });
 
-test('seeds never pass the largest seed the server takes', () => {
-  expect(batchSeeds(MAX_SEED - 1, 3)).toEqual([MAX_SEED - 1, MAX_SEED, MAX_SEED]);
+test('seeds past the largest the server takes wrap to 0, so a run never repeats one', () => {
+  expect(batchSeeds(MAX_SEED - 1, 3)).toEqual([MAX_SEED - 1, MAX_SEED, 0]);
 });
 
 test('the count is 1 to 20, whole', () => {
