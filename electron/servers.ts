@@ -109,6 +109,33 @@ export class ServerRegistry {
     return this.put({ name: pairing.name, url: pairing.url, token: pairing.token }, null);
   }
 
+  /**
+   * The stored entry at this address, token included — main only. Null when none
+   * points there. Two addresses are one server when they normalise the same
+   * (`URL` lower-cases the host and drops a default port).
+   */
+  atAddress(url: string): StoredServer | null {
+    const wanted = normaliseUrl(url);
+    return this.read().servers.find((server) => normaliseUrl(server.url) === wanted) ?? null;
+  }
+
+  /**
+   * Use the Crucible this computer published (its pairing file), and make it the
+   * one in use.
+   *
+   * An entry already at that ADDRESS keeps its name — the person may have
+   * renamed it — and takes the published token, because the pairing file is the
+   * token's one owner: a reinstall rotates it, and pressing this again is the
+   * repair for the 401 that follows. Otherwise the server is added under the
+   * name the line carries, exactly as a pasted pairing line is.
+   */
+  async usePublished(published: { name: string; url: string; token: string }): Promise<{ name: string; servers: ServerView[] }> {
+    const existing = this.atAddress(published.url);
+    const name = existing?.name ?? published.name;
+    await this.put({ name, url: published.url, token: published.token }, existing?.name ?? null);
+    return { name, servers: await this.setActive(name) };
+  }
+
   async add(input: ServerInput): Promise<ServerView[]> {
     const name = input.name.trim();
     if (this.read().servers.some((server) => server.name === name)) {

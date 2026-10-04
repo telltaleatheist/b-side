@@ -254,7 +254,13 @@ export class Hub {
     return library;
   }
 
-  private serversChanged(servers: ServerView[]): ServerView[] {
+  /**
+   * Tell every client the server list changed. The hub's own server routes call
+   * it with the list they wrote; the desktop-only Crucible setup (electron/ipc.ts:
+   * install, start, use, uninstall) changes the registry outside those routes and
+   * calls it with nothing, so the list is read as stored.
+   */
+  serversChanged(servers: ServerView[] = this.registry.views()): ServerView[] {
     this.clients.broadcast({ type: 'servers', servers });
     return servers;
   }
