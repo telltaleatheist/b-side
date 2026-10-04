@@ -13,6 +13,9 @@ export const isDev = process.argv.includes('--dev');
 
 const DEV_SERVER = 'http://localhost:4270';
 
+/** The repo's `public/` (from `dist/electron/`), where `tools/make-icons.py` writes the icons. */
+export const ICONS = path.join(__dirname, '..', '..', 'public');
+
 let mainWindow: BrowserWindow | null = null;
 
 export function appWindow(): BrowserWindow | null {
@@ -28,6 +31,8 @@ export function openWindow(hubUrl: string): BrowserWindow {
     // --bg-base in src/styles.scss, so the window does not flash another colour first.
     backgroundColor: '#181715',
     title: 'B-Side',
+    // macOS takes the Dock icon instead (main.ts); this is the taskbar's on Windows and Linux.
+    icon: path.join(ICONS, 'icon.png'),
     show: false,
     webPreferences: {
       nodeIntegration: false,

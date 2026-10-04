@@ -13,7 +13,7 @@ import { app, BrowserWindow, dialog, Menu, type MenuItemConstructorOptions } fro
 
 import { Hub } from './hub/hub';
 import { registerIpc } from './ipc';
-import { isDev, openWindow } from './window';
+import { ICONS, isDev, openWindow } from './window';
 
 function buildMenu(): void {
   const isMac = process.platform === 'darwin';
@@ -56,6 +56,8 @@ if (!single) {
 
   void app.whenReady().then(async () => {
     buildMenu();
+    // Unpackaged, the Dock would show Electron's own icon.
+    if (process.platform === 'darwin') app.dock?.setIcon(path.join(ICONS, 'icon-mac.png'));
     try {
       await hub.start();
     } catch (err) {
