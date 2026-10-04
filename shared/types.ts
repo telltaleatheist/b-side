@@ -10,6 +10,9 @@
 /** The one model B-Side makes songs with. */
 export const SONG_MODEL = 'yue2-3b';
 
+/** The chat model that turns a description into style tags (electron/describe.ts). Small on purpose. */
+export const TAG_MODEL = 'qwen3.5-4b';
+
 /** A refusal or failure, in the server's own words where it gave some. */
 export interface RefusalView {
   /** The server's named code (`audio_param_missing`, ...) or one of ours (`unreachable`, `no_server`). */
@@ -183,6 +186,16 @@ export interface JobView {
   /** Epoch ms. */
   readonly since: number;
   readonly ended: number | null;
+}
+
+/** What "describe the music" answers: tags for the chips, and whether it asked for no vocals. */
+export interface DescribeResult {
+  readonly tags: readonly string[];
+  readonly instrumental: boolean;
+  /** Clashes the tags hold, by the server's conflict map, each with why: shown, never dropped. */
+  readonly clashes: readonly string[];
+  readonly model: string;
+  readonly seconds: number;
 }
 
 export interface GenerateRequest {

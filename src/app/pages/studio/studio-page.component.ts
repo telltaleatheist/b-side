@@ -51,6 +51,25 @@ import { StudioService } from '../../core/studio.service';
           }
 
           <app-preset-bar />
+          <form class="field describe" (submit)="$event.preventDefault(); studio.describe()">
+            <label class="label" for="describe">Describe the music</label>
+            <div class="describe-row">
+              <input id="describe" type="text" maxlength="600" autocomplete="off"
+                     placeholder="e.g. in the style of the DOS game One Must Fall 2097 — or — smooth lo-fi with jazz sax"
+                     [value]="studio.description()" (input)="studio.description.set($any($event.target).value)" />
+              <button type="submit" class="ghost" [disabled]="studio.describing() || studio.description().trim() === ''">
+                {{ studio.describing() ? 'Writing tags…' : 'Fill in the tags' }}
+              </button>
+            </div>
+            <p class="hint">A small model ({{ studio.tagModel }}) on the server writes the style tags (and turns on Instrumental when you describe music without singing). It replaces the tags below. The server holds one model at a time, so this swaps the song model out; the next song loads it again.</p>
+            @if (studio.described(); as said) {
+              <p class="hint">Written in {{ said.seconds.toFixed(1) }} s.</p>
+              @for (clash of said.clashes; track clash) { <div class="notice">{{ clash }}</div> }
+            }
+            @if (studio.describeRefusal(); as refused) {
+              <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+            }
+          </form>
           <app-tag-input />
 
           <div class="field">
@@ -123,6 +142,8 @@ import { StudioService } from '../../core/studio.service';
     .form > * { max-width: 920px; width: 100%; }
     .empty { margin-top: 20px; }
     .field { display: flex; flex-direction: column; gap: 6px; }
+    .describe-row { display: flex; gap: 8px; }
+    .describe-row input { flex: 1; min-width: 0; }
     textarea { resize: vertical; min-height: 140px; font-family: var(--font-body); line-height: 1.5; }
     textarea:disabled { opacity: 0.55; }
     .row { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
@@ -132,6 +153,13 @@ import { StudioService } from '../../core/studio.service';
     .count { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
     .count input { width: 64px; }
     @media (max-width: 1100px) { .studio { grid-template-columns: minmax(0, 1fr) 320px; } }
+    @media (max-width: 760px) {
+      :host { overflow-y: auto; }
+      .studio { display: flex; flex-direction: column; height: auto; }
+      .form { overflow: visible; padding: 14px 16px 18px; }
+      app-queue-panel { height: auto; border-left: 0; border-top: 1px solid var(--border-subtle); }
+      .describe-row { flex-direction: column; }
+    }
   `],
 })
 export class StudioPageComponent {

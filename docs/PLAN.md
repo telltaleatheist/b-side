@@ -90,15 +90,33 @@ BookForge/Bookshelf - find it there and reuse the idea before inventing anything
       saved are temporary on desktop too. (The take cache: desktop 200 takes, 4 GB overall.)
 
 ### Phase 1b - describe it, get the tags (Owen, 2026-10-04)
-- [ ] "Describe the music" box: e.g. "in the style of One Must Fall 2097, the DOS game" or
+- [x] "Describe the music" box: e.g. "in the style of One Must Fall 2097, the DOS game" or
       "smooth lo-fi with jazz/sax" -> a small Crucible LLM (`qwen3.5-4b`, installed on the
       PC) fills the tag chips. It picks from the server's own tag vocabulary (the song
       page's suggestions + conflicts), adds free text only for BPM/key, and the result is
       checked against the conflict map before it reaches the chips. The hub makes the call
       (it holds the Crucible token), through the same `/api` as everything else.
-- [ ] Measure the swap first: Crucible holds one model per card, so on the PC (YuE ~16 GB
+      Built 2026-10-04 (`electron/describe.ts`, `POST /api/describe`, the studio box).
+      The vocabulary is EXAMPLES in the prompt, not a closed list (YuE2 takes any phrase;
+      song.toml has no "chiptune"); fields are held to a JSON schema. Tried on the PC:
+        "smooth lo fi with jazz/sax" -> English, lo-fi, jazz, dreamy, nostalgic,
+          saxophone, piano, acoustic guitar, light drums, vintage sound, smooth production, 90 BPM
+        "one must fall 2097 dos game" -> first try orchestral/strings/piano (wrong); after
+          one worked example of describing a retro game by its sound tech: chiptune,
+          electronic rock, industrial, FM synth leads, tracker drums, Sound Blaster FM,
+          140 BPM - but it still added male vocals (the 4B does not always obey
+          "a game soundtrack is instrumental").
+        "a sad country song about my dog" -> country, acoustic ballad, melancholic, soft
+          female voice, acoustic guitar, fiddle, 70 BPM.
+- [x] Measure the swap first: Crucible holds one model per card, so on the PC (YuE ~16 GB
       of 24 GB) describing evicts YuE and the next song reloads it. Time both loads, say
       the cost in the UI ("swaps the song model out for ~N s"), and describe once per batch.
+      Measured on the PC 2026-10-04: EVERY describe costs ~80 s (176 s the very first time,
+      torch.compile), because Crucible unloads an LLM the moment its chat finishes when
+      nothing holds it, so each chat starts vLLM from scratch: ~23 s Python start, ~12 s
+      weights, ~21 s engine init, ~18 s API server. YuE2 then reloads in ~25 s. So a
+      describe is ~1:45 of card time on the PC. Fixing that is Crucible's: a short hold
+      after a chat when no song is waiting, and/or a faster engine start. For Owen.
 
 ### Phase 2 - the desktop hub server
 - [x] Find BookForge's Bookshelf server (the in-app HTTP server) and mirror it: an HTTP

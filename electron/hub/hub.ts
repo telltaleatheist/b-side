@@ -30,7 +30,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { deletePreset, listPresets, probe, savePreset, songPage } from '../crucible';
+import { clientFor, deletePreset, listPresets, probe, savePreset, songPage } from '../crucible';
+import { describe } from '../describe';
 import { JobRunner } from '../jobs';
 import { Library } from '../library';
 import { Refusal } from '../refusal';
@@ -451,6 +452,10 @@ export class Hub {
     // ── the song page and presets (the active server's) ─────────────────────
     this.route('GET', '/api/song-page', () => songPage(this.registry.active()));
     this.route('GET', '/api/presets', () => listPresets(this.registry.active()));
+    this.route('POST', '/api/describe', async (request) => {
+      const server = this.registry.active();
+      return describe(clientFor(server), await songPage(server), text((await request.body())['text'], 'text'));
+    });
     this.route('PUT', '/api/presets/:name', async (request) =>
       savePreset(this.registry.active(), request.params['name'] as string, (await request.body()) as unknown as SongForm));
     this.route('DELETE', '/api/presets/:name', (request) =>

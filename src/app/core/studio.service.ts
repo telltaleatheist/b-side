@@ -2,7 +2,7 @@ import { computed, effect, inject, Injectable, signal, untracked } from '@angula
 
 import { batchCount } from '@shared/batch';
 import { addTags, clashesWith, joinTags, splitTags, toggleTag } from '@shared/tags';
-import type { Preset, RefusalView, SongForm, SongPage, SongParams } from '@shared/types';
+import { TAG_MODEL, type DescribeResult, type Preset, type RefusalView, type SongForm, type SongPage, type SongParams } from '@shared/types';
 
 import { HubService } from './hub.service';
 import { JobsService } from './jobs.service';
@@ -34,6 +34,14 @@ export class StudioService {
   readonly cfg = signal('');
   readonly seed = signal('');
   readonly count = signal(1);
+
+  // ── describe the music ─────────────────────────────────────────────────────
+  /** The chat model the hub asks, named in the hint. */
+  readonly tagModel = TAG_MODEL;
+  readonly description = signal('');
+  readonly describing = signal(false);
+  readonly described = signal<DescribeResult | null>(null);
+  readonly describeRefusal = signal<RefusalView | null>(null);
 
   /** The refusal from the last Generate press, shown by the button. */
   readonly generateRefusal = signal<RefusalView | null>(null);
@@ -88,6 +96,22 @@ export class StudioService {
       this.presets.set([]);
       this.presetsRefusal.set(outcome.refusal);
     }
+  }
+
+  /** Ask the server's tag model for tags; they replace the chips, and set Instrumental. */
+  async describe(): Promise<void> {
+    this.describing.set(true);
+    this.describeRefusal.set(null);
+    this.described.set(null);
+    const outcome = await this.hub.call<DescribeResult>('POST', '/api/describe', { text: this.description() });
+    this.describing.set(false);
+    if (!outcome.ok) {
+      this.describeRefusal.set(outcome.refusal);
+      return;
+    }
+    this.tags.set([...outcome.value.tags]);
+    if (this.page()?.instrumental !== false) this.instrumental.set(outcome.value.instrumental);
+    this.described.set(outcome.value);
   }
 
   // ── tags ───────────────────────────────────────────────────────────────────
