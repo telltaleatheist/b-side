@@ -111,6 +111,13 @@ input:not([type='checkbox']):not([type='radio']), select, textarea {
   transition: border-color 100ms cubic-bezier(0, 0, 0.2, 1),
               box-shadow 100ms cubic-bezier(0, 0, 0.2, 1);
 }
+/* iOS zooms into any text field under 16px when it is tapped, and never zooms
+   back out, which leaves the app stuck zoomed in (Owen, the phone, 2026-10-04).
+   On a touch screen every field is 16px; !important because a screen's own
+   smaller size must never undercut this. Pinch-zoom stays (no maximum-scale). */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']), select, textarea { font-size: 16px !important; }
+}
 /* A tick is as big as a tick. Stated so that the flex row it usually sits in
    cannot squeeze it, which is the other half of what went wrong above. */
 input[type='checkbox'], input[type='radio'] { flex: none; margin: 0; }
