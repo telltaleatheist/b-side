@@ -16,6 +16,8 @@ interface NativeDiskPlugin {
   remove(options: { path: string }): Promise<void>;
   /** Straight to disk with `headers`; rejects with code `unreachable` when the network failed. */
   download(options: { url: string; path: string; headers: Record<string, string> }): Promise<{ bytes: number }>;
+  /** PUT a file to `url`, streamed from disk; rejects with code `unreachable` when the network failed. */
+  upload(options: { url: string; path: string; headers: Record<string, string> }): Promise<void>;
 }
 
 /** mobile/ios/.../NativeKeychainPlugin.swift. */

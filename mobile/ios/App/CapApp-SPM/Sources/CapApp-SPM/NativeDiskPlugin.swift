@@ -28,6 +28,7 @@ public class NativeDiskPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "copy", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "download", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "upload", returnType: CAPPluginReturnPromise),
     ]
 
     private let files = FileManager.default
@@ -206,6 +207,30 @@ public class NativeDiskPlugin: CAPPlugin, CAPBridgedPlugin {
             } catch {
                 call.reject("download: \(error.localizedDescription)")
             }
+        }
+        task.resume()
+    }
+
+    /// PUT the file at `path` to `url` with `headers`, streamed from disk (the
+    /// phone saving an album to its cloud). A network failure rejects with code
+    /// "unreachable".
+    @objc func upload(_ call: CAPPluginCall) {
+        guard let s = call.getString("url"), let target = URL(string: s), let source = resolve(call.getString("path")) else {
+            call.reject("upload: needs a url and a path inside B-Side's folder"); return
+        }
+        guard files.fileExists(atPath: source.path) else { call.reject("upload: \(source.lastPathComponent) is not on the phone"); return }
+        var request = URLRequest(url: target)
+        request.httpMethod = "PUT"
+        for (name, value) in call.getObject("headers") ?? [:] {
+            if let value = value as? String { request.setValue(value, forHTTPHeaderField: name) }
+        }
+        let task = URLSession.shared.uploadTask(with: request, fromFile: source) { _, response, error in
+            if let error = error as? URLError { call.reject("upload: \(error.localizedDescription)", "unreachable"); return }
+            if let error = error { call.reject("upload: \(error.localizedDescription)"); return }
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                call.reject("upload: the computer answered HTTP \(http.statusCode)", "http_\(http.statusCode)"); return
+            }
+            call.resolve()
         }
         task.resume()
     }

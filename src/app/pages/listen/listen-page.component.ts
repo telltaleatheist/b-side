@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { CoverComponent } from '../../components/cover/cover.component';
 import { IconComponent } from '../../components/icon/icon.component';
 import { QueuePanelComponent } from '../../components/queue-panel/queue-panel.component';
+import { HubService } from '../../core/hub.service';
 import { JobsService } from '../../core/jobs.service';
 import { LibraryService } from '../../core/library.service';
 import { PlayerService } from '../../core/player.service';
@@ -22,7 +23,7 @@ import { PlayerService } from '../../core/player.service';
         <section class="on-air">
           <span class="kicker amber">{{ jobs.generating() ? 'On air · making more' : 'On air' }}</span>
           <div class="hero">
-            <app-cover class="hero-art" [key]="item.id + (item.tags ?? '')" />
+            <app-cover class="hero-art" [key]="item.id + (item.tags ?? '')" [src]="item.art" />
             <div class="hero-text">
               <span class="hero-title">{{ item.title }}</span>
               <span class="hero-sub">{{ item.tags ?? '' }}</span>
@@ -49,7 +50,7 @@ import { PlayerService } from '../../core/player.service';
           <div class="row">
             @for (playlist of library.playlists(); track playlist.id) {
               <a class="tile" [routerLink]="['/library', playlist.id]">
-                <app-cover class="tile-art" [key]="playlist.id" />
+                <app-cover class="tile-art" [key]="playlist.id" [src]="hub.coverUrl(playlist)" />
                 <span class="tile-name">{{ playlist.name }}</span>
                 <span class="tile-sub">{{ playlist.songs.length }} {{ playlist.songs.length === 1 ? 'song' : 'songs' }}</span>
               </a>
@@ -89,5 +90,6 @@ export class ListenPageComponent {
   protected readonly player = inject(PlayerService);
   protected readonly library = inject(LibraryService);
   protected readonly jobs = inject(JobsService);
+  protected readonly hub = inject(HubService);
   protected readonly anything = computed(() => this.library.takes().length > 0 || this.jobs.jobs().length > 0);
 }

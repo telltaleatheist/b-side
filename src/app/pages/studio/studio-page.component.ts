@@ -1,12 +1,15 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 
 import { MAX_BATCH } from '@shared/batch';
-import { ENDED_PHASES } from '@shared/types';
+import { ALBUM_MINUTES, ENDED_PHASES, albumBytes, type HubPreferences, type Playlist, type RefusalView } from '@shared/types';
 
 import { CrucibleSetupComponent } from '../../components/crucible-setup/crucible-setup.component';
 import { PresetBarComponent } from '../../components/preset-bar/preset-bar.component';
+import { CoverComponent } from '../../components/cover/cover.component';
 import { IconComponent } from '../../components/icon/icon.component';
+import { CloudService } from '../../core/cloud.service';
+import { ConfirmService } from '../../core/confirm.service';
 import { TagInputComponent } from '../../components/tag-input/tag-input.component';
 import { bytesText } from '../../core/format';
 import { desktop, HubService } from '../../core/hub.service';
@@ -28,10 +31,14 @@ import { StudioService } from '../../core/studio.service';
 @Component({
   selector: 'app-studio-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, CrucibleSetupComponent, PresetBarComponent, TagInputComponent, IconComponent],
+  imports: [RouterLink, CrucibleSetupComponent, PresetBarComponent, TagInputComponent, IconComponent, CoverComponent],
   template: `
     <div class="page">
       <h1 class="page-title">Make</h1>
+      <div class="modes" role="tablist" aria-label="What to make">
+        <button type="button" role="tab" [attr.aria-selected]="mode() === 'songs'" [class.on]="mode() === 'songs'" (click)="mode.set('songs')">Songs</button>
+        <button type="button" role="tab" [attr.aria-selected]="mode() === 'album'" [class.on]="mode() === 'album'" (click)="mode.set('album')">Album</button>
+      </div>
       @if (hub.loaded() && hub.activeServer() === null) {
         <div class="card">
           <h2 class="card-title">Get a Crucible server</h2>
@@ -84,6 +91,53 @@ import { StudioService } from '../../core/studio.service';
           <div class="fold-body"><app-tag-input /></div>
         </details>
 
+        @if (mode() === 'album') {
+          <div class="options">
+            <div class="opt">
+              <span class="opt-name">Length</span>
+              <div class="opt-chips">
+                @for (minutes of albumMinutes; track minutes) {
+                  <button type="button" class="chip" [class.on]="albumLength() === minutes" (click)="albumLength.set(minutes)">{{ minutes }} min</button>
+                }
+              </div>
+            </div>
+            <div class="opt">
+              <span class="opt-name">Vocals</span>
+              <div class="opt-chips">
+                <button type="button" class="chip" [class.on]="!albumSung()" (click)="albumSung.set(false)">Instrumental</button>
+                <button type="button" class="chip" [class.on]="albumSung()" (click)="albumSung.set(true)">Sung</button>
+              </div>
+            </div>
+            <p class="opt-note hint">The biggest chat model on {{ hub.activeServer()?.name }} writes the name, the artist, every track{{ albumSung() ? ' and its lyrics' : '' }}; its image model paints the cover. The first track is ready in a few minutes; the rest fill in while you listen.</p>
+          </div>
+          @if (spaceFull()) {
+            <div class="room-card">
+              <span class="kicker amber">Album space is full</span>
+              <span class="room-title">Make room for the next album</span>
+              <p class="detail">Albums on this phone take {{ gb(spaceUsed()) }} of {{ spaceLimitGb() }} GB. {{ cloud.linked() ? 'Save some to your cloud on ' + cloud.host() + ' (they stay playable, streamed)' : 'Link a B-Side computer as your cloud in Settings to keep more, or delete one' }}, then make the next. Settings changes the limit.</p>
+              @if (cloud.saving(); as saving) { <p class="hint">Saving to the cloud: {{ saving.done }} of {{ saving.of }}…</p> }
+              <div class="bar room-bar"><span [style.width.%]="Math.min(100, spaceUsed() / (spaceLimitGb() * 1e9) * 100)"></span></div>
+              @for (row of albumsBySize(); track row.playlist.id) {
+                <div class="room-row">
+                  <app-cover class="room-art" [key]="row.playlist.id" [src]="hub.coverUrl(row.playlist)" />
+                  <span class="room-names"><span class="room-name">{{ row.playlist.name }}</span><span class="hint">{{ row.playlist.album?.artist }}</span></span>
+                  <span class="mono hint">{{ gb(row.bytes) }}</span>
+                  @if (cloud.linked()) {
+                    <button type="button" class="icon-btn cloud-btn" [attr.aria-label]="'Save ' + row.playlist.name + ' to the cloud'" [disabled]="cloud.saving() !== null" (click)="saveToCloud(row.playlist)"><app-icon name="cloud" [size]="18" /></button>
+                  }
+                  <button type="button" class="icon-btn" [attr.aria-label]="'Delete ' + row.playlist.name" (click)="deleteAlbum(row.playlist)"><app-icon name="trash" [size]="18" /></button>
+                </div>
+              }
+            </div>
+          } @else {
+            <button type="button" class="make" [disabled]="albumSending() || hub.activeServer() === null" (click)="makeAlbum()">
+              {{ albumSending() ? 'Starting…' : 'Make the album' }}
+            </button>
+          }
+          @if (albumRefusal(); as refused) {
+            <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+          }
+        } @else {
         @if (studio.page()?.instrumental !== false) {
           <label class="switch" title="YuE2 writes the melody, then plays it on an instrument instead of singing it">
             <input type="checkbox" [checked]="studio.instrumental()" (change)="studio.instrumental.set($any($event.target).checked)" />
@@ -143,10 +197,29 @@ import { StudioService } from '../../core/studio.service';
         @if (jobs.generating()) {
           <a class="making" routerLink="/"><span class="kicker">Making now</span><span>{{ makingCount() }} on the playing list</span><app-icon name="chevron" [size]="16" /></a>
         }
+        }
       }
     </div>
   `,
   styles: [`
+    .modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; background: var(--bg-elevated); border-radius: var(--radius-lg); }
+    .modes button { height: 40px; border: none; border-radius: 10px; background: transparent; color: var(--text-secondary); font-size: 14px; font-weight: 600; }
+    .modes button.on { background: var(--text-primary); color: var(--bg-base); }
+    .options { display: flex; flex-direction: column; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
+    .opt { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap; }
+    .opt-name { font-size: 15px; }
+    .opt-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .opt-note { padding: 12px 14px; }
+    .room-card { display: flex; flex-direction: column; gap: 12px; padding: 18px; border: 1px solid #5a4126; border-radius: 16px; background: #1d1711; }
+    .room-title { font-family: var(--font-display); font-size: 28px; font-weight: 800; line-height: 1; }
+    .room-bar > span { background: var(--audio); }
+    .room-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-top: 1px solid var(--border-subtle); }
+    .room-art { width: 48px; }
+    .room-names { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .room-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .room-row .icon-btn { color: var(--audio); }
+    .room-row .icon-btn.cloud-btn { color: var(--accent); }
+    .kicker.amber { color: var(--audio); }
     .page { max-width: 720px; margin: 0 auto; padding: 18px 20px 32px; display: flex; flex-direction: column; gap: 22px; }
     .field { display: flex; flex-direction: column; gap: 8px; }
     textarea { resize: vertical; font-family: var(--font-body); line-height: 1.45; }
@@ -189,6 +262,71 @@ export class StudioPageComponent {
   protected readonly isDesktop = desktop !== null;
   protected readonly library = inject(LibraryService);
   protected readonly jobs = inject(JobsService);
+  private readonly router = inject(Router);
+  protected readonly mode = signal<'songs' | 'album'>('songs');
+  protected readonly albumMinutes = ALBUM_MINUTES;
+  protected readonly albumLength = signal(60);
+  protected readonly albumSung = signal(false);
+  protected readonly albumSending = signal(false);
+  protected readonly albumRefusal = signal<RefusalView | null>(null);
+
+  private readonly confirm = inject(ConfirmService);
+  protected readonly Math = Math;
+  private readonly preferences = signal<HubPreferences | null>(null);
+  protected readonly spaceLimitGb = computed(() => this.preferences()?.albumSpaceGb ?? 2);
+  /** Albums kept only on this phone, biggest first (the phone's own hub; nothing on a computer). */
+  protected readonly albumsBySize = computed(() => {
+    if (!this.hub.onPhone()) return [];
+    const songs = this.library.songs();
+    return this.library.playlists()
+      .filter((playlist) => playlist.album !== undefined && playlist.album.cloud == null)
+      .map((playlist) => ({ playlist, bytes: albumBytes(playlist, songs) }))
+      .sort((a, b) => b.bytes - a.bytes);
+  });
+  protected readonly spaceUsed = computed(() => this.albumsBySize().reduce((sum, row) => sum + row.bytes, 0));
+  protected readonly spaceFull = computed(() => this.hub.onPhone() && this.spaceUsed() >= this.spaceLimitGb() * 1e9 * 0.95);
+
+  constructor() {
+    void this.hub.call<HubPreferences>('GET', '/api/preferences').then((outcome) => {
+      if (outcome.ok) this.preferences.set(outcome.value);
+    });
+  }
+
+  protected gb(bytes: number): string {
+    return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
+  }
+
+  protected readonly cloud = inject(CloudService);
+
+  protected async saveToCloud(playlist: Playlist): Promise<void> {
+    this.albumRefusal.set(await this.cloud.saveAlbum(playlist, this.library.songsOf(playlist)));
+  }
+
+  protected async deleteAlbum(playlist: Playlist): Promise<void> {
+    const yes = await this.confirm.ask({
+      title: `Delete the album "${playlist.name}"?`,
+      message: 'Its songs are deleted from this phone. This cannot be undone.',
+      confirm: 'Delete album',
+      danger: true,
+    });
+    if (!yes) return;
+    this.albumRefusal.set(await this.library.deletePlaylist(playlist.id));
+  }
+
+  /** Start an album and open its page, where it fills in. */
+  protected async makeAlbum(): Promise<void> {
+    this.albumSending.set(true);
+    const outcome = await this.hub.call<{ id: string }>('POST', '/api/albums', {
+      description: this.studio.description(),
+      tags: this.studio.tags(),
+      minutes: this.albumLength(),
+      sung: this.albumSung(),
+    });
+    this.albumSending.set(false);
+    this.albumRefusal.set(outcome.ok ? null : outcome.refusal);
+    if (outcome.ok) void this.router.navigate(['/library', outcome.value.id]);
+  }
+
   protected readonly makingCount = computed(() => this.jobs.jobs().filter((job) => !ENDED_PHASES.includes(job.phase)).length);
   protected readonly maxBatch = MAX_BATCH;
 

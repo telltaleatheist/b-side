@@ -152,6 +152,17 @@ export const SONG_FORMATS: readonly SongFormat[] = ['mp3', 'flac'];
 /** A hub's own choices, kept beside its takes (each hub has its own: the desktop's, the phone's). */
 export interface HubPreferences {
   readonly songFormat: SongFormat;
+  /** The phone's own hub: how much its albums may take before a new one waits (GB). */
+  readonly albumSpaceGb: number;
+}
+
+/** The choices for the phone's album space, in GB. */
+export const ALBUM_SPACE_GB: readonly number[] = [1, 2, 4, 8];
+
+/** The bytes an album's songs take (songs saved before sizes were kept count as nothing). */
+export function albumBytes(playlist: { readonly songs: readonly string[] }, songs: readonly { readonly id: string; readonly bytes: number | null }[]): number {
+  const held = new Set(playlist.songs);
+  return songs.reduce((sum, song) => (held.has(song.id) ? sum + (song.bytes ?? 0) : sum), 0);
 }
 
 /** A preset as the server stores it. `params` is whatever was saved, possibly by the web playground. */
@@ -217,6 +228,8 @@ export interface JobView {
   /** Epoch ms. */
   readonly since: number;
   readonly ended: number | null;
+  /** An album's track: which album, and its place in the plan. Null for a song asked for on its own. */
+  readonly album: { readonly id: string; readonly track: number } | null;
 }
 
 /** What "describe the music" answers: tags for the chips, and whether it asked for no vocals. */
@@ -281,6 +294,8 @@ export interface Take extends SongFacts {
  */
 export interface Song extends SongFacts {
   readonly album: string | null;
+  /** The audio file's size, when it was recorded (songs saved before sizes were kept say null). */
+  readonly bytes: number | null;
 }
 
 /** A named playlist: library song ids in play order. */
@@ -334,6 +349,8 @@ export interface AlbumMeta {
   /** Which server makes it, and which chat model wrote it. */
   readonly server: string;
   readonly writer: string | null;
+  /** Once saved to a B-Side computer (the phone's cloud): which, and when. Absent while it lives only here. */
+  readonly cloud?: { readonly host: string; readonly at: string } | null;
 }
 
 /** Make → Album: what the person picks. */

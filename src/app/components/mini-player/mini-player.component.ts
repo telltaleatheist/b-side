@@ -14,7 +14,7 @@ import { IconComponent } from '../icon/icon.component';
     @if (player.current(); as item) {
       <div class="row">
         <button type="button" class="open" aria-label="Open Now Playing" (click)="ui.nowPlayingOpen.set(true)">
-          <app-cover class="art" [key]="item.id + (item.tags ?? '')" />
+          <app-cover class="art" [key]="item.id + (item.tags ?? '')" [src]="item.art" />
           <span class="names">
             <span class="title">{{ item.title }}</span>
             <span class="sub">{{ player.waiting() ? 'Waiting for the next song…' : (item.tags ?? player.sourceName()) }}</span>

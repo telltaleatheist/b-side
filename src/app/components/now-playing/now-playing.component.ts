@@ -35,7 +35,7 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
     }
 
     @if (player.current(); as item) {
-      <app-cover class="art" [key]="coverKey(item)" />
+      <app-cover class="art" [key]="coverKey(item)" [src]="item.art" />
       <div class="titles">
         <div class="names">
           <span class="title">{{ item.title }}</span>
@@ -76,7 +76,7 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
         <span class="kicker amber">Up next</span>
         @for (item of shownNext(); track item.key) {
           <button type="button" class="next-row" (click)="player.play(item)">
-            <app-cover class="mini-art" [key]="coverKey(item)" />
+            <app-cover class="mini-art" [key]="coverKey(item)" [src]="item.art" />
             <span class="next-title">{{ item.title }}</span>
             <span class="mono next-time">{{ clock(item.durationS) }}</span>
           </button>

@@ -8,6 +8,7 @@ import {
   type HubInfo,
   type JobView,
   type LibraryView,
+  type Playlist,
   type Outcome,
   type RefusalView,
   type ServerView,
@@ -191,6 +192,16 @@ export class HubService {
     const address = this.address();
     if (address === null) return '';
     return `${address.url}/api/${kind}/${encodeURIComponent(id)}/audio?key=${encodeURIComponent(address.key)}`;
+  }
+
+  /** An album's painted cover, or null for the drawn one. */
+  coverUrl(playlist: Playlist): string | null {
+    const cover = playlist.album?.cover ?? null;
+    if (cover === null) return null;
+    if (this.onPhone()) return this.openedPhone?.fileUrl(`${PHONE_LIBRARY}/${cover}`) ?? null;
+    const address = this.address();
+    if (address === null) return null;
+    return `${address.url}/api/albums/${encodeURIComponent(playlist.id)}/cover?key=${encodeURIComponent(address.key)}&v=${encodeURIComponent(cover)}`;
   }
 
   /** One API call, answered as an Outcome so a refusal keeps its code. */

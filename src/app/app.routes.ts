@@ -10,6 +10,7 @@ export const routes: Routes = [
   { path: 'make', component: StudioPageComponent },
   { path: 'library', component: PlaylistsPageComponent },
   { path: 'library/:id', component: PlaylistsPageComponent },
+  { path: 'cloud/:id', component: PlaylistsPageComponent, data: { cloud: true } },
   { path: 'settings', component: SettingsPageComponent },
   // The old addresses, for a browser bookmark.
   { path: 'playlists', redirectTo: 'library' },

@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 
-import type { HubPreferences, HubSettingsView, RefusalView, SongFormat } from '@shared/types';
+import { ALBUM_SPACE_GB, type HubPreferences, type HubSettingsView, type RefusalView, type SongFormat } from '@shared/types';
 
 import { copyText } from '../../core/clipboard';
-import { desktop, HubService } from '../../core/hub.service';
+import { CloudService } from '../../core/cloud.service';
+import { desktop, HubService, parseHubLink } from '../../core/hub.service';
 import { LibraryService } from '../../core/library.service';
 import { HubPickerComponent } from '../../components/hub-picker/hub-picker.component';
 import { ServersCardComponent } from './servers-card.component';
@@ -47,6 +48,30 @@ import { ServersCardComponent } from './servers-card.component';
         </div>
       }
 
+      @if (cloud.available()) {
+        <div class="card">
+          <h2 class="card-title">Cloud</h2>
+          @if (cloud.address(); as address) {
+            <p class="detail">Albums you save go to the B-Side on <strong>{{ cloud.host() }}</strong>. They stream from it, or download to keep on this phone.</p>
+            <p class="hint mono">{{ address.url }} · {{ cloudWords() }}</p>
+            <div class="actions">
+              <button type="button" class="ghost small" (click)="cloud.refresh()">Check again</button>
+              <button type="button" class="ghost small" (click)="cloud.unlink()">Unlink</button>
+            </div>
+          } @else {
+            <p class="detail">Link a B-Side computer as this phone's cloud: albums you save go there, and stream or download back. On the computer: Settings → Other devices → turn on sharing, then copy a link.</p>
+            <form class="link" (submit)="$event.preventDefault(); linkCloud()">
+              <input type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="B-Side link"
+                     placeholder="http://computer:7300/#key=…" [value]="cloudLink()" (input)="cloudLink.set($any($event.target).value)" />
+              <button type="submit" class="primary small" [disabled]="cloudLink().trim() === ''">Link</button>
+            </form>
+            @if (cloudLinkWrong()) {
+              <div class="refusal"><code>link_invalid</code><span>That is not a B-Side link: it looks like http://computer:7300/#key=…</span></div>
+            }
+          }
+        </div>
+      }
+
       <app-servers-card />
 
       <div class="card">
@@ -60,6 +85,15 @@ import { ServersCardComponent } from './servers-card.component';
           <input type="radio" name="format" [checked]="preferences()?.songFormat === 'flac'" (change)="setFormat('flac')" />
           <span><strong>FLAC</strong>, lossless: about 34 MB for a 3-minute song.</span>
         </label>
+        @if (hub.onPhone()) {
+          <span class="label">Album space on this phone</span>
+          <div class="actions">
+            @for (gb of spaceChoices; track gb) {
+              <button type="button" class="chip" [class.on]="preferences()?.albumSpaceGb === gb" (click)="setSpace(gb)">{{ gb }} GB</button>
+            }
+          </div>
+          <p class="hint">Albums kept only on this phone may take this much; past it, Make asks you to save some to your cloud or delete one first. An hour of MP3 is about 85 MB.</p>
+        }
         @if (formatRefusal(); as refused) {
           <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
         }
@@ -158,6 +192,35 @@ export class SettingsPageComponent {
     const outcome = await this.hub.call<HubPreferences>('GET', '/api/preferences');
     if (outcome.ok) this.preferences.set(outcome.value);
     else this.formatRefusal.set(outcome.refusal);
+  }
+
+  protected readonly spaceChoices = ALBUM_SPACE_GB;
+  protected readonly cloud = inject(CloudService);
+  protected readonly cloudLink = signal('');
+  protected readonly cloudLinkWrong = signal(false);
+
+  protected cloudWords(): string {
+    switch (this.cloud.state()) {
+      case 'ok': return `${this.cloud.library()?.playlists.length ?? 0} playlists and albums`;
+      case 'loading': return 'reading…';
+      case 'unreachable': return 'not answering';
+      case 'key': return 'the link\'s key was replaced: link it again';
+      case 'none': return '';
+    }
+  }
+
+  protected linkCloud(): void {
+    const address = parseHubLink(this.cloudLink());
+    this.cloudLinkWrong.set(address === null);
+    if (address === null) return;
+    this.cloud.link(address);
+    this.cloudLink.set('');
+  }
+
+  protected async setSpace(albumSpaceGb: number): Promise<void> {
+    const outcome = await this.hub.call<HubPreferences>('PUT', '/api/preferences', { albumSpaceGb });
+    this.formatRefusal.set(outcome.ok ? null : outcome.refusal);
+    if (outcome.ok) this.preferences.set(outcome.value);
   }
 
   protected async setFormat(songFormat: SongFormat): Promise<void> {

@@ -13,7 +13,7 @@ import { IconComponent } from '../icon/icon.component';
   template: `
     <div class="now">
       @if (player.current(); as item) {
-        <app-cover class="art" [key]="item.id + (item.tags ?? '')" />
+        <app-cover class="art" [key]="item.id + (item.tags ?? '')" [src]="item.art" />
         <div class="names">
           <span class="title">{{ item.title }}</span>
           <span class="sub">{{ item.tags ?? '' }}</span>

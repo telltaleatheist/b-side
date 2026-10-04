@@ -3,31 +3,38 @@ import { computed, effect, inject, Injectable, signal, untracked } from '@angula
 import type { Song, Take } from '@shared/types';
 
 import { HtmlAudioOutput, NativeAudioOutput, type AudioOutput, type QueueItem } from './audio-output';
+import { CloudService } from './cloud.service';
 import { HubService, isNative } from './hub.service';
 import { JobsService } from './jobs.service';
 import { LibraryService } from './library.service';
 import { OfflineService } from './offline.service';
 
 /** What the player plays from: this device's playing list, or one saved playlist. */
-export type PlaySource = { readonly kind: 'takes' } | { readonly kind: 'playlist'; readonly id: string };
+export type PlaySource =
+  | { readonly kind: 'takes' }
+  | { readonly kind: 'playlist'; readonly id: string }
+  /** A playlist in the phone's cloud (a B-Side computer): streamed from it, or played from the phone's copy. */
+  | { readonly kind: 'cloud'; readonly id: string };
 
 /** One thing the player can play, whichever list it came from. */
 export interface PlayItem {
   /** `take:<id>` or `song:<id>`: unique across both lists. */
   readonly key: string;
-  readonly kind: 'take' | 'song';
+  readonly kind: 'take' | 'song' | 'cloud';
   readonly id: string;
   readonly title: string;
   readonly tags: string | null;
   readonly durationS: number | null;
+  /** The album's painted cover, for a song played from an album; null draws the song's own. */
+  readonly art: string | null;
 }
 
 function itemOfTake(take: Take): PlayItem {
-  return { key: `take:${take.id}`, kind: 'take', id: take.id, title: take.title, tags: take.params.tags, durationS: take.durationS };
+  return { key: `take:${take.id}`, kind: 'take', id: take.id, title: take.title, tags: take.params.tags, durationS: take.durationS, art: null };
 }
 
-function itemOfSong(song: Song): PlayItem {
-  return { key: `song:${song.id}`, kind: 'song', id: song.id, title: song.title, tags: song.params.tags, durationS: song.durationS };
+function itemOfSong(song: Song, art: string | null): PlayItem {
+  return { key: `song:${song.id}`, kind: 'song', id: song.id, title: song.title, tags: song.params.tags, durationS: song.durationS, art };
 }
 
 /**
@@ -52,6 +59,7 @@ export class PlayerService {
   private readonly library = inject(LibraryService);
   private readonly jobs = inject(JobsService);
   private readonly offline = inject(OfflineService);
+  private readonly cloud = inject(CloudService);
 
   readonly source = signal<PlaySource>({ kind: 'takes' });
   readonly current = signal<PlayItem | null>(null);
@@ -69,12 +77,22 @@ export class PlayerService {
     const source = this.source();
     if (source.kind === 'takes') return this.library.takes().map(itemOfTake);
     const playlist = this.library.playlist(source.id);
-    return playlist === null ? [] : this.library.songsOf(playlist).map(itemOfSong);
+    if (source.kind === 'cloud') {
+      const remote = this.cloud.playlist(source.id);
+      if (remote === null) return [];
+      const remoteArt = this.cloud.coverUrl(remote);
+      return this.cloud.songsOf(remote).map((song) => ({ ...itemOfSong(song, remoteArt), key: `cloud:${song.id}`, kind: 'cloud' as const }));
+    }
+    if (playlist === null) return [];
+    const art = this.hub.coverUrl(playlist);
+    return this.library.songsOf(playlist).map((song) => itemOfSong(song, art));
   });
 
   readonly sourceName = computed(() => {
     const source = this.source();
-    return source.kind === 'takes' ? 'Playing list' : (this.library.playlist(source.id)?.name ?? 'A deleted playlist');
+    if (source.kind === 'takes') return 'Playing list';
+    if (source.kind === 'cloud') return this.cloud.playlist(source.id)?.name ?? 'A playlist no longer in the cloud';
+    return this.library.playlist(source.id)?.name ?? 'A deleted playlist';
   });
 
   private readonly index = computed(() => {
@@ -139,12 +157,22 @@ export class PlayerService {
     this.play(itemOfTake(take), { kind: 'takes' });
   }
 
+  /** Play a cloud playlist from `song` (or its first song). */
+  playCloud(playlistId: string, song?: Song): void {
+    const playlist = this.cloud.playlist(playlistId);
+    if (playlist === null) return;
+    const first = song ?? this.cloud.songsOf(playlist)[0];
+    if (first !== undefined) {
+      this.play({ ...itemOfSong(first, this.cloud.coverUrl(playlist)), key: `cloud:${first.id}`, kind: 'cloud' }, { kind: 'cloud', id: playlistId });
+    }
+  }
+
   /** Play a playlist from `song` (or from its first song). */
   playPlaylist(playlistId: string, song?: Song): void {
     const playlist = this.library.playlist(playlistId);
     if (playlist === null) return;
     const first = song ?? this.library.songsOf(playlist)[0];
-    if (first !== undefined) this.play(itemOfSong(first), { kind: 'playlist', id: playlistId });
+    if (first !== undefined) this.play(itemOfSong(first, this.hub.coverUrl(playlist)), { kind: 'playlist', id: playlistId });
   }
 
   toggle(): void {
@@ -178,7 +206,11 @@ export class PlayerService {
     const album = this.sourceName();
     return this.items().map((item) => ({
       key: item.key,
-      url: item.kind === 'song' ? this.offline.urlOf(item.id) ?? this.hub.audioUrl('songs', item.id) : this.hub.audioUrl('takes', item.id),
+      url: item.kind === 'song'
+        ? this.offline.urlOf(item.id) ?? this.hub.audioUrl('songs', item.id)
+        : item.kind === 'cloud'
+          ? this.offline.urlOf(item.id) ?? this.cloud.audioUrl(item.id)
+          : this.hub.audioUrl('takes', item.id),
       title: item.title,
       artist: item.tags ?? 'B-Side',
       album,

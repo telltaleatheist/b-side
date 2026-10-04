@@ -33,13 +33,14 @@ import * as path from 'node:path';
 
 import { CLIENT_NAME, clientFor } from '../../shared/core/crucible';
 import { HubCore, matchRoute, routeOf, type CoreRequest } from '../../shared/core/hub-core';
+import type { ImportedAlbum } from '../../shared/core/library';
 import type { ServerRegistry } from '../../shared/core/servers';
 import type { TakeStore } from '../../shared/core/takes';
 import { fileVault, nodeDisk } from '../node-disk';
 import { Refusal } from '../refusal';
 import { AppSettings, type StoredSettings } from '../settings';
 import { ClientTracker, clientName, type ClientName } from './clients';
-import { readJson, sendApp, sendFile, sendJson, sendRefusal } from './http';
+import { readJson, receiveFile, sendApp, sendFile, sendJson, sendRefusal } from './http';
 import {
   HUB_KEY_HEADER,
   TAKE_CACHE_BYTES,
@@ -342,6 +343,18 @@ export class Hub {
     this.route('GET', '/api/takes/:id/audio', async (request) => {
       await sendFile(request.req, request.res, this.core.takeAudio(request.params['id'] as string), 'private, max-age=86400');
     }, true);
+    this.route('GET', '/api/albums/:id/cover', async (request) => {
+      await sendFile(request.req, request.res, await this.core.coverFile(request.params['id'] as string), 'private, max-age=86400');
+    }, true);
+    // ── the phone's cloud: albums sent from a phone ─────────────────────────────
+    // Files first (raw bodies, natively uploaded), then the album that names them.
+    this.route('PUT', '/api/import/files/:name', async (request) => {
+      const target = this.core.importPath(request.params['name'] as string);
+      await receiveFile(request.req, target);
+      sendJson(request.res, 200, { name: request.params['name'] });
+    }, true);
+    this.route('POST', '/api/import/albums', async (request) =>
+      this.core.importAlbum((await request.body()) as unknown as ImportedAlbum));
     this.route('GET', '/api/songs/:id/audio', async (request) => {
       const song = await this.core.songFile(request.params['id'] as string);
       await sendFile(request.req, request.res, song.file, 'private, max-age=86400');

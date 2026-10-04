@@ -57,7 +57,7 @@ interface Room {
             <span class="kicker">Playlists</span>
             @for (playlist of library.playlists(); track playlist.id) {
               <a class="side-item" [routerLink]="['/library', playlist.id]" routerLinkActive="on">
-                <app-cover class="side-art" [key]="playlist.id" />
+                <app-cover class="side-art" [key]="playlist.id" [src]="hub.coverUrl(playlist)" />
                 <span class="side-names">
                   <span class="side-name">{{ playlist.name }}</span>
                   <span class="side-sub">{{ playlist.songs.length }} {{ playlist.songs.length === 1 ? 'song' : 'songs' }}</span>
