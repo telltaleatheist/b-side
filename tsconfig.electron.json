@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    // rootDir is the repo, not electron/, because this program also compiles
+    // shared/ (the wire shapes the renderer compiles too): electron/x.ts ->
+    // dist/electron/x.js and shared/y.ts -> dist/shared/y.js.
+    "outDir": "./dist",
+    "rootDir": ".",
+    "strict": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "sourceMap": true,
+    "types": ["node"]
+  },
+  "include": [
+    "electron/**/*.ts",
+    "shared/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

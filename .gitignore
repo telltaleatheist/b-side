@@ -5,3 +5,6 @@ release/
 .angular/
 *.log
 .DS_Store
+
+# a symlink, not a directory, in a worktree — the directory form above does not catch it
+node_modules

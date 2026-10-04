@@ -1,0 +1,41 @@
+/* Renderer (Angular) program. The main process has its own — tsconfig.electron.json. */
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "experimentalDecorators": true,
+    "importHelpers": true,
+    "target": "ES2022",
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    // The wire shapes, compiled by BOTH programs — the renderer through this
+    // config, the main process through tsconfig.electron.json (which reaches
+    // them by relative path, since tsc does not rewrite aliases on emit).
+    "paths": {
+      "@shared/*": ["./shared/*"]
+    }
+  },
+  "angularCompilerOptions": {
+    "enableI18nLegacyMessageIdFormat": false,
+    "strictInjectionParameters": true,
+    "strictInputAccessModifiers": true,
+    "strictTemplates": true,
+    // A standalone component's imports are a claim about its template; an
+    // unused one is a missing element, so it fails the build (as in Foundry).
+    "extendedDiagnostics": {
+      "checks": {
+        "unusedStandaloneImports": "error"
+      }
+    }
+  },
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" }
+  ]
+}
