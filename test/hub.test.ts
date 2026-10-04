@@ -48,7 +48,7 @@ async function addTake(client: string, kind: 'desktop' | 'web', seed: number): P
     kind,
     title: `Take ${seed}`,
     extension: 'flac',
-    bytes: new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, seed]),
+    fill: async (file: string) => { const bytes = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, seed]); fs.writeFileSync(file, bytes); return bytes.byteLength; },
     model: 'yue2-3b',
     params: { tags: 'folk', lyrics: '[verse]\nhello', instrumental: false, cfg: null, seed },
     server: { name: 'pc', url: 'http://pc:7100' },

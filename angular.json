@@ -24,7 +24,8 @@
             "index": "src/index.html",
             "tsConfig": "tsconfig.app.json",
             "inlineStyleLanguage": "scss",
-            "styles": ["src/styles.scss"]
+            "styles": ["src/styles.scss"],
+            "assets": [{ "glob": "**/*", "input": "public" }]
           },
           "configurations": {
             "production": {

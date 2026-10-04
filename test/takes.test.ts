@@ -3,7 +3,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { TakeStore, type NewTake } from '../electron/takes';
+import { nodeDisk } from '../electron/node-disk';
+import { TakeStore, type NewTake } from '../shared/core/takes';
 import type { ClientKind, TakeGoneReason } from '../shared/types';
 
 let dir: string;
@@ -19,7 +20,7 @@ afterEach(() => {
 });
 
 function store(perClient: Partial<Record<ClientKind, number>> = {}, bytes = 1_000_000): TakeStore {
-  const made = new TakeStore(dir, { perClient: { desktop: 200, ios: 60, web: 40, ...perClient }, bytes });
+  const made = new TakeStore(nodeDisk, dir, { perClient: { desktop: 200, ios: 60, web: 40, ...perClient }, bytes });
   made.onGone((take, reason) => gone.push([take.id, reason]));
   return made;
 }
@@ -32,7 +33,7 @@ function take(client: string, kind: ClientKind, seed: number, size = 10): NewTak
     kind,
     title: `Take ${seed}`,
     extension: 'flac',
-    bytes: new Uint8Array(size).fill(seed),
+    fill: async (file: string) => { const bytes = new Uint8Array(size).fill(seed); fs.writeFileSync(file, bytes); return bytes.byteLength; },
     model: 'yue2-3b',
     params: { tags: 'pop', lyrics: null, instrumental: true, cfg: null, seed },
     server: { name: 'pc', url: 'http://pc:7100' },

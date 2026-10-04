@@ -19,7 +19,7 @@ import { localUninstallCommand, processRunner, readLocalInstallation } from '@cr
 
 import { pairingFileRead } from './crucible-local';
 import { Refusal } from './refusal';
-import type { ServerRegistry } from './servers';
+import type { ServerRegistry } from '../shared/core/servers';
 import {
   uninstallStoppedTheEngine,
   type CrucibleUninstallAvailability,

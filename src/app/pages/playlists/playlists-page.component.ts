@@ -53,7 +53,7 @@ import { PlayerService } from '../../core/player.service';
             <button type="button" class="ghost small" (click)="deletePlaylist(playlist)">Delete</button>
           </div>
           <p class="hint">{{ songs().length }} {{ songs().length === 1 ? 'song' : 'songs' }}{{ total() }}</p>
-          @if (offline.available) {
+          @if (offline.offered()) {
             <label class="keep">
               <input type="checkbox" [checked]="offline.kept().has(playlist.id)" (change)="offline.keep(playlist.id, $any($event.target).checked)" />
               <span>Keep on this phone</span>

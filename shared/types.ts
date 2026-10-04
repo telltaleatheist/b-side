@@ -42,6 +42,24 @@ export interface ServerInput {
   readonly token: string | null;
 }
 
+/**
+ * Adding a server by its address: the server's own name and the short code it
+ * shows (a server that asks for approval shows the same code on its console).
+ * The request's device code and, once approved, the token stay in the hub.
+ */
+export interface PairingProgress {
+  readonly id: string;
+  readonly name: string;
+  readonly url: string;
+  readonly userCode: string;
+  /** False on a server with open pairing (the default): the first poll approves. */
+  readonly approvalRequired: boolean;
+  /** Epoch ms. */
+  readonly expiresAt: number;
+  readonly pollAfterMs: number;
+  readonly status: 'pending' | 'approved' | 'denied' | 'expired';
+}
+
 /** What `GET /v1/info` said about a server, for the connection test. */
 export interface ServerProbe {
   readonly name: string;
@@ -121,6 +139,19 @@ export interface SongParams {
   readonly instrumental?: boolean;
   readonly cfg?: number;
   readonly seed?: number;
+}
+
+/**
+ * How songs are kept. MP3 (192 kbps, rendered by Crucible) is about an eighth
+ * the size of FLAC and sounds the same on phones and earbuds; FLAC is lossless.
+ * WAV is not offered: the same sound as FLAC, bigger.
+ */
+export type SongFormat = 'mp3' | 'flac';
+export const SONG_FORMATS: readonly SongFormat[] = ['mp3', 'flac'];
+
+/** A hub's own choices, kept beside its takes (each hub has its own: the desktop's, the phone's). */
+export interface HubPreferences {
+  readonly songFormat: SongFormat;
 }
 
 /** A preset as the server stores it. `params` is whatever was saved, possibly by the web playground. */

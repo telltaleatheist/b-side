@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const configPath = resolve(here, '../ios/App/App/capacitor.config.json');
-const CLASSES = ['NativeQueuePlugin', 'NativeFilePlugin'];
+const CLASSES = ['NativeQueuePlugin', 'NativeFilePlugin', 'NativeDiskPlugin', 'NativeKeychainPlugin'];
 
 const json = JSON.parse(readFileSync(configPath, 'utf8'));
 if (!Array.isArray(json.packageClassList)) json.packageClassList = [];

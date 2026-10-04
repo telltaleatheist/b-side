@@ -199,5 +199,47 @@ BookForge/Bookshelf - find it there and reuse the idea before inventing anything
       fetch left; jobs go through `audio()`. Verified on the PC: song page + presets read,
       and an instrumental render came back with `instrumental: true`.
 
+### Phase 7 - pick a Crucible by its address; the phone talks to Crucible itself
+Owen, 2026-10-04. Supersedes "Web and iOS never talk to Crucible directly" above.
+Crucible is like Ollama: a service that can run anywhere (a headless GPU box, a rented
+GPU), not necessarily beside a B-Side desktop. So the desktop and the phone are BOTH
+clients of Crucible; a desktop hub is optional, never required.
+- [x] Add a server by its address (`owens-pc.owenmorgan.com`, an IP, `http://host:7100`):
+      `@crucible/client` startPairing/pollPairing, the token stays in the hub. Remembered;
+      the first one is in use, Settings' "Use this server" switches and it holds until
+      switched (ContentStudio's model). First-run card and Settings both offer it; the
+      pairing line and by-hand form are folded away. `electron/pairing.ts`,
+      `POST /api/servers/pair[/:id]`, `app-pair-server`. Seen working in the desktop app
+      on an empty profile against both of Owen's servers, across a restart (09b040d).
+- [x] Share the song logic (jobs, takes, library/playlists, describe, presets) between
+      the desktop hub and the phone: one implementation behind a storage interface (Node
+      files on the desktop, native files on the phone), not two. `shared/core/` (no Node
+      imports; the app's compile proves it), `HubCore` owns it and the `/api` routes, the
+      desktop's `electron/hub/hub.ts` is its HTTP door (aff4faf). Verified: bun tests, the
+      desktop app, and a real render landing through the new fetch-into-file path.
+- [x] The on-phone hub: the phone's first run offers "Use a Crucible server" (pair by
+      address, as the desktop) or "Connect to a B-Side computer" (today's link); both are
+      remembered and switchable in Settings. Direct mode runs the shared logic in the app,
+      with the same screens: token in the Keychain (not localStorage), songs downloaded
+      natively to disk (never base64 through the bridge), its own 60-take FIFO playing
+      list, and **playlists saved on the phone** (the phone's library is the phone's; a
+      desktop library is separate, sync is later). Follow jobs only while one of ours is
+      unfinished and the app is in front. Crucible 1.0.101 (not promoted) allows
+      `capacitor://localhost` by `[server] cors_origins`, set on both of Owen's machines;
+      1.0.102 also allows the SDK's User-Agent header (1.0.101 refused every authenticated
+      call from WebKit). Built 2adf004: `src/app/phone/`, NativeDiskPlugin,
+      NativeKeychainPlugin. Seen working in the simulator against owens-pc: pair, generate,
+      a 2.9 MB mp3 on the phone's disk, played from the file, saved to a playlist, all
+      across relaunches. NOT yet on the real phone ("blip").
+- [x] Song format setting: MP3 192 kbps (default) or lossless FLAC (WAV is never better
+      than FLAC: the same sound, bigger). Crucible renders the MP3 itself (asked of
+      crucible-pc-1: `mp3` in yue2-3b's `format` choice), so B-Side carries no encoder. A
+      3-minute song is ~34 MB as FLAC (6.5 MB for 34.2 s, measured), ~4.3 MB as MP3 192.
+      The phone in direct mode keeps its own setting; connected to a hub it follows the hub.
+      Crucible 1.0.102 renders mp3 (LAME, CBR 192, 48 kHz); a hub preference
+      (`preferences.json`, `/api/preferences`, Settings' "Song format"). Seed 4242: 2.4 MB
+      mp3 vs 16.5 MB flac.
+
 ### Later
+- [ ] Copy/sync playlists between the phone's library and a desktop's.
 - [ ] Albums with cover art (the `album` seam is already on every song).

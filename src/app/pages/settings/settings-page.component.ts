@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 
-import type { HubSettingsView, RefusalView } from '@shared/types';
+import type { HubPreferences, HubSettingsView, RefusalView, SongFormat } from '@shared/types';
 
 import { copyText } from '../../core/clipboard';
 import { desktop, HubService } from '../../core/hub.service';
@@ -24,12 +24,25 @@ import { ServersCardComponent } from './servers-card.component';
       @if (hub.kind !== 'desktop') {
         <div class="card">
           <h2 class="card-title">This {{ hub.kind === 'ios' ? 'phone' : 'browser' }}</h2>
-          <p class="detail">Connected to the B-Side on <strong>{{ hub.info()?.hostname ?? '…' }}</strong> at <span class="mono">{{ hub.address()?.url }}</span>.</p>
-          @if (hub.kind === 'web') {
-            <p class="hint">A browser keeps nothing for long: this tab's playing list clears a few minutes after the tab closes. Save songs to a playlist to keep them.</p>
-          }
-          @if (hub.kind === 'ios') {
-            <app-hub-picker />
+          @if (hub.onPhone()) {
+            <p class="detail">This phone makes songs on a Crucible server by itself (the servers below), and keeps its playlists on the phone.</p>
+            <details>
+              <summary class="hint">Use a B-Side computer instead</summary>
+              <p class="hint">Its playlists and servers, instead of this phone's. This phone's own playlists stay here for when you switch back.</p>
+              <app-hub-picker />
+            </details>
+          } @else {
+            <p class="detail">Connected to the B-Side on <strong>{{ hub.info()?.hostname ?? '…' }}</strong> at <span class="mono">{{ hub.address()?.url }}</span>.</p>
+            @if (hub.kind === 'web') {
+              <p class="hint">A browser keeps nothing for long: this tab's playing list clears a few minutes after the tab closes. Save songs to a playlist to keep them.</p>
+            }
+            @if (hub.kind === 'ios') {
+              <app-hub-picker />
+              <div class="actions">
+                <button type="button" class="ghost small" (click)="hub.usePhone()">Use a Crucible server from this phone instead</button>
+              </div>
+              <p class="hint">No computer needed: the phone makes songs itself and keeps its own playlists.</p>
+            }
           }
         </div>
       }
@@ -37,9 +50,29 @@ import { ServersCardComponent } from './servers-card.component';
       <app-servers-card />
 
       <div class="card">
+        <h2 class="card-title">Song format</h2>
+        <p class="detail">How new songs are made and kept{{ hub.onPhone() ? ' on this phone' : '' }}. Songs already made keep their format.</p>
+        <label class="toggle">
+          <input type="radio" name="format" [checked]="preferences()?.songFormat === 'mp3'" (change)="setFormat('mp3')" />
+          <span><strong>MP3</strong>, 192 kbps: about 4 MB for a 3-minute song. Sounds the same on phones, earbuds and most speakers.</span>
+        </label>
+        <label class="toggle">
+          <input type="radio" name="format" [checked]="preferences()?.songFormat === 'flac'" (change)="setFormat('flac')" />
+          <span><strong>FLAC</strong>, lossless: about 34 MB for a 3-minute song.</span>
+        </label>
+        @if (formatRefusal(); as refused) {
+          <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+        }
+      </div>
+
+      <div class="card">
         <h2 class="card-title">Library</h2>
         <p class="detail">Songs saved to a playlist are kept here, each as its audio file plus a .json sidecar with the tags, lyrics, seed, guidance, server and Crucible job it came from. Playlists are in playlists.json beside them.</p>
-        <div class="dir mono">{{ settings()?.libraryDir ?? library.dir() }}</div>
+        @if (hub.onPhone()) {
+          <div class="dir">On this phone, backed up with it.</div>
+        } @else {
+          <div class="dir mono">{{ settings()?.libraryDir ?? library.dir() }}</div>
+        }
         <p class="hint">{{ library.songs().length }} {{ library.songs().length === 1 ? 'song' : 'songs' }} in {{ library.playlists().length }} {{ library.playlists().length === 1 ? 'playlist' : 'playlists' }}.</p>
         @if (isDesktop) {
           <div class="actions">
@@ -109,6 +142,8 @@ export class SettingsPageComponent {
   protected readonly hub = inject(HubService);
   protected readonly library = inject(LibraryService);
   protected readonly settings = signal<HubSettingsView | null>(null);
+  protected readonly preferences = signal<HubPreferences | null>(null);
+  protected readonly formatRefusal = signal<RefusalView | null>(null);
   protected readonly refusal = signal<RefusalView | null>(null);
   protected readonly busy = signal(false);
   protected readonly copied = signal<string | null>(null);
@@ -116,9 +151,24 @@ export class SettingsPageComponent {
 
   constructor() {
     void this.load();
+    void this.loadPreferences();
+  }
+
+  private async loadPreferences(): Promise<void> {
+    const outcome = await this.hub.call<HubPreferences>('GET', '/api/preferences');
+    if (outcome.ok) this.preferences.set(outcome.value);
+    else this.formatRefusal.set(outcome.refusal);
+  }
+
+  protected async setFormat(songFormat: SongFormat): Promise<void> {
+    const outcome = await this.hub.call<HubPreferences>('PUT', '/api/preferences', { songFormat });
+    this.formatRefusal.set(outcome.ok ? null : outcome.refusal);
+    if (outcome.ok) this.preferences.set(outcome.value);
   }
 
   private async load(): Promise<void> {
+    // The phone's own hub has no computer settings (folder, sharing, key) to read.
+    if (this.hub.onPhone()) return;
     const outcome = await this.hub.call<HubSettingsView>('GET', '/api/settings');
     if (outcome.ok) this.settings.set(outcome.value);
     else this.refusal.set(outcome.refusal);

@@ -3,16 +3,18 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { normaliseUrl, ServerRegistry } from '../electron/servers';
+import { fileVault } from '../electron/node-disk';
+import { normaliseUrl, ServerRegistry } from '../shared/core/servers';
 
 // A made-up token for the fixture: never a real one.
 const TOKEN = 'not-a-real-token-123';
 let dir: string;
 let registry: ServerRegistry;
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bside-servers-'));
-  registry = new ServerRegistry(path.join(dir, 'servers.json'));
+  registry = new ServerRegistry(fileVault(path.join(dir, 'servers.json')));
+  await registry.open();
 });
 
 afterEach(() => {

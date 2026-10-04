@@ -24,8 +24,8 @@
 import { CrucibleRefused, type CrucibleClient } from '@crucible/client';
 
 import { Refusal } from './refusal';
-import { clashesWith, clashText, indexOfTag } from '../shared/tags';
-import { TAG_MODEL, type DescribeResult, type SongPage } from '../shared/types';
+import { clashesWith, clashText, indexOfTag } from '../tags';
+import { TAG_MODEL, type DescribeResult, type SongPage } from '../types';
 
 const MAX_DESCRIPTION = 600;
 const PHRASE_MAX = 48;

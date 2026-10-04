@@ -14,6 +14,7 @@ import type { CrucibleUninstallAvailability, CrucibleUninstallPlan } from '@shar
 
 import { bytesText } from '../../core/format';
 import { desktop, HubService } from '../../core/hub.service';
+import { PairServerComponent } from '../pair-server/pair-server.component';
 
 /** What the Crucible on this computer offers, flattened for the template. */
 type Face =
@@ -57,6 +58,7 @@ type Busy = 'install' | 'start' | 'use' | 'retry' | 'restart' | 'pairing' | 'uni
 @Component({
   selector: 'app-crucible-setup',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [PairServerComponent],
   template: `
     <div class="setup">
       @if (isDesktop) {
@@ -219,23 +221,29 @@ type Busy = 'install' | 'start' | 'use' | 'retry' | 'restart' | 'pairing' | 'uni
             </div>
           </details>
         }
+      } @else if (hub.onPhone()) {
+        <p class="hint">This phone makes songs on a Crucible server by itself. Add one by its name or address; B-Side remembers each one you add.</p>
       } @else {
         <p class="hint">
           Crucible is installed from the B-Side app on the computer B-Side runs on{{ hostWords() }}.
-          From here you can add a Crucible server that is already running somewhere, by its pairing line.
+          From here you can add a Crucible server that is already running somewhere, by its address.
         </p>
       }
 
       @if (addByLine()) {
-        <form class="door" (submit)="$event.preventDefault(); addPairing()">
-          <span class="door-name">Add an existing server</span>
-          <span class="hint">A Crucible running on another computer: paste the pairing line its console page shows (crucible://name@host:7100/#…).</span>
-          <div class="line">
-            <input type="password" autocomplete="off" spellcheck="false" placeholder="crucible://name@host:7100/#token"
-                   [value]="pairing()" (input)="pairing.set($any($event.target).value)" />
-            <button type="submit" class="ghost" [disabled]="pairing().trim() === '' || busy() !== null">Add</button>
-          </div>
-        </form>
+        <div class="door">
+          <span class="door-name">Use a Crucible server</span>
+          <span class="hint">A Crucible running on another computer: type its name or address. B-Side remembers it, and Settings switches between the ones you add.</span>
+          <app-pair-server />
+          <details>
+            <summary class="hint">…or paste its pairing line</summary>
+            <form class="line" (submit)="$event.preventDefault(); addPairing()">
+              <input type="password" autocomplete="off" spellcheck="false" placeholder="crucible://name@host:7100/#token"
+                     [value]="pairing()" (input)="pairing.set($any($event.target).value)" />
+              <button type="submit" class="ghost" [disabled]="pairing().trim() === '' || busy() !== null">Add</button>
+            </form>
+          </details>
+        </div>
       }
 
       @if (refusal(); as refused) {

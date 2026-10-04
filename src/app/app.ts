@@ -42,15 +42,26 @@ import { PlayerService } from './core/player.service';
       @if (hub.state() === 'key' || hub.state() === 'no-hub') {
         <main class="room gate">
           <div class="card">
-            <h2 class="card-title">{{ hub.state() === 'key' ? 'This device needs a new B-Side link' : 'Connect to B-Side' }}</h2>
-            <p class="detail">
-              @if (hub.state() === 'key') {
-                The B-Side at {{ hub.address()?.url }} did not accept this device's key (it may have been replaced).
-              } @else {
-                This app plays and makes songs through B-Side running on a computer.
-              }
-            </p>
-            <app-hub-picker />
+            <h2 class="card-title">{{ hub.state() === 'key' ? 'This device needs a new B-Side link' : 'Set up B-Side' }}</h2>
+            @if (hub.state() === 'key') {
+              <p class="detail">The B-Side at {{ hub.address()?.url }} did not accept this device's key (it may have been replaced).</p>
+              <app-hub-picker />
+            } @else if (hub.kind === 'ios') {
+              <div class="choice">
+                <span class="door-name">Use a Crucible server</span>
+                <p class="detail">This phone makes songs on a Crucible server by itself, and keeps your playlists on the phone. You add the server next, by its name or address.</p>
+                <button type="button" class="primary" (click)="hub.usePhone()">Use a Crucible server</button>
+              </div>
+              <div class="choice">
+                <span class="door-name">Connect to a B-Side computer</span>
+                <p class="detail">Use B-Side running on a computer: its playlists, its servers. Paste the link its Settings shows.</p>
+                <app-hub-picker />
+              </div>
+              <p class="hint">Either way, Settings switches later.</p>
+            } @else {
+              <p class="detail">This app plays and makes songs through B-Side running on a computer.</p>
+              <app-hub-picker />
+            }
           </div>
         </main>
       } @else {
@@ -88,6 +99,9 @@ import { PlayerService } from './core/player.service';
     .room { flex: 1; min-height: 0; overflow: hidden; }
     .room.gate { overflow-y: auto; padding: 24px 16px; }
     .gate .card { max-width: 560px; margin: 0 auto; }
+    .choice { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border-subtle); padding-top: 12px; }
+    .choice button { align-self: flex-start; }
+    .door-name { font-weight: 600; }
     .trouble { padding: 6px 16px; font-size: 12px; color: var(--warn); background: var(--bg-sunken); border-bottom: 1px solid var(--border-subtle); }
     @media (max-width: 600px) {
       /* Sides only: the top padding is the notch's safe-area inset. */

@@ -20,9 +20,11 @@
  * Jobs that have a server id are written to `pending.json`, so a job still
  * generating when B-Side quits is followed again on the next launch (its events
  * replay from the start, so nothing is missed).
+ *
+ * The audio is fetched by the platform's `AudioFetcher`: the SDK on the desktop,
+ * a native download straight to disk on the phone (a 35 MB song must never cross
+ * the WebView bridge as base64).
  */
-import { randomUUID } from 'node:crypto';
-import * as fs from 'node:fs';
 
 import {
   CrucibleRefused,
@@ -32,13 +34,14 @@ import {
   type CrucibleClient,
   type DoneData,
   type InstallingDetails,
+  type JobStatus,
 } from '@crucible/client';
 
-import { writeAtomically } from './atomic';
 import { clientFor } from './crucible';
+import type { Disk } from './disk';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
-import { batchSeeds } from '../shared/batch';
+import { batchSeeds } from '../batch';
 import {
   ENDED_PHASES,
   SONG_MODEL,
@@ -47,9 +50,10 @@ import {
   type InstallView,
   type JobView,
   type RefusalView,
+  type SongFormat,
   type SongParams,
   type Take,
-} from '../shared/types';
+} from '../types';
 
 const INSTALL_ROUNDS = 5;
 const RECONNECT_MS = 2000;
@@ -58,6 +62,8 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
 interface Job {
   view: Mutable<JobView>;
+  /** The file format the server renders: the hub's preference when the job was asked for. */
+  format: SongFormat;
   server: StoredServer;
   /** Null only for a resumed job whose server has since been removed: it is failed at once. */
   client: CrucibleClient | null;
@@ -67,11 +73,18 @@ interface Job {
   gone: boolean;
 }
 
+/**
+ * Fetch a finished job's artifact into `file` and answer its size. A server that
+ * cannot be reached is `CrucibleUnreachable`, which the runner retries.
+ */
+export type AudioFetcher = (server: StoredServer, jobId: string, artifact: string, file: string) => Promise<number>;
+
 /** What a finished job hands the take cache. */
 export interface Landed {
   readonly job: JobView;
   readonly server: StoredServer;
-  readonly bytes: Uint8Array;
+  /** Fetch the audio into this file (retrying while the server cannot be reached); answers its size. */
+  readonly fill: (file: string) => Promise<number>;
   readonly extension: string;
   readonly seed: number;
   readonly durationS: number | null;
@@ -111,7 +124,9 @@ export class JobRunner {
 
   constructor(
     private readonly hooks: JobHooks,
+    private readonly disk: Disk,
     private readonly pendingFile: string,
+    private readonly fetchAudio: AudioFetcher,
   ) {}
 
   /** One client's jobs, oldest first. */
@@ -128,7 +143,12 @@ export class JobRunner {
   }
 
   /** Queue `count` jobs on `server` for the device `asker`; with a seed they get seed, seed+1, ... */
-  generate(server: StoredServer, asker: { readonly id: string; readonly kind: ClientKind }, request: GenerateRequest): JobView[] {
+  generate(
+    server: StoredServer,
+    asker: { readonly id: string; readonly kind: ClientKind },
+    request: GenerateRequest,
+    format: SongFormat,
+  ): JobView[] {
     const seeds = batchSeeds(typeof request.params.seed === 'number' ? request.params.seed : null, request.count);
     const client = clientFor(server);
     const made: Job[] = seeds.map((seed, at) => {
@@ -139,10 +159,11 @@ export class JobRunner {
       const job: Job = {
         server,
         client,
+        format,
         taskId: null,
         gone: false,
         view: {
-          key: randomUUID(),
+          key: crypto.randomUUID(),
           client: asker.id,
           clientKind: asker.kind,
           number: this.numbered,
@@ -228,9 +249,10 @@ export class JobRunner {
   async resume(): Promise<void> {
     let entries: PendingEntry[];
     try {
-      entries = JSON.parse(fs.readFileSync(this.pendingFile, 'utf8')) as PendingEntry[];
+      const text = await this.disk.readText(this.pendingFile);
+      if (text === null) return;
+      entries = JSON.parse(text) as PendingEntry[];
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
       console.error(`[jobs] ${this.pendingFile} could not be read; nothing resumed:`, err);
       return;
     }
@@ -246,16 +268,18 @@ export class JobRunner {
       try {
         server = this.hooks.server(view.server);
       } catch (err) {
-        const job: Job = { server: { name: view.server, url: '', token: '' }, client: null, taskId: null, gone: false, view: { ...view } };
+        const job: Job = { server: { name: view.server, url: '', token: '' }, client: null, format: 'flac', taskId: null, gone: false, view: { ...view } };
         this.jobs.set(view.key, job);
         job.view.refusal = refusalOf(err);
         this.finish(job, 'failed');
         continue;
       }
-      const job: Job = { server, client: clientFor(server), taskId: null, gone: false, view: { ...view, message: 'Following it again after a restart' } };
+      // Already on the server: its format was sent then; the file's extension says which.
+      const job: Job = { server, client: clientFor(server), format: 'flac', taskId: null, gone: false, view: { ...view, message: 'Following it again after a restart' } };
       this.jobs.set(view.key, job);
       this.publish(job);
-      void this.follow(job);
+      // It may have ended while nobody followed it (a restart on either side): ask before following.
+      void this.endedOnServer(job, view.jobId).then((ended) => (ended ? undefined : this.follow(job)));
     }
   }
 
@@ -296,7 +320,7 @@ export class JobRunner {
       .filter((job) => job.view.jobId !== null && !this.ended(job))
       .map((job) => ({ view: { ...job.view } }));
     try {
-      await writeAtomically(this.pendingFile, `${JSON.stringify(entries, null, 2)}\n`);
+      await this.disk.writeText(this.pendingFile, `${JSON.stringify(entries, null, 2)}\n`);
     } catch (err) {
       console.error(`[jobs] could not record pending jobs in ${this.pendingFile}:`, err);
     }
@@ -308,7 +332,7 @@ export class JobRunner {
     for (let round = 0; jobId === null; round += 1) {
       if (job.gone) return;
       try {
-        jobId = await client.audio({ model: SONG_MODEL, ...job.view.params });
+        jobId = await client.audio({ model: SONG_MODEL, ...job.view.params, format: job.format });
       } catch (error) {
         if (job.gone) return;
         if (!isInstalling(error) || round >= INSTALL_ROUNDS) {
@@ -458,9 +482,45 @@ export class JobRunner {
         }
       }
       if (job.gone || this.ended(job)) return;
+      if (await this.endedOnServer(job, jobId)) return;
       job.view.message = 'Lost the server; reconnecting';
       this.publish(job);
       await pause(RECONNECT_MS);
+    }
+  }
+
+  /**
+   * The stream dropped: ask the job itself before following it again. A server
+   * that restarted mid-job (a deploy) marks it failed or interrupted but may
+   * keep no event history to replay, so its stream would stay silent forever
+   * and the job would read "reconnecting" for good. Answers whether it ended.
+   * A `done` job is left to the stream, whose replay carries what landing needs.
+   */
+  private async endedOnServer(job: Job, jobId: string): Promise<boolean> {
+    let status: JobStatus;
+    try {
+      status = await this.clientOf(job).job(jobId);
+    } catch (error) {
+      if (error instanceof CrucibleUnreachable) return false;
+      this.finish(job, 'failed', refusalOf(error));
+      return true;
+    }
+    switch (status.status) {
+      case 'failed':
+      case 'interrupted':
+        this.finish(job, 'failed', status.error ?? {
+          code: `job_${status.status}`,
+          message: `${job.view.server} stopped while making this song (it ${status.status === 'interrupted' ? 'restarted' : 'failed'}). Generate again.`,
+        });
+        return true;
+      case 'cancelled':
+        this.finish(job, 'cancelled');
+        return true;
+      case 'removed':
+        this.finish(job, 'removed', { code: 'removed', message: `${job.view.server} removed this song before it was fetched.` });
+        return true;
+      default:
+        return false;
     }
   }
 
@@ -474,22 +534,23 @@ export class JobRunner {
     try {
       const result = readAudioResult(done);
       job.view.seed = result.seed;
-      let bytes: Uint8Array | null = null;
-      while (bytes === null) {
-        try {
-          bytes = await this.clientOf(job).artifact(jobId, result.artifact);
-        } catch (error) {
-          if (!(error instanceof CrucibleUnreachable)) throw error;
-          job.view.message = 'Fetching the song: the server is not answering, trying again';
-          this.publish(job);
-          await pause(RECONNECT_MS);
+      const fill = async (file: string): Promise<number> => {
+        for (;;) {
+          try {
+            return await this.fetchAudio(job.server, jobId, result.artifact, file);
+          } catch (error) {
+            if (!(error instanceof CrucibleUnreachable)) throw error;
+            job.view.message = 'Fetching the song: the server is not answering, trying again';
+            this.publish(job);
+            await pause(RECONNECT_MS);
+          }
         }
-      }
+      };
       const extension = result.artifact.slice(result.artifact.lastIndexOf('.') + 1);
       const take = await this.hooks.land({
         job: { ...job.view },
         server: job.server,
-        bytes,
+        fill,
         extension,
         seed: result.seed,
         durationS: result.audioSeconds,
