@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { RouterLink } from '@angular/router';
 
 import { MAX_BATCH } from '@shared/batch';
 
+import { CrucibleSetupComponent } from '../../components/crucible-setup/crucible-setup.component';
 import { PresetBarComponent } from '../../components/preset-bar/preset-bar.component';
 import { QueuePanelComponent } from '../../components/queue-panel/queue-panel.component';
 import { TagInputComponent } from '../../components/tag-input/tag-input.component';
@@ -15,20 +15,21 @@ import { StudioService } from '../../core/studio.service';
  * instrumental, guidance, seed, how many in a row), the queue on the right.
  * Everything the form offers — the tag suggestions, the conflicts, the cfg
  * limits, whether this server's YuE2 takes `instrumental` — is the active
- * server's own `yue2-3b` playground page.
+ * server's own `yue2-3b` playground page. With no server yet, the form is
+ * replaced by the way to get one (app-crucible-setup).
  */
 @Component({
   selector: 'app-studio-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, PresetBarComponent, TagInputComponent, QueuePanelComponent],
+  imports: [CrucibleSetupComponent, PresetBarComponent, TagInputComponent, QueuePanelComponent],
   template: `
     <div class="studio">
       <section class="form">
         @if (hub.loaded() && hub.activeServer() === null) {
           <div class="card empty">
-            <h2 class="card-title">Connect a Crucible server</h2>
-            <p class="detail">B-Side makes songs with YuE2 on a Crucible server. Paste the server's pairing line in Settings.</p>
-            <div><a class="primary" routerLink="/settings">Open Settings</a></div>
+            <h2 class="card-title">Get a Crucible server</h2>
+            <p class="detail">B-Side makes songs with YuE2 on a Crucible server: install Crucible on this computer, or use one that already runs somewhere.</p>
+            <app-crucible-setup [addByLine]="true" />
           </div>
         } @else {
           @if (studio.pageRefusal(); as refused) {
