@@ -1,65 +1,70 @@
-/* The whole palette, in one place — Foundry's (app/src/styles.scss), token for
-   token, so B-Side reads as its sibling: warm charcoal neutrals, cyan accent,
-   1px borders, small radii. Foundry is dark-only, and so is B-Side.
+/* Night Deck (the B-Side redesign, 2026-10-04): a late-night cassette deck.
+   Warm near-black grounds, one neon cyan for what you can press and what is
+   playing, amber for what is still being made. Dark only.
 
    A component asks for a ROLE (--bg-sunken, --border-subtle); the mapping to a
-   palette entry lives here and only here. */
+   palette entry lives here and only here. The fonts ship with the app
+   (@fontsource, angular.json): the desktop runs offline. */
 :root {
-  --bg-sunken: #0e0d0c;
-  --bg-base: #181715;
-  --bg-elevated: #211f1c;
-  --bg-input: #2a2824;
-  --bg-hover: rgba(255, 255, 255, 0.05);
-  --bg-active: rgba(255, 255, 255, 0.08);
-  --bg-overlay: rgba(24, 23, 21, 0.9);
+  --bg-sunken: #0b0a09;
+  --bg-base: #12100e;
+  --bg-elevated: #1b1815;
+  --bg-input: #1f1b17;
+  --bg-hover: rgba(244, 239, 230, 0.05);
+  --bg-active: rgba(244, 239, 230, 0.08);
+  --bg-overlay: rgba(11, 10, 9, 0.92);
 
-  --border-subtle: #2a2824;
-  --border-default: #403c36;
-  --border-strong: #565149;
+  --border-subtle: #2a2622;
+  --border-default: #3a352f;
+  --border-strong: #4a4239;
 
-  --text-primary: #faf9f7;
-  --text-secondary: #928b7f;
-  --text-tertiary: #706a60;
-  --text-muted: #565149;
+  --text-primary: #f4efe6;
+  --text-secondary: #b3aa9c;
+  --text-tertiary: #9a9183;
+  --text-muted: #6f675c;
   /* For text ON a filled accent: cyan is too bright for white. */
-  --text-inverse: #181715;
+  --text-inverse: #0b0a09;
 
   --accent: #22d3ee;
   --accent-hover: #67e8f9;
   --accent-active: #a5f3fc;
   --accent-strong: #06b6d4;
-  --accent-soft: rgba(6, 182, 212, 0.2);
-  --accent-faint: rgba(6, 182, 212, 0.12);
+  --accent-soft: rgba(34, 211, 238, 0.2);
+  --accent-faint: rgba(34, 211, 238, 0.1);
+  --accent-glow: 0 0 30px rgba(34, 211, 238, 0.4);
 
-  /* Foundry's audio-owner amber. In B-Side it marks the one thing that is
-     different from everything else on screen: the song playing now. */
-  --audio: #f0a860;
+  /* Amber: being made (a job, an album filling in, ON AIR). */
+  --audio: #f2a541;
   --audio-bright: #ffc78a;
-  --audio-soft: rgba(240, 168, 96, 0.15);
+  --audio-soft: rgba(242, 165, 65, 0.15);
 
-  --ok: #4ade80;
+  --ok: #34d399;
   --warn: #fbbf24;
   --error: #f87171;
-  --ok-soft: rgba(74, 222, 128, 0.12);
+  --ok-soft: rgba(52, 211, 153, 0.12);
   --warn-soft: rgba(251, 191, 36, 0.12);
   --error-soft: rgba(248, 113, 113, 0.12);
 
   --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius: 8px;
-  --radius-lg: 12px;
+  --radius-md: 8px;
+  --radius: 10px;
+  --radius-lg: 14px;
 
-  --focus-ring: 0 0 0 2px rgba(34, 211, 238, 0.4);
+  --focus-ring: 0 0 0 2px rgba(34, 211, 238, 0.45);
 
-  --scrollbar-track: #2a2824;
-  --scrollbar-thumb: #06b6d4;
-  --scrollbar-thumb-hover: #22d3ee;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #3a352f;
+  --scrollbar-thumb-hover: #4a4239;
 
-  /* The stacks, not webfonts: the app runs offline, so Segoe UI is what
-     resolves on Windows; Outfit / DM Sans / JetBrains Mono win where present. */
-  --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-body: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  --font-display: 'Big Shoulders Display', 'Arial Narrow', sans-serif;
+  --font-body: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Cascadia Code', Consolas, monospace;
+
+  /* The shell's measures (app.ts). */
+  --sidebar-w: 248px;
+  --panel-w: 320px;
+  --player-h: 84px;
+  --tabs-h: 64px;
 }
 
 * { box-sizing: border-box; }
@@ -69,7 +74,7 @@ html, body {
   margin: 0;
   background: var(--bg-base);
   color: var(--text-primary);
-  font: 13px/1.5 var(--font-body);
+  font: 14px/1.5 var(--font-body);
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -77,10 +82,13 @@ html, body {
 
 h1, h2, h3, h4 {
   font-family: var(--font-display);
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -0.025em;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.01em;
 }
+
+/* Small capitals in the mono face: the tape counter's labels (ON AIR, UP NEXT). */
+.kicker { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-tertiary); }
 
 code, pre, kbd, samp { font-family: var(--font-mono); }
 
@@ -183,26 +191,26 @@ select:disabled { cursor: default; background-image: none; opacity: 0.7; }
 .card {
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
-.card-title { font-family: var(--font-display); font-weight: 600; font-size: 13px; margin: 0; }
+.card-title { font-family: var(--font-display); font-weight: 800; font-size: 24px; letter-spacing: 0.01em; margin: 0; }
 .label {
-  font-size: 10px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.08em; color: var(--text-tertiary);
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500; text-transform: uppercase;
+  letter-spacing: 0.14em; color: var(--text-tertiary);
 }
-.hint { font-size: 11px; color: var(--text-tertiary); margin: 0; }
-.detail { margin: 0; font-size: 12px; color: var(--text-secondary); }
-.mono { font-family: var(--font-mono); word-break: break-all; }
+.hint { font-size: 12px; color: var(--text-tertiary); margin: 0; }
+.detail { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.mono { font-family: var(--font-mono); overflow-wrap: anywhere; }
 
 .primary, .ghost, .danger {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  height: 28px; padding: 0 12px;
-  border-radius: var(--radius-sm);
-  font-size: 12px; font-weight: 500; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 40px; padding: 0 18px;
+  border-radius: 999px;
+  font-size: 14px; font-weight: 600; line-height: 1;
   cursor: pointer;
   white-space: nowrap;
   transition: background-color 100ms cubic-bezier(0, 0, 0.2, 1),
@@ -210,30 +218,53 @@ select:disabled { cursor: default; background-image: none; opacity: 0.7; }
 }
 .primary { border: none; background: var(--accent); color: var(--text-inverse); }
 .primary:hover:not(:disabled) { background: var(--accent-hover); }
-.ghost { background: var(--bg-input); border: 1px solid var(--border-default); color: var(--text-primary); }
+.ghost { background: transparent; border: 1px solid var(--border-strong); color: var(--text-primary); }
 .ghost:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--border-strong); }
 .danger { background: transparent; border: 1px solid var(--error); color: var(--error); }
 .danger:hover:not(:disabled) { background: var(--error-soft); }
 .primary:disabled, .ghost:disabled, .danger:disabled { opacity: 0.5; cursor: not-allowed; }
-.small { height: 24px; padding: 0 9px; font-size: 11px; }
+.small { height: 32px; padding: 0 12px; font-size: 13px; }
+
+/* A tag or choice pill; .on when picked. */
+.chip {
+  display: inline-flex; align-items: center; height: 34px; padding: 0 13px;
+  border: 1px solid var(--border-default); border-radius: 999px;
+  background: transparent; color: var(--text-secondary); font-size: 13px; cursor: pointer;
+}
+.chip:hover:not(:disabled) { border-color: var(--border-strong); color: var(--text-primary); background: transparent; }
+.chip.on { border-color: var(--accent); background: var(--accent); color: var(--text-inverse); }
+
+/* A round icon button. */
+.icon-btn {
+  width: 44px; height: 44px; padding: 0; border: none; border-radius: 50%;
+  background: transparent; color: var(--text-primary);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.icon-btn:hover:not(:disabled) { background: var(--bg-hover); }
+.icon-btn:disabled { opacity: 0.4; cursor: default; }
+.icon-btn.outlined { border: 1px solid var(--border-strong); }
+
+/* The display face, big: page titles (Make, Library). */
+.page-title { font-family: var(--font-display); font-weight: 900; font-size: 44px; line-height: 0.9; margin: 0; }
+.section-title { font-family: var(--font-display); font-weight: 800; font-size: 24px; margin: 0; }
 
 /* A server refusal: its code, then its sentence. */
 .refusal {
   display: flex; flex-direction: column; gap: 2px;
   border: 1px solid var(--error);
   background: var(--error-soft);
-  border-radius: var(--radius-sm);
-  padding: 6px 9px;
-  font-size: 12px;
+  border-radius: var(--radius-md);
+  padding: 8px 11px;
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
 .refusal code { color: var(--error); font-size: 11px; }
 .notice {
   border: 1px solid var(--border-default);
   background: var(--bg-input);
-  border-radius: var(--radius-sm);
-  padding: 6px 9px;
-  font-size: 12px;
+  border-radius: var(--radius-md);
+  padding: 8px 11px;
+  font-size: 13px;
   color: var(--text-secondary);
 }
 
@@ -251,7 +282,7 @@ select:disabled { cursor: default; background-image: none; opacity: 0.7; }
 @keyframes bar-slide { from { left: -30%; } to { left: 100%; } }
 
 /* A switch: a checkbox drawn as a toggle. */
-.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; }
+.switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; }
 .switch input {
   appearance: none; -webkit-appearance: none; width: 30px; height: 17px; margin: 0;
   border-radius: 999px; background: var(--bg-input); border: 1px solid var(--border-default);

@@ -82,6 +82,10 @@ export class PlayerService {
     return current === null ? -1 : this.items().findIndex((item) => item.key === current.key);
   });
   readonly hasPrevious = computed(() => this.current() !== null);
+  /** What plays after the current song, in order (Now Playing's "Up next"). */
+  readonly upNext = computed<PlayItem[]>(() => this.items().slice(this.index() + 1));
+  /** 0..1 through the current song, for the mini player's line. */
+  readonly progress = computed(() => (this.duration() > 0 ? Math.min(1, this.time() / this.duration()) : 0));
   /** Next is offered while there is a song after this one, or (on the playing list) one generating to wait for. */
   readonly hasNext = computed(
     () => this.current() !== null

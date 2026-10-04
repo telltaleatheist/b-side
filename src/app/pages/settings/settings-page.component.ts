@@ -19,7 +19,7 @@ import { ServersCardComponent } from './servers-card.component';
   imports: [ServersCardComponent, HubPickerComponent],
   template: `
     <div class="page">
-      <h1>Settings</h1>
+      <h1 class="page-title">Settings</h1>
 
       @if (hub.kind !== 'desktop') {
         <div class="card">
@@ -128,8 +128,8 @@ import { ServersCardComponent } from './servers-card.component';
   `,
   styles: [`
     :host { display: block; height: 100%; overflow-y: auto; }
-    .page { max-width: 860px; margin: 0 auto; padding: 18px 22px 32px; display: flex; flex-direction: column; gap: 14px; }
-    h1 { font-size: 20px; margin: 0; }
+    .page { max-width: 860px; margin: 0 auto; padding: 18px 20px 32px; display: flex; flex-direction: column; gap: 16px; }
+
     .dir { font-size: 12px; color: var(--text-primary); overflow-wrap: anywhere; }
     .actions { display: flex; gap: 6px; flex-wrap: wrap; }
     .toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; }

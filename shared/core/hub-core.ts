@@ -159,7 +159,7 @@ export class HubCore {
           const take = await this.takes.add({
             client: landed.job.client,
             kind: landed.job.clientKind,
-            title: defaultTitle(params, landed.seed),
+            title: defaultTitle(params),
             extension: landed.extension,
             fill: landed.fill,
             model: SONG_MODEL,

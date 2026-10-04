@@ -4,39 +4,59 @@ import type { RefusalView } from '@shared/types';
 
 import { ConfirmService } from '../../core/confirm.service';
 import { StudioService } from '../../core/studio.service';
+import { IconComponent } from '../icon/icon.component';
 
 /**
- * Presets kept on the server (the playground presets routes): choose one to
- * fill the form, name the form and Save, or Delete the chosen one. A preset is a
- * sound, not a take, so the seed is never saved.
+ * Presets kept on the server (the playground presets routes), as a row of
+ * pills: tap one to fill the form; "Save as preset" names what the form holds
+ * now. A preset is a sound, not a take, so the seed is never saved.
  */
 @Component({
   selector: 'app-preset-bar',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [IconComponent],
   template: `
-    <select aria-label="Presets" (change)="choose($any($event.target).value)">
-      <option value="" [selected]="chosen() === ''">{{ studio.presets().length ? 'Load a preset…' : 'No presets yet' }}</option>
+    <div class="head">
+      <span class="label">Presets</span>
+      <button type="button" class="save-btn" (click)="naming.set(!naming())"><app-icon name="bookmark" [size]="14" />Save as preset</button>
+    </div>
+    @if (naming()) {
+      <form class="naming" (submit)="$event.preventDefault(); save()">
+        <input type="text" maxlength="80" placeholder="Name this sound" aria-label="Preset name"
+               [value]="name()" (input)="name.set($any($event.target).value)" />
+        <button type="submit" class="primary small" [disabled]="busy() || name().trim() === ''">Save</button>
+      </form>
+    }
+    <div class="chips">
       @for (preset of studio.presets(); track preset.name) {
-        <option [value]="preset.name" [selected]="preset.name === chosen()">{{ preset.name }}</option>
+        <button type="button" class="chip" [class.on]="preset.name === chosen()" (click)="choose(preset.name)">{{ preset.name }}</button>
+      } @empty {
+        <span class="hint">No presets yet. Set up a sound you like, then save it here.</span>
       }
-    </select>
-    <button type="button" class="ghost small" [disabled]="chosen() === ''" (click)="remove()">Delete</button>
-    <input type="text" class="name" maxlength="80" placeholder="Preset name"
-           [value]="name()" (input)="name.set($any($event.target).value)" (keydown.enter)="save()" />
-    <button type="button" class="ghost small" [disabled]="busy()" (click)="save()">Save preset</button>
-    @if (said()) { <span class="hint">{{ said() }}</span> }
+    </div>
+    @if (chosen() !== '' || said()) {
+      <div class="foot">
+        @if (said()) { <span class="hint">{{ said() }}</span> }
+        @if (chosen() !== '') { <button type="button" class="link" (click)="remove()">Delete {{ chosen() }}</button> }
+      </div>
+    }
     @if (refusal() ?? studio.presetsRefusal(); as refused) {
       <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
     }
   `,
   styles: [`
-    :host {
-      display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-      padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle);
+    :host { display: flex; flex-direction: column; gap: 10px; }
+    .head { display: flex; align-items: center; justify-content: space-between; }
+    .save-btn {
+      display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
+      border: 1px solid var(--border-default); border-radius: 999px; background: transparent;
+      color: var(--accent); font-size: 12px; font-weight: 600;
     }
-    select { width: 200px; padding-top: 4px; padding-bottom: 4px; }
-    input.name { width: 180px; padding-top: 4px; padding-bottom: 4px; }
-    .refusal { flex-basis: 100%; }
+    .naming { display: flex; gap: 8px; }
+    .naming input { flex: 1; min-width: 0; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .foot { display: flex; align-items: center; gap: 12px; }
+    .link { border: none; background: transparent; padding: 0; color: var(--text-tertiary); font-size: 12px; text-decoration: underline; }
   `],
 })
 export class PresetBarComponent {
@@ -48,6 +68,7 @@ export class PresetBarComponent {
   protected readonly said = signal('');
   protected readonly refusal = signal<RefusalView | null>(null);
   protected readonly busy = signal(false);
+  protected readonly naming = signal(false);
 
   protected choose(name: string): void {
     this.chosen.set(name);
@@ -80,6 +101,7 @@ export class PresetBarComponent {
     this.refusal.set(refusal);
     if (refusal === null) {
       this.chosen.set(wanted);
+      this.naming.set(false);
       this.said.set(`Saved ${wanted}`);
     } else {
       this.said.set('Not saved');

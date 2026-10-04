@@ -1,10 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { RouterLink } from '@angular/router';
 
 import { MAX_BATCH } from '@shared/batch';
+import { ENDED_PHASES } from '@shared/types';
 
 import { CrucibleSetupComponent } from '../../components/crucible-setup/crucible-setup.component';
 import { PresetBarComponent } from '../../components/preset-bar/preset-bar.component';
-import { QueuePanelComponent } from '../../components/queue-panel/queue-panel.component';
+import { IconComponent } from '../../components/icon/icon.component';
 import { TagInputComponent } from '../../components/tag-input/tag-input.component';
 import { bytesText } from '../../core/format';
 import { desktop, HubService } from '../../core/hub.service';
@@ -13,8 +15,11 @@ import { LibraryService } from '../../core/library.service';
 import { StudioService } from '../../core/studio.service';
 
 /**
- * The studio: the song form on the left (presets, style tags, lyrics,
- * instrumental, guidance, seed, how many in a row), the queue on the right.
+ * Make: the song form, Night Deck. Describe it (a small model fills the tags),
+ * or start from a preset; the tags fold away once picked; lyrics, or
+ * instrumental; guidance and seed under Advanced; how many, and Make. What is
+ * being made shows on Listen's playing list.
+ *
  * Everything the form offers — the tag suggestions, the conflicts, the cfg
  * limits, whether this server's YuE2 takes `instrumental` — is the active
  * server's own `yue2-3b` playground page. With no server yet, the form is
@@ -23,158 +28,159 @@ import { StudioService } from '../../core/studio.service';
 @Component({
   selector: 'app-studio-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CrucibleSetupComponent, PresetBarComponent, TagInputComponent, QueuePanelComponent],
+  imports: [RouterLink, CrucibleSetupComponent, PresetBarComponent, TagInputComponent, IconComponent],
   template: `
-    <!-- Phones only (CSS): the form and the playing list are one screen each. -->
-    <div class="panes">
-      <button type="button" [class.on]="pane() === 'form'" (click)="pane.set('form')">Make</button>
-      <button type="button" [class.on]="pane() === 'list'" (click)="pane.set('list')">
-        Playing list ({{ library.takes().length }}{{ jobs.generating() ? ', making…' : '' }})
-      </button>
-    </div>
-    <div class="studio" [class.show-list]="pane() === 'list'">
-      <section class="form">
-        @if (hub.loaded() && hub.activeServer() === null) {
-          <div class="card empty">
-            <h2 class="card-title">Get a Crucible server</h2>
-            <p class="detail">B-Side makes songs with YuE2 on a Crucible server{{ isDesktop ? ': install Crucible on this computer, or use one that already runs somewhere.' : ' that already runs somewhere.' }}</p>
-            <app-crucible-setup [addByLine]="true" />
+    <div class="page">
+      <h1 class="page-title">Make</h1>
+      @if (hub.loaded() && hub.activeServer() === null) {
+        <div class="card">
+          <h2 class="card-title">Get a Crucible server</h2>
+          <p class="detail">B-Side makes songs with YuE2 on a Crucible server{{ isDesktop ? ': install Crucible on this computer, or use one that already runs somewhere.' : ' that already runs somewhere.' }}</p>
+          <app-crucible-setup [addByLine]="true" />
+        </div>
+      } @else {
+        @if (studio.pageRefusal(); as refused) {
+          <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+          <div><button type="button" class="ghost small" (click)="studio.reload()">Try again</button></div>
+        }
+        @if (studio.page(); as page) {
+          @if (page.standing === 'download') {
+            <div class="notice">{{ page.reason }}{{ downloadSize() }}. You can press Make now.</div>
+          }
+          @if (!page.available) {
+            <div class="refusal"><code>not_ready</code><span>{{ page.reason }}</span></div>
+          }
+        } @else if (studio.loadingPage()) {
+          <p class="hint">Reading the song page from {{ hub.activeServer()?.name }}…</p>
+        }
+
+        <form class="field" (submit)="$event.preventDefault(); studio.describe()">
+          <label class="label" for="describe">Describe it</label>
+          <textarea id="describe" rows="2" maxlength="600" class="describe"
+                    placeholder="rainy 90s trip-hop, vinyl crackle, a little late-night jazz"
+                    [value]="studio.description()" (input)="studio.description.set($any($event.target).value)"></textarea>
+          <div class="describe-foot">
+            <button type="submit" class="ghost small" [disabled]="studio.describing() || studio.description().trim() === ''">
+              {{ studio.describing() ? 'Writing tags…' : 'Fill in the tags' }}
+            </button>
+            <span class="hint">{{ studio.tagModel }} on the server picks the tags; it swaps the song model out for a minute.</span>
           </div>
-        } @else {
-          @if (studio.pageRefusal(); as refused) {
-            <div class="refusal">
-              <code>{{ refused.code }}</code><span>{{ refused.message }}</span>
-            </div>
-            <div><button type="button" class="ghost small" (click)="studio.reload()">Try again</button></div>
+          @if (studio.described(); as said) {
+            @for (clash of said.clashes; track clash) { <div class="notice">{{ clash }}</div> }
           }
-          @if (studio.page(); as page) {
-            @if (page.standing === 'download') {
-              <div class="notice">
-                {{ page.reason }}{{ downloadSize() }}. You can press Generate now.
-              </div>
-            }
-            @if (!page.available) {
-              <div class="refusal"><code>not_ready</code><span>{{ page.reason }}</span></div>
-            }
-          } @else if (studio.loadingPage()) {
-            <p class="hint">Reading the song page from {{ hub.activeServer()?.name }}…</p>
+          @if (studio.describeRefusal(); as refused) {
+            <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
           }
+        </form>
 
-          <app-preset-bar />
-          <form class="field describe" (submit)="$event.preventDefault(); studio.describe()">
-            <label class="label" for="describe">Describe the music</label>
-            <div class="describe-row">
-              <input id="describe" type="text" maxlength="600" autocomplete="off"
-                     placeholder="e.g. in the style of the DOS game One Must Fall 2097 — or — smooth lo-fi with jazz sax"
-                     [value]="studio.description()" (input)="studio.description.set($any($event.target).value)" />
-              <button type="submit" class="ghost" [disabled]="studio.describing() || studio.description().trim() === ''">
-                {{ studio.describing() ? 'Writing tags…' : 'Fill in the tags' }}
-              </button>
-            </div>
-            <p class="hint">A small model ({{ studio.tagModel }}) on the server writes the style tags (and turns on Instrumental when you describe music without singing). It replaces the tags below. The server holds one model at a time, so this swaps the song model out; the next song loads it again.</p>
-            @if (studio.described(); as said) {
-              <p class="hint">Written in {{ said.seconds.toFixed(1) }} s.</p>
-              @for (clash of said.clashes; track clash) { <div class="notice">{{ clash }}</div> }
-            }
-            @if (studio.describeRefusal(); as refused) {
-              <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
-            }
-          </form>
-          <app-tag-input />
+        <app-preset-bar />
 
+        <details class="fold" [open]="studio.tags().length === 0">
+          <summary>
+            <span class="fold-name">Tags</span>
+            <span class="fold-sum">{{ studio.tags().length ? studio.tags().join(' · ') : 'none picked yet' }}</span>
+            <app-icon name="down" [size]="18" class="chev" />
+          </summary>
+          <div class="fold-body"><app-tag-input /></div>
+        </details>
+
+        @if (studio.page()?.instrumental !== false) {
+          <label class="switch" title="YuE2 writes the melody, then plays it on an instrument instead of singing it">
+            <input type="checkbox" [checked]="studio.instrumental()" (change)="studio.instrumental.set($any($event.target).checked)" />
+            Instrumental (no vocals)
+          </label>
+        }
+        @if (!studio.instrumental()) {
           <div class="field">
             <label class="label" for="lyrics">Lyrics</label>
-            <textarea id="lyrics" rows="12" spellcheck="true"
-                      [disabled]="studio.instrumental()"
+            <textarea id="lyrics" rows="10" spellcheck="true"
                       [placeholder]="lyricsPlaceholder()"
                       [value]="studio.lyrics()"
                       (input)="studio.lyrics.set($any($event.target).value)"></textarea>
             @if (studio.page()?.lyricsHint; as hint) { <p class="hint">{{ hint }}</p> }
           </div>
+        }
 
-          <div class="row">
-            @if (studio.page()?.instrumental !== false) {
-              <label class="switch" title="YuE2 writes the melody, then plays it on an instrument instead of singing it">
-                <input type="checkbox" [checked]="studio.instrumental()" (change)="studio.instrumental.set($any($event.target).checked)" />
-                Instrumental (no vocals)
-              </label>
-            }
-          </div>
-
-          <div class="row numbers">
-            <label class="field narrow">
+        <details class="fold">
+          <summary>
+            <span class="fold-name">Advanced</span>
+            <span class="fold-sum">guidance {{ studio.cfg() || 'default' }} · seed {{ studio.seed() || 'random' }}</span>
+            <app-icon name="down" [size]="18" class="chev" />
+          </summary>
+          <div class="fold-body numbers">
+            <label class="field">
               <span class="label">Guidance (cfg)</span>
               <input type="number" inputmode="decimal"
                      [min]="studio.page()?.cfg?.min ?? 0" [max]="studio.page()?.cfg?.max ?? null" [step]="studio.page()?.cfg?.step ?? 0.1"
                      [value]="studio.cfg()" (input)="studio.cfg.set($any($event.target).value)" />
               @if (studio.page()?.cfg?.max; as max) { <span class="hint">up to {{ max }}; above 1 follows the tags and lyrics harder</span> }
             </label>
-            <label class="field narrow">
+            <label class="field">
               <span class="label">Seed</span>
               <input type="number" inputmode="numeric" min="0" step="1" placeholder="random"
                      [value]="studio.seed()" (input)="studio.seed.set($any($event.target).value)" />
               <span class="hint">{{ studio.page()?.seed?.hint ?? 'leave it blank for a new one each time' }}</span>
             </label>
           </div>
+        </details>
 
-          <div class="row go">
-            <button type="button" class="primary generate" [disabled]="studio.sending() || hub.activeServer() === null" (click)="studio.generate()">
-              Generate
-            </button>
-            <label class="count">
-              <input type="number" min="1" [max]="maxBatch" step="1" inputmode="numeric"
-                     [value]="studio.count()" (input)="studio.count.set(+$any($event.target).value)" />
-              <span>in a row</span>
-            </label>
-            @if (studio.count() > 1 && studio.seed().trim() !== '') {
-              <span class="hint">seeds {{ studio.seed() }}, {{ +studio.seed() + 1 }}, …</span>
-            }
+        <div class="go">
+          <div class="count" role="group" aria-label="How many in a row">
+            <button type="button" class="icon-btn" aria-label="One fewer" [disabled]="studio.count() <= 1" (click)="studio.count.set(studio.count() - 1)">–</button>
+            <span class="mono">{{ studio.count() }}×</span>
+            <button type="button" class="icon-btn" aria-label="One more" [disabled]="studio.count() >= maxBatch" (click)="studio.count.set(studio.count() + 1)">+</button>
           </div>
-          @if (studio.generateRefusal(); as refused) {
-            <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
-          }
-          <p class="hint">
-            Each song is saved to your library as soon as it finishes. A refusal from the server shows on its row in the queue.
-          </p>
+          <button type="button" class="make" [disabled]="studio.sending() || hub.activeServer() === null" (click)="studio.generate()">
+            {{ studio.count() > 1 ? 'Make ' + studio.count() + ' songs' : 'Make the song' }}
+          </button>
+        </div>
+        @if (studio.count() > 1 && studio.seed().trim() !== '') {
+          <p class="hint center">Seeds {{ studio.seed() }}, {{ +studio.seed() + 1 }}, …</p>
         }
-      </section>
-      <app-queue-panel />
+        @if (studio.generateRefusal(); as refused) {
+          <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+        }
+        @if (jobs.generating()) {
+          <a class="making" routerLink="/"><span class="kicker">Making now</span><span>{{ makingCount() }} on the playing list</span><app-icon name="chevron" [size]="16" /></a>
+        }
+      }
     </div>
   `,
   styles: [`
-    :host { display: block; height: 100%; }
-    .panes { display: none; }
-    .studio { display: grid; grid-template-columns: minmax(0, 1fr) 380px; height: 100%; }
-    .form {
-      overflow-y: auto; min-height: 0;
-      padding: 16px 22px 28px;
-      display: flex; flex-direction: column; gap: 14px;
+    .page { max-width: 720px; margin: 0 auto; padding: 18px 20px 32px; display: flex; flex-direction: column; gap: 22px; }
+    .field { display: flex; flex-direction: column; gap: 8px; }
+    textarea { resize: vertical; font-family: var(--font-body); line-height: 1.45; }
+    .describe { font-size: 18px; padding: 14px; border-radius: var(--radius-lg); min-height: 78px; }
+    .describe-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    #lyrics { min-height: 160px; border-radius: var(--radius-lg); padding: 12px 14px; }
+    .fold { border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: #171412; }
+    .fold summary { display: flex; align-items: center; gap: 10px; padding: 14px; cursor: pointer; list-style: none; }
+    .fold summary::-webkit-details-marker { display: none; }
+    .fold-name { font-size: 15px; font-weight: 600; }
+    .fold-sum { flex: 1; min-width: 0; font-size: 13px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .chev { color: var(--text-tertiary); transition: transform 150ms ease; }
+    .fold[open] .chev { transform: rotate(180deg); }
+    .fold-body { padding: 0 14px 14px; }
+    .numbers { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+    .go { display: flex; align-items: center; gap: 12px; }
+    .count { display: flex; align-items: center; gap: 2px; border: 1px solid var(--border-default); border-radius: 999px; padding: 2px; }
+    .count .icon-btn { width: 40px; height: 40px; font-size: 20px; }
+    .count .mono { min-width: 30px; text-align: center; font-size: 14px; }
+    .make {
+      flex: 1; height: 58px; border: none; border-radius: var(--radius-lg);
+      background: var(--accent); color: var(--text-inverse); box-shadow: 0 0 34px rgba(34, 211, 238, 0.35);
+      font-family: var(--font-display); font-size: 24px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
     }
-    .form > * { max-width: 920px; width: 100%; }
-    .empty { margin-top: 20px; }
-    .field { display: flex; flex-direction: column; gap: 6px; }
-    .describe-row { display: flex; gap: 8px; }
-    .describe-row input { flex: 1; min-width: 0; }
-    textarea { resize: vertical; min-height: 140px; font-family: var(--font-body); line-height: 1.5; }
-    textarea:disabled { opacity: 0.55; }
-    .row { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-    .numbers .narrow { width: 220px; }
-    .go { align-items: center; }
-    .generate { height: 34px; padding: 0 22px; font-size: 13px; }
-    .count { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
-    .count input { width: 64px; }
-    @media (max-width: 1100px) { .studio { grid-template-columns: minmax(0, 1fr) 320px; } }
-    @media (max-width: 760px) {
-      :host { overflow-y: auto; }
-      .studio { display: block; height: auto; }
-      .form { overflow: visible; padding: 14px 16px 18px; }
-      app-queue-panel { height: auto; border-left: 0; }
-      .studio:not(.show-list) app-queue-panel, .studio.show-list .form { display: none; }
-      .panes { display: flex; gap: 6px; padding: 8px 16px 0; }
-      .panes button { flex: 1; height: 30px; font-size: 12.5px; }
-      .panes button.on { border-color: var(--accent); color: var(--accent); background: var(--accent-faint); }
-      .describe-row { flex-direction: column; }
+    .make:hover:not(:disabled) { background: var(--accent-hover); }
+    .make:disabled { opacity: 0.5; box-shadow: none; }
+    .center { text-align: center; }
+    .making {
+      display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius-lg);
+      border: 1px solid #5a4126; background: #1d1711; color: var(--text-primary); text-decoration: none; font-size: 14px;
     }
+    .making .kicker { color: var(--audio); }
+    .making span:nth-child(2) { flex: 1; }
+    @media (min-width: 960px) { .page { padding: 32px 40px; } }
   `],
 })
 export class StudioPageComponent {
@@ -183,8 +189,7 @@ export class StudioPageComponent {
   protected readonly isDesktop = desktop !== null;
   protected readonly library = inject(LibraryService);
   protected readonly jobs = inject(JobsService);
-  /** Which half a phone shows. */
-  protected readonly pane = signal<'form' | 'list'>('form');
+  protected readonly makingCount = computed(() => this.jobs.jobs().filter((job) => !ENDED_PHASES.includes(job.phase)).length);
   protected readonly maxBatch = MAX_BATCH;
 
   protected readonly lyricsPlaceholder = computed(() =>

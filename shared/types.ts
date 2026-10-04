@@ -289,7 +289,63 @@ export interface Playlist {
   readonly name: string;
   readonly songs: readonly string[];
   readonly createdAt: string;
+  /** Set when B-Side made this playlist as an album (Make → Album). */
+  readonly album?: AlbumMeta;
 }
+
+/** One track of an album's plan, as the chat model wrote it. */
+export interface AlbumTrack {
+  readonly title: string;
+  /** The album's tags with this track's own turn (tempo, mood, one instrument). */
+  readonly tags: string;
+  /** Sung albums: the lyrics, in YuE's section tags. Null when instrumental. */
+  readonly lyrics: string | null;
+}
+
+/** What the chat model planned in its one call. */
+export interface AlbumPlan {
+  readonly title: string;
+  readonly artist: string;
+  /** One line about the record, for its page. */
+  readonly blurb: string;
+  /** What the image model is asked to paint. */
+  readonly coverPrompt: string;
+  readonly tracks: readonly AlbumTrack[];
+}
+
+export type AlbumStage = 'planning' | 'cover' | 'making' | 'done' | 'stopped' | 'failed';
+
+/** An album's details beside its playlist: who, what was asked, how far it has got. */
+export interface AlbumMeta {
+  readonly artist: string;
+  readonly blurb: string;
+  /** The painted cover's file name in the library folder, once painted. */
+  readonly cover: string | null;
+  /** What the person asked for. */
+  readonly ask: AlbumAsk;
+  readonly plan: AlbumPlan | null;
+  readonly stage: AlbumStage;
+  /** How many of the plan's tracks have been sent to the server (the next one to send is this index). */
+  readonly sent: number;
+  /** Seconds of music made so far. */
+  readonly madeS: number;
+  /** Why it stopped, when it failed. */
+  readonly refusal: RefusalView | null;
+  /** Which server makes it, and which chat model wrote it. */
+  readonly server: string;
+  readonly writer: string | null;
+}
+
+/** Make → Album: what the person picks. */
+export interface AlbumAsk {
+  readonly description: string;
+  readonly tags: readonly string[];
+  readonly minutes: number;
+  readonly sung: boolean;
+}
+
+/** The lengths an album can be. */
+export const ALBUM_MINUTES: readonly number[] = [30, 60, 90];
 
 export interface LibraryView {
   readonly dir: string;
