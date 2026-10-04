@@ -4,7 +4,8 @@ import { ALBUM_SPACE_GB, type HubPreferences, type HubSettingsView, type Refusal
 
 import { copyText } from '../../core/clipboard';
 import { CloudService } from '../../core/cloud.service';
-import { desktop, HubService, parseHubLink } from '../../core/hub.service';
+import { desktop, HubService, isNative, parseHubLink } from '../../core/hub.service';
+import { PlayerService } from '../../core/player.service';
 import { LibraryService } from '../../core/library.service';
 import { HubPickerComponent } from '../../components/hub-picker/hub-picker.component';
 import { ServersCardComponent } from './servers-card.component';
@@ -73,6 +74,23 @@ import { ServersCardComponent } from './servers-card.component';
       }
 
       <app-servers-card />
+
+      @if (!isNative) {
+        <div class="card">
+          <h2 class="card-title">Output</h2>
+          <p class="detail">Where B-Side plays on this {{ isDesktop ? 'computer' : 'browser' }}. "System default" follows whatever the computer is set to; a device you pick here is used even when the default changes.</p>
+          <label class="field">
+            <span class="label">Play through</span>
+            <select aria-label="Output device" (change)="player.useOutput($any($event.target).value)">
+              <option value="" [selected]="player.outputDevice() === ''">System default</option>
+              @for (device of outputs(); track device.deviceId) {
+                <option [value]="device.deviceId" [selected]="device.deviceId === player.outputDevice()">{{ device.label || 'Unnamed output' }}</option>
+              }
+            </select>
+          </label>
+          @if (player.outputProblem(); as problem) { <div class="notice">{{ problem }}</div> }
+        </div>
+      }
 
       <div class="card">
         <h2 class="card-title">Song format</h2>
@@ -186,6 +204,7 @@ export class SettingsPageComponent {
   constructor() {
     void this.load();
     void this.loadPreferences();
+    void this.readOutputs();
   }
 
   private async loadPreferences(): Promise<void> {
@@ -195,6 +214,16 @@ export class SettingsPageComponent {
   }
 
   protected readonly spaceChoices = ALBUM_SPACE_GB;
+  protected readonly player = inject(PlayerService);
+  protected readonly isNative = isNative;
+  /** This computer's audio outputs, as the browser engine lists them (the "default" entries are the System default row). */
+  protected readonly outputs = signal<MediaDeviceInfo[]>([]);
+
+  private async readOutputs(): Promise<void> {
+    if (isNative || !navigator.mediaDevices?.enumerateDevices) return;
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    this.outputs.set(devices.filter((d) => d.kind === 'audiooutput' && d.deviceId !== 'default' && d.deviceId !== 'communications'));
+  }
   protected readonly cloud = inject(CloudService);
   protected readonly cloudLink = signal('');
   protected readonly cloudLinkWrong = signal(false);

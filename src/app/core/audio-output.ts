@@ -112,6 +112,21 @@ export class HtmlAudioOutput implements AudioOutput {
     this.current = null;
   }
 
+  /**
+   * Play through one output device ('' = the system default, following
+   * whatever the computer is set to). Answers why it could not, or null.
+   */
+  async setDevice(deviceId: string): Promise<string | null> {
+    const element = this.audio as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
+    if (typeof element.setSinkId !== 'function') return 'This window cannot choose an output device.';
+    try {
+      await element.setSinkId(deviceId);
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }
+
   private index(): number {
     const current = this.current;
     return current === null ? -1 : this.items.findIndex((item) => item.key === current.key);

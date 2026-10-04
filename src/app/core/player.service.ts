@@ -9,6 +9,8 @@ import { JobsService } from './jobs.service';
 import { LibraryService } from './library.service';
 import { OfflineService } from './offline.service';
 
+const STORED_OUTPUT = 'bside.output';
+
 /** What the player plays from: this device's playing list, or one saved playlist. */
 export type PlaySource =
   | { readonly kind: 'takes' }
@@ -71,6 +73,10 @@ export class PlayerService {
   readonly problem = signal<string | null>(null);
 
   private readonly output: AudioOutput;
+  /** The output device chosen on this computer ('' = the system default). Desktop and browsers only. */
+  readonly outputDevice = signal('');
+  /** Why the chosen device is not the one playing, when it is not. */
+  readonly outputProblem = signal<string | null>(null);
 
   /** The list being played, in play order. */
   readonly items = computed<PlayItem[]>(() => {
@@ -131,6 +137,17 @@ export class PlayerService {
       error: (message: string): void => this.problem.set(message),
     };
     this.output = isNative ? new NativeAudioOutput(listener) : new HtmlAudioOutput(listener);
+    if (!isNative) {
+      let stored = '';
+      try {
+        stored = localStorage.getItem(STORED_OUTPUT) ?? '';
+      } catch {
+        // Not kept: the system default.
+      }
+      if (stored !== '') void this.useOutput(stored, false);
+      // A device unplugged while chosen: fall back to the default and say so; plugged back in, use it again.
+      navigator.mediaDevices?.addEventListener('devicechange', () => void this.checkOutput());
+    }
 
     // The list changed under the player (a take landed or cleared, a playlist was edited):
     // the output's queue follows; a song that left the list stops.
@@ -155,6 +172,41 @@ export class PlayerService {
   /** Play a take from this device's playing list. */
   playTake(take: Take): void {
     this.play(itemOfTake(take), { kind: 'takes' });
+  }
+
+  /**
+   * Play through one output device on this computer ('' = the system default)
+   * and remember it, so B-Side keeps to that route whatever the computer's
+   * default becomes.
+   */
+  async useOutput(deviceId: string, remember = true): Promise<void> {
+    if (!(this.output instanceof HtmlAudioOutput)) return;
+    if (remember) {
+      try {
+        if (deviceId === '') localStorage.removeItem(STORED_OUTPUT);
+        else localStorage.setItem(STORED_OUTPUT, deviceId);
+      } catch {
+        // Kept for this run only.
+      }
+    }
+    this.outputDevice.set(deviceId);
+    const problem = await this.output.setDevice(deviceId);
+    this.outputProblem.set(problem === null ? null : `B-Side could not play through the chosen output (${problem}); it is using the system default.`);
+    if (problem !== null) await this.output.setDevice('');
+  }
+
+  /** The chosen device is still there? Else the default, said; back again, it is used again. */
+  private async checkOutput(): Promise<void> {
+    const wanted = this.outputDevice();
+    if (wanted === '' || !(this.output instanceof HtmlAudioOutput)) return;
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const there = devices.some((device) => device.kind === 'audiooutput' && device.deviceId === wanted);
+    if (!there) {
+      await this.output.setDevice('');
+      this.outputProblem.set('The chosen output is not connected; B-Side is using the system default until it is back.');
+    } else {
+      await this.useOutput(wanted, false);
+    }
   }
 
   /** Play a cloud playlist from `song` (or its first song). */
