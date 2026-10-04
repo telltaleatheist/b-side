@@ -27,6 +27,7 @@
  */
 
 import {
+  CrucibleError,
   CrucibleRefused,
   CrucibleUnreachable,
   isTaskLineProgress,
@@ -106,6 +107,21 @@ interface PendingEntry {
 
 function pause(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * A connection that dropped, as opposed to an answer. `CrucibleUnreachable` is
+ * the client's own word for it, but a stream that dies MID-READ (the phone
+ * locked, the app went to the background, the Wi-Fi changed) reaches here as the
+ * platform's raw error — WebKit's `TypeError: Load failed`, Node's `terminated` —
+ * because the client does not wrap errors from reading the body. Anything that
+ * is neither the client's errors nor B-Side's own `Refusal` is that: follow
+ * again (the job's own status is asked first, so a job that really ended is
+ * still seen as ended).
+ */
+function dropped(error: unknown): boolean {
+  if (error instanceof CrucibleUnreachable) return true;
+  return !(error instanceof CrucibleError) && !(error instanceof Refusal);
 }
 
 function isInstalling(error: unknown): error is CrucibleRefused & { details: InstallingDetails } {
@@ -418,7 +434,7 @@ export class JobRunner {
           this.publish(job);
         }
       } catch (error) {
-        if (!(error instanceof CrucibleUnreachable)) return refusalOf(error);
+        if (!dropped(error)) return refusalOf(error);
       }
       job.view.message = 'Lost the server while it installs; reconnecting';
       this.publish(job);
@@ -476,7 +492,7 @@ export class JobRunner {
           this.publish(job);
         }
       } catch (error) {
-        if (!(error instanceof CrucibleUnreachable)) {
+        if (!dropped(error)) {
           this.finish(job, 'failed', refusalOf(error));
           return;
         }
@@ -501,7 +517,7 @@ export class JobRunner {
     try {
       status = await this.clientOf(job).job(jobId);
     } catch (error) {
-      if (error instanceof CrucibleUnreachable) return false;
+      if (dropped(error)) return false;
       this.finish(job, 'failed', refusalOf(error));
       return true;
     }
@@ -539,7 +555,7 @@ export class JobRunner {
           try {
             return await this.fetchAudio(job.server, jobId, result.artifact, file);
           } catch (error) {
-            if (!(error instanceof CrucibleUnreachable)) throw error;
+            if (!dropped(error)) throw error;
             job.view.message = 'Fetching the song: the server is not answering, trying again';
             this.publish(job);
             await pause(RECONNECT_MS);
