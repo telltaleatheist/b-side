@@ -14,9 +14,13 @@ npm install
 npm run electron:dev     # ng serve on port 4270 + Electron --dev
 ```
 
-Then open **Settings**, paste a Crucible pairing line
-(`crucible://<name>@<host>:<port>/#<token>`), or enter an address and token by hand, and
-press **Test connection**.
+With no Crucible server yet, the studio offers the one thing this computer needs:
+**Install Crucible** (it installs, starts and connects Crucible, with its progress as it
+goes, and never shows a command), **Start Crucible** when it is installed and stopped, or
+**Use the Crucible on this computer** when it is running. Or paste an existing server's
+pairing line (`crucible://<name>@<host>:<port>/#<token>`) there or in **Settings**, or
+enter an address and token by hand, and press **Test connection**. Installing (and
+removing) Crucible is done only from the desktop app, never from a phone or browser tab.
 
 Other scripts: `npm run typecheck`, `npm run build` (main process to `dist/electron`,
 renderer to `dist/renderer`), `npm run electron:prod` (build, then run the built app),
@@ -56,11 +60,13 @@ electron/   main process: window, IPC, Crucible calls, job runner, library, serv
   jobs.ts          submit / install / follow / land, pending.json for restarts
   library.ts       songs on disk (audio + sidecar)
   servers.ts       <userData>/servers.json (tokens stay in main)
+  crucible-install*.ts, crucible-local.ts, crucible-uninstall.ts
+                   the Crucible on this computer, through @crucible/bootstrap (desktop only)
   song-protocol.ts bside-song:// with range requests, for the player
 shared/     types and pure logic compiled by both programs (tags, batch seeds, the bridge API)
 src/        Angular renderer: studio (form + queue), settings, player bar
 test/       bun tests: tags/conflicts, batch seeds, server registry + pairing, library
-vendor/     @crucible/client tarball from the Crucible GitHub release
+vendor/     @crucible/client and @crucible/bootstrap tarballs from the Crucible GitHub release
 ```
 
 ## Later
