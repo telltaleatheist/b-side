@@ -50,6 +50,9 @@ import { PlayerService } from '../../core/player.service';
             @if (playlist.album; as album) {
               @if (album.artist) { <span class="head-artist">{{ album.artist }}</span> }
               @if (album.blurb) { <span class="head-blurb">{{ album.blurb }}</span> }
+              @if (album.plan?.core || album.ask.tags.length) {
+                <span class="head-sound"><span class="kicker">Sound</span> {{ album.plan?.core || album.ask.tags.join(', ') }}</span>
+              }
               <span class="head-sub">{{ album.ask.sung ? 'Sung' : 'Instrumental' }} · {{ songs().length }} {{ songs().length === 1 ? 'track' : 'tracks' }}{{ total() }} of {{ album.ask.minutes }} min@if (album.writer) { · written by {{ album.writer }}}</span>
               @if (busy(album.stage)) {
                 <div class="bar album-bar"><span [style.width.%]="albumShare(album) * 100"></span></div>
@@ -68,7 +71,7 @@ import { PlayerService } from '../../core/player.service';
                 </button>
               }
               @if (!isCloud() && playlist.album && busy(playlist.album.stage)) {
-                <button type="button" class="ghost" (click)="stopAlbum(playlist)">Stop making</button>
+                <button type="button" class="ghost stop" (click)="stopAlbum(playlist)"><app-icon name="close" [size]="16" />Stop making it</button>
               }
               @if (!isCloud()) {
                 <button type="button" class="icon-btn outlined" aria-label="Rename" title="Rename" (click)="renaming.set('playlist')"><app-icon name="edit" [size]="18" /></button>
@@ -195,6 +198,8 @@ import { PlayerService } from '../../core/player.service';
     .head-title { font-family: var(--font-display); font-weight: 900; font-size: 44px; line-height: .92; margin: 0; overflow-wrap: anywhere; }
     .head-sub { font-size: 13px; color: var(--text-tertiary); }
     .head-artist { font-size: 16px; color: var(--text-primary); }
+    .head-sound { font-size: 13px; color: var(--text-secondary); }
+    .ghost.stop { border-color: var(--audio); color: var(--audio); }
     .head-blurb { font-size: 14px; color: var(--text-secondary); font-style: italic; }
     .amber { color: var(--audio) !important; }
     .album-bar > span { background: linear-gradient(90deg, var(--accent), var(--audio)); }

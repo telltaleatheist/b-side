@@ -78,19 +78,20 @@ function trackCount(minutes: number): number {
 const PLAN_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['title', 'artist', 'blurb', 'coverPrompt', 'tracks'],
+  required: ['title', 'artist', 'blurb', 'coverPrompt', 'core', 'tracks'],
   properties: {
     title: { type: 'string' },
     artist: { type: 'string' },
     blurb: { type: 'string' },
     coverPrompt: { type: 'string' },
+    core: { type: 'string' },
     tracks: {
       type: 'array',
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['title', 'tags'],
-        properties: { title: { type: 'string' }, tags: { type: 'string' } },
+        required: ['title', 'turn'],
+        properties: { title: { type: 'string' }, turn: { type: 'string' } },
       },
     },
   },
@@ -124,9 +125,11 @@ function planPrompt(ask: AlbumAsk, count: number, page: SongPage | null): string
     'artist: an invented band or artist name that fits the sound, not a real artist.',
     'blurb: one sentence about the record, like a liner note.',
     'coverPrompt: a vivid description of the album cover art for an image model: subject, colours, style, mood. No words, letters or text in the image.',
-    'tracks: each title is a creative song name (no numbering). Each tags is a comma-separated list of style tags for that track:',
-    '  keep the album\'s core genre and sound on every track, and give each track its own turn (tempo, mood, one instrument or texture) so the record hangs together without repeating itself.',
-    ask.sung ? '  include a vocal tag on each sung track (for example soft female voice, raspy male vocal).' : '  every track is instrumental: end each tags list with "instrumental".',
+    ask.tags.length > 0
+      ? `core: repeat exactly these tags, which every track keeps unchanged: ${ask.tags.join(', ')}`
+      : 'core: the album\'s sound as 6-12 comma-separated style tags (genre, mood, instruments, tempo), kept on every track.',
+    'tracks: each title is a creative song name (no numbering). Each turn is 2-4 comma-separated style tags ADDED to the core for that track only (a tempo, a mood, one instrument or texture), so the record hangs together without repeating itself. Never contradict the core.',
+    ask.sung ? '  on each sung track, the turn includes a vocal tag (for example soft female voice, raspy male vocal).' : '  the album is instrumental: no vocal tags in any turn.',
     vocabulary,
   ].join('\n');
 }
@@ -158,23 +161,45 @@ export async function writePlan(client: CrucibleClient, writer: string, ask: Alb
     ],
   });
   if (answer.finishReason === 'length') throw new Refusal('plan_truncated', `${writer} ran out of room planning the album; make it again.`);
-  let parsed: { title: string; artist: string; blurb: string; coverPrompt: string; tracks: { title: string; tags: string }[] };
+  let parsed: { title: string; artist: string; blurb: string; coverPrompt: string; core: string; tracks: { title: string; turn: string }[] };
   try {
     parsed = JSON.parse(answer.content) as typeof parsed;
   } catch {
     throw new Refusal('plan_unreadable', `${writer} answered something that was not an album plan; make it again.`);
   }
+  // The person's tags ARE the sound (a preset, picked chips): the writer only adds each track's turn.
+  const core = ask.tags.length > 0 ? ask.tags.join(', ') : (typeof parsed.core === 'string' ? parsed.core.trim() : '');
   const tracks = parsed.tracks
-    .filter((t) => typeof t.title === 'string' && t.title.trim() !== '' && typeof t.tags === 'string')
-    .map((t): AlbumTrack => ({ title: t.title.trim(), tags: t.tags.trim(), lyrics: null }));
+    .filter((t) => typeof t.title === 'string' && t.title.trim() !== '')
+    .map((t, at): AlbumTrack => ({
+      title: t.title.trim(),
+      tags: trackTags(core, typeof t.turn === 'string' ? t.turn : '', ask.sung && at >= OPENERS),
+      lyrics: null,
+    }));
   if (tracks.length === 0) throw new Refusal('plan_empty', `${writer} planned no tracks; make it again.`);
   return {
     title: parsed.title.trim() || 'Untitled',
     artist: parsed.artist.trim() || 'Unknown Artist',
     blurb: parsed.blurb.trim(),
     coverPrompt: parsed.coverPrompt.trim(),
+    core,
     tracks,
   };
+}
+
+/** A track's tags: the core, then its turn's new tags (none repeated); instrumental unless it is sung. */
+export function trackTags(core: string, turn: string, sung: boolean): string {
+  const tags = core.split(',').map((t) => t.trim()).filter((t) => t !== '');
+  const seen = new Set(tags.map((t) => t.toLowerCase()));
+  for (const extra of turn.split(',').map((t) => t.trim()).filter((t) => t !== '')) {
+    if (seen.has(extra.toLowerCase())) continue;
+    if (!sung && /vocal|voice|singing|sung|choir/i.test(extra)) continue;
+    seen.add(extra.toLowerCase());
+    tags.push(extra);
+  }
+  const vocalFree = /(^|, )(instrumental|no vocals)(,|$)/i;
+  if (sung) return tags.filter((t) => !/^(instrumental|no vocals|no singing)$/i.test(t)).join(', ');
+  return vocalFree.test(tags.join(', ')) ? tags.join(', ') : [...tags, 'instrumental'].join(', ');
 }
 
 /** Lyrics for some of a plan's tracks, by title. */
@@ -216,7 +241,7 @@ export interface AlbumHooks {
   /** Paint the cover and file it beside the album; answers its file name. */
   paint(id: string, server: StoredServer, model: string, prompt: string): Promise<string>;
   /** Send one track to the server, tagged with its album and place. */
-  render(id: string, track: number, server: StoredServer, params: { tags: string; lyrics?: string; instrumental: boolean }): void;
+  render(id: string, track: number, server: StoredServer, params: { tags: string; lyrics?: string; instrumental: boolean; cfg?: number }): void;
   /** How many of this album's tracks are on the server and not ended. */
   inFlight(id: string): number;
   /** Name the album's first songs (made before the plan had names), in order. */
@@ -283,7 +308,11 @@ export class AlbumMaker {
         // the server before any chat model runs, made straight from what was asked.
         if (meta.openers == null) {
           for (let track = 0; track < OPENERS; track += 1) {
-            this.hooks.render(id, track, server, { tags: openerTags(meta.ask), instrumental: true });
+            this.hooks.render(id, track, server, {
+              tags: openerTags(meta.ask),
+              instrumental: true,
+              ...(meta.ask.cfg != null ? { cfg: meta.ask.cfg } : {}),
+            });
           }
           meta = { ...meta, openers: OPENERS, sent: OPENERS };
           await this.hooks.update(id, meta);
@@ -350,7 +379,12 @@ export class AlbumMaker {
     while (flying < AHEAD && sent < meta.plan.tracks.length && meta.madeS + flying * TYPICAL_TRACK_S < target) {
       const track = meta.plan.tracks[sent] as AlbumTrack;
       const sung = meta.ask.sung && track.lyrics !== null;
-      this.hooks.render(id, sent, server, { tags: track.tags, instrumental: !sung, ...(sung ? { lyrics: track.lyrics as string } : {}) });
+      this.hooks.render(id, sent, server, {
+        tags: track.tags,
+        instrumental: !sung,
+        ...(sung ? { lyrics: track.lyrics as string } : {}),
+        ...(meta.ask.cfg != null ? { cfg: meta.ask.cfg } : {}),
+      });
       sent += 1;
       flying += 1;
     }

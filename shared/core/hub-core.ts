@@ -464,7 +464,8 @@ export class HubCore {
         throw new Refusal('body_invalid', `minutes is one of ${ALBUM_MINUTES.join(', ')}.`);
       }
       if (!Array.isArray(tags) || !tags.every((tag) => typeof tag === 'string')) throw new Refusal('body_invalid', 'tags must be a list of text.');
-      const ask: AlbumAsk = { description: text(body['description'] ?? '', 'description').slice(0, 600), tags: tags as string[], minutes, sung: body['sung'] === true };
+      const cfg = typeof body['cfg'] === 'number' && Number.isFinite(body['cfg']) ? body['cfg'] : null;
+      const ask: AlbumAsk = { description: text(body['description'] ?? '', 'description').slice(0, 600), tags: tags as string[], minutes, sung: body['sung'] === true, cfg };
       if (ask.description.trim() === '' && ask.tags.length === 0) {
         throw new Refusal('album_ask_empty', 'Describe the album, or pick some tags, first.');
       }

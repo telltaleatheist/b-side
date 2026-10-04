@@ -325,6 +325,8 @@ export interface AlbumPlan {
   readonly blurb: string;
   /** What the image model is asked to paint. */
   readonly coverPrompt: string;
+  /** The album's sound: the person's own tags when they gave any, else the writer's. Every track keeps it. */
+  readonly core?: string;
   readonly tracks: readonly AlbumTrack[];
 }
 
@@ -361,6 +363,8 @@ export interface AlbumAsk {
   readonly tags: readonly string[];
   readonly minutes: number;
   readonly sung: boolean;
+  /** Guidance from the form (a preset's), sent with every track; null for the server's default. */
+  readonly cfg?: number | null;
 }
 
 /** The lengths an album can be. */

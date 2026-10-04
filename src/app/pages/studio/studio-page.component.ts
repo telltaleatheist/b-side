@@ -323,6 +323,7 @@ export class StudioPageComponent {
       tags: this.studio.tags(),
       minutes: this.albumLength(),
       sung: this.albumSung(),
+      cfg: this.studio.cfg().trim() === '' ? null : Number(this.studio.cfg()),
     });
     this.albumSending.set(false);
     this.albumRefusal.set(outcome.ok ? null : outcome.refusal);
