@@ -14,6 +14,9 @@ import {
   type Take,
 } from '@shared/types';
 
+import type { PhoneHub } from '../phone/phone-hub';
+import { PHONE_DATA, PHONE_LIBRARY } from '../phone/phone-paths';
+
 declare global {
   interface Window {
     bside?: DesktopBridge;
@@ -35,7 +38,7 @@ export type HubState =
   | 'reconnecting'
   /** The hub said the key is wrong or missing: this device needs the link again. */
   | 'key'
-  /** The phone has no hub chosen yet. */
+  /** The phone has no hub chosen yet (neither a B-Side computer nor its own). */
   | 'no-hub'
   /** The phone is in the background: no network on purpose (heat, battery). */
   | 'paused';
@@ -46,6 +49,8 @@ export interface HubAddress {
 }
 
 const STORED_HUB = 'bside.hub';
+/** The phone's choice: `computer` (a B-Side hub on a computer) or `phone` (its own hub, talking to Crucible). */
+const STORED_MODE = 'bside.mode';
 const STORED_KEY = 'bside.key';
 const STORED_CLIENT = 'bside.client';
 const BACKOFF_FIRST_MS = 1000;
@@ -83,7 +88,10 @@ function newId(prefix: string): string {
  *   - a browser tab: a new id per tab (sessionStorage, so it dies with the tab,
  *     and the hub clears its playing list after), served by the hub itself, the
  *     key read once from the link's `#key=` and kept in localStorage;
- *   - the iOS app: one id kept for good, and the hub the person chose.
+ *   - the iOS app: one id kept for good, and the hub the person chose — a B-Side
+ *     computer, or the phone's own (src/app/phone/phone-hub.ts: the shared core
+ *     run in the app, talking to a Crucible server itself). Calls and events go
+ *     to whichever it is; the screens never know which.
  *
  * Events come on one stream (`GET /api/events`). Its first event is a snapshot of
  * everything this device shows; a dropped stream reconnects with backoff (1 s,
@@ -97,6 +105,8 @@ export class HubService {
   readonly client: string;
 
   readonly address = signal<HubAddress | null>(null);
+  /** The phone runs its own hub (talks to Crucible itself) instead of using a B-Side computer. */
+  readonly onPhone = signal(false);
   readonly state = signal<HubState>('connecting');
   /** Why the stream is down, while it is. */
   readonly trouble = signal<string | null>(null);
@@ -113,12 +123,16 @@ export class HubService {
 
   private readonly takeListeners: ((take: Take) => void)[] = [];
   private stream: AbortController | null = null;
+  /** The phone's own hub, once opened; and how to stop hearing it. */
+  private phone: Promise<PhoneHub> | null = null;
+  private unsubscribe: (() => void) | null = null;
   private backoff = BACKOFF_FIRST_MS;
   private retry: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.client = this.whoAmI();
     this.address.set(this.whereIsTheHub());
+    this.onPhone.set(this.kind === 'ios' && stored(() => localStorage, STORED_MODE) === 'phone');
     if (this.kind === 'ios') {
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') this.pause();
@@ -137,7 +151,11 @@ export class HubService {
   useHub(address: HubAddress): void {
     const url = address.url.trim().replace(/\/+$/, '');
     const next = { url, key: address.key.trim() };
-    if (this.kind === 'ios') store(() => localStorage, STORED_HUB, JSON.stringify(next));
+    if (this.kind === 'ios') {
+      store(() => localStorage, STORED_HUB, JSON.stringify(next));
+      store(() => localStorage, STORED_MODE, 'computer');
+      this.leavePhone();
+    }
     if (this.kind === 'web') store(() => localStorage, STORED_KEY, next.key);
     this.address.set(next);
     this.reconnectNow();
@@ -149,8 +167,27 @@ export class HubService {
     if (address !== null) this.useHub({ url: address.url, key });
   }
 
-  /** A playable URL for a take or a saved song (an `<audio>` src cannot carry headers, so the key rides along). */
+  /** The phone: run its own hub and talk to a Crucible server itself (its servers are added on the studio). */
+  usePhone(): void {
+    if (this.kind !== 'ios') return;
+    store(() => localStorage, STORED_MODE, 'phone');
+    this.onPhone.set(true);
+    this.reconnectNow();
+  }
+
+  /**
+   * A playable URL for a take or a saved song (an `<audio>` src cannot carry
+   * headers, so the key rides along). On the phone's own hub, the file itself.
+   */
   audioUrl(kind: 'takes' | 'songs', id: string): string {
+    if (this.onPhone()) {
+      const hub = this.openedPhone;
+      if (hub === null) return '';
+      const file = kind === 'takes'
+        ? this.takes().find((take) => take.id === id)?.file
+        : this.library().songs.find((song) => song.id === id)?.file;
+      return file === undefined ? '' : hub.fileUrl(`${kind === 'takes' ? `${PHONE_DATA}/takes` : PHONE_LIBRARY}/${file}`);
+    }
     const address = this.address();
     if (address === null) return '';
     return `${address.url}/api/${kind}/${encodeURIComponent(id)}/audio?key=${encodeURIComponent(address.key)}`;
@@ -158,6 +195,13 @@ export class HubService {
 
   /** One API call, answered as an Outcome so a refusal keeps its code. */
   async call<T>(method: string, path: string, body?: unknown): Promise<Outcome<T>> {
+    if (this.onPhone()) {
+      try {
+        return await (await this.openPhone()).call<T>(method, path, body);
+      } catch (error) {
+        return { ok: false, refusal: { code: 'phone_hub', message: `This phone's own hub could not start: ${error instanceof Error ? error.message : String(error)}` } };
+      }
+    }
     const address = this.address();
     if (address === null) return { ok: false, refusal: { code: 'no_hub', message: 'Choose a B-Side hub first.' } };
     const headers: Record<string, string> = {
@@ -198,6 +242,10 @@ export class HubService {
   // ── the event stream ────────────────────────────────────────────────────────
 
   private connect(): void {
+    if (this.onPhone()) {
+      this.connectPhone();
+      return;
+    }
     if (this.stream !== null) return;
     const address = this.address();
     if (address === null) {
@@ -326,6 +374,8 @@ export class HubService {
   }
 
   private pause(): void {
+    // The phone's own hub has no stream to close: the WebView is frozen in the background anyway.
+    if (this.onPhone()) return;
     this.stream?.abort();
     this.stream = null;
     if (this.retry !== null) {
@@ -340,6 +390,44 @@ export class HubService {
     this.stream = null;
     this.backoff = BACKOFF_FIRST_MS;
     this.connect();
+  }
+
+  // ── the phone's own hub ─────────────────────────────────────────────────────
+
+  private openedPhone: PhoneHub | null = null;
+
+  private openPhone(): Promise<PhoneHub> {
+    this.phone ??= import('../phone/phone-hub').then(async ({ PhoneHub: Hub }) => {
+      const hub = await Hub.open({ id: this.client, kind: 'ios' }, 'phone');
+      this.openedPhone = hub;
+      return hub;
+    });
+    this.phone.catch(() => {
+      this.phone = null;
+    });
+    return this.phone;
+  }
+
+  private connectPhone(): void {
+    if (this.unsubscribe !== null) return;
+    this.state.set('connecting');
+    this.openPhone().then(
+      async (hub) => {
+        if (!this.onPhone() || this.unsubscribe !== null) return;
+        this.unsubscribe = await hub.subscribe((event) => this.apply(event));
+      },
+      (error: unknown) => {
+        this.state.set('reconnecting');
+        this.trouble.set(`This phone's own hub could not start: ${error instanceof Error ? error.message : String(error)}`);
+      },
+    );
+  }
+
+  /** Back to a B-Side computer: stop hearing the phone's hub (its files stay for next time). */
+  private leavePhone(): void {
+    this.onPhone.set(false);
+    this.unsubscribe?.();
+    this.unsubscribe = null;
   }
 
   // ── who and where ───────────────────────────────────────────────────────────

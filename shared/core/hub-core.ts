@@ -29,8 +29,10 @@ import { ServerRegistry, type Vault } from './servers';
 import { TakeStore, type TakeLimits } from './takes';
 import { defaultTitle } from './titles';
 import {
+  SONG_FORMATS,
   SONG_MODEL,
   type ClientKind,
+  type HubPreferences,
   type GenerateRequest,
   type HubEvent,
   type HubInfo,
@@ -86,6 +88,9 @@ export interface HubCoreOptions {
   readonly sink: EventSink;
 }
 
+/** MP3 unless the person chose lossless: about an eighth the size, the same sound on a phone. */
+const DEFAULT_PREFERENCES: HubPreferences = { songFormat: 'mp3' };
+
 export function text(value: unknown, what: string): string {
   if (typeof value !== 'string') throw new Refusal('body_invalid', `${what} must be text.`);
   return value;
@@ -130,6 +135,7 @@ export class HubCore {
   private readonly pairing: PairingSessions;
   private library!: Library;
   private readonly sink: EventSink;
+  private preferences: HubPreferences = DEFAULT_PREFERENCES;
 
   constructor(private readonly options: HubCoreOptions) {
     this.sink = options.sink;
@@ -184,6 +190,7 @@ export class HubCore {
 
   /** Read what is stored: the server list, the take cache, the library in `libraryDir`. */
   async open(libraryDir: string): Promise<void> {
+    await this.readPreferences();
     await this.registry.open();
     await this.takes.open();
     await this.openLibrary(libraryDir);
@@ -241,6 +248,38 @@ export class HubCore {
     };
   }
 
+  // ── preferences ─────────────────────────────────────────────────────────────
+
+  private get preferencesFile(): string {
+    return join(this.options.dataDir, 'preferences.json');
+  }
+
+  /** A file that will not read is said so and left alone; the defaults stand until a change rewrites it. */
+  private async readPreferences(): Promise<void> {
+    const text = await this.options.disk.readText(this.preferencesFile);
+    if (text === null) return;
+    try {
+      const stored = JSON.parse(text) as Partial<HubPreferences>;
+      this.preferences = {
+        songFormat: SONG_FORMATS.includes(stored.songFormat as never) ? (stored.songFormat as HubPreferences['songFormat']) : DEFAULT_PREFERENCES.songFormat,
+      };
+    } catch (err) {
+      console.error(`[hub] ${this.preferencesFile} could not be read; using the defaults:`, err);
+    }
+  }
+
+  private async setPreferences(change: Record<string, unknown>): Promise<HubPreferences> {
+    const format = change['songFormat'];
+    if (format !== undefined && !SONG_FORMATS.includes(format as never)) {
+      throw new Refusal('body_invalid', `songFormat is one of ${SONG_FORMATS.join(', ')}.`);
+    }
+    const next: HubPreferences = { ...this.preferences, ...(format === undefined ? {} : { songFormat: format as HubPreferences['songFormat'] }) };
+    await this.options.disk.mkdir(this.options.dataDir);
+    await this.options.disk.writeText(this.preferencesFile, `${JSON.stringify(next, null, 2)}\n`);
+    this.preferences = next;
+    return next;
+  }
+
   // ── routes ──────────────────────────────────────────────────────────────────
 
   private route(method: string, template: string, handler: CoreHandler): void {
@@ -248,6 +287,10 @@ export class HubCore {
   }
 
   private defineRoutes(): void {
+    // ── this hub's own choices ──────────────────────────────────────────────
+    this.route('GET', '/api/preferences', () => this.preferences);
+    this.route('PUT', '/api/preferences', async (request) => this.setPreferences(await request.body()));
+
     // ── Crucible servers (tokens go in, never come out) ─────────────────────
     this.route('GET', '/api/servers', () => this.registry.views());
     this.route('POST', '/api/servers/pairing', async (request) =>
@@ -288,7 +331,7 @@ export class HubCore {
       if (typeof body.params !== 'object' || body.params === null || typeof body.count !== 'number') {
         throw new Refusal('body_invalid', 'A generate request is {params, count}.');
       }
-      return this.jobs.generate(this.registry.active(), client, body);
+      return this.jobs.generate(this.registry.active(), client, body, this.preferences.songFormat);
     });
     this.route('POST', '/api/jobs/:key/cancel', async (request) => {
       this.ownJob(request);

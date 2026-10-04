@@ -7,7 +7,7 @@ import { PresetBarComponent } from '../../components/preset-bar/preset-bar.compo
 import { QueuePanelComponent } from '../../components/queue-panel/queue-panel.component';
 import { TagInputComponent } from '../../components/tag-input/tag-input.component';
 import { bytesText } from '../../core/format';
-import { HubService } from '../../core/hub.service';
+import { desktop, HubService } from '../../core/hub.service';
 import { JobsService } from '../../core/jobs.service';
 import { LibraryService } from '../../core/library.service';
 import { StudioService } from '../../core/studio.service';
@@ -37,7 +37,7 @@ import { StudioService } from '../../core/studio.service';
         @if (hub.loaded() && hub.activeServer() === null) {
           <div class="card empty">
             <h2 class="card-title">Get a Crucible server</h2>
-            <p class="detail">B-Side makes songs with YuE2 on a Crucible server: install Crucible on this computer, or use one that already runs somewhere.</p>
+            <p class="detail">B-Side makes songs with YuE2 on a Crucible server{{ isDesktop ? ': install Crucible on this computer, or use one that already runs somewhere.' : ' that already runs somewhere.' }}</p>
             <app-crucible-setup [addByLine]="true" />
           </div>
         } @else {
@@ -180,6 +180,7 @@ import { StudioService } from '../../core/studio.service';
 export class StudioPageComponent {
   protected readonly studio = inject(StudioService);
   protected readonly hub = inject(HubService);
+  protected readonly isDesktop = desktop !== null;
   protected readonly library = inject(LibraryService);
   protected readonly jobs = inject(JobsService);
   /** Which half a phone shows. */

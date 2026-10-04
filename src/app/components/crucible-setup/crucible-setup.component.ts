@@ -221,6 +221,8 @@ type Busy = 'install' | 'start' | 'use' | 'retry' | 'restart' | 'pairing' | 'uni
             </div>
           </details>
         }
+      } @else if (hub.onPhone()) {
+        <p class="hint">This phone makes songs on a Crucible server by itself. Add one by its name or address; B-Side remembers each one you add.</p>
       } @else {
         <p class="hint">
           Crucible is installed from the B-Side app on the computer B-Side runs on{{ hostWords() }}.

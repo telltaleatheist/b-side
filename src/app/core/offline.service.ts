@@ -51,7 +51,15 @@ function fileName(songId: string, file: string): string {
 export class OfflineService {
   private readonly hub = inject(HubService);
 
+  /**
+   * Keeping a computer's playlists on the phone. Not while the phone runs its own
+   * hub: those songs are on the phone already, and this service's cleanup (files
+   * no kept playlist wants) would read the phone's own library and delete what
+   * was kept from the computer.
+   */
   readonly available = isNative;
+  private readonly standingDown = computed(() => this.hub.onPhone());
+  readonly offered = computed(() => this.available && !this.standingDown());
   readonly kept = signal<ReadonlySet<string>>(new Set());
   /** Song id -> file:// URL, for every song on the phone. */
   readonly files = signal<ReadonlyMap<string, string>>(new Map());
@@ -81,7 +89,7 @@ export class OfflineService {
     void this.open();
     effect(() => {
       this.wanted();
-      const live = this.hub.state() === 'live';
+      const live = this.hub.state() === 'live' && !this.standingDown();
       untracked(() => {
         if (live && this.ready) void this.sync();
       });
@@ -90,6 +98,7 @@ export class OfflineService {
 
   /** The phone's copy of a saved song, or null to stream it from the hub. */
   urlOf(songId: string): string | null {
+    if (this.standingDown()) return null;
     return this.files().get(songId) ?? null;
   }
 
@@ -114,14 +123,14 @@ export class OfflineService {
         const state = JSON.parse(text) as OfflineState;
         this.kept.set(new Set(state.playlists));
         // No hub yet (or none in reach): the kept playlists open from the last library seen.
-        if (state.library !== null && !this.hub.loaded()) this.hub.library.set(state.library);
+        if (state.library !== null && !this.hub.loaded() && !this.standingDown()) this.hub.library.set(state.library);
       }
       await this.refreshFiles();
     } catch (error) {
       this.problem.set(`The phone's saved songs could not be read: ${String(error)}`);
     }
     this.ready = true;
-    if (this.hub.state() === 'live') void this.sync();
+    if (this.hub.state() === 'live' && !this.standingDown()) void this.sync();
   }
 
   private async refreshFiles(): Promise<void> {
@@ -135,13 +144,15 @@ export class OfflineService {
   }
 
   private async save(): Promise<void> {
+    // The library seen last is the COMPUTER's: never overwrite it with the phone's own.
+    if (this.standingDown()) return;
     const state: OfflineState = { playlists: [...this.kept()], library: this.hub.loaded() ? this.hub.library() : null };
     await NativeFile.writeText({ name: STATE_FILE, text: JSON.stringify(state) });
   }
 
   /** Bring the phone in line with the kept playlists: fetch what is missing, delete what no kept playlist holds. */
   private async sync(): Promise<void> {
-    if (this.syncing) return;
+    if (this.syncing || this.standingDown()) return;
     this.syncing = true;
     try {
       await this.save();
@@ -154,7 +165,7 @@ export class OfflineService {
       }
       for (const [id, file] of wanted) {
         // Stop when the app leaves the front or the hub drops; the next sync resumes.
-        if (this.hub.state() !== 'live' || document.visibilityState === 'hidden') break;
+        if (this.hub.state() !== 'live' || this.standingDown() || document.visibilityState === 'hidden') break;
         if (this.files().has(id)) continue;
         this.busy.set(id);
         await NativeFile.download({ url: this.hub.audioUrl('songs', id), name: fileName(id, file) });

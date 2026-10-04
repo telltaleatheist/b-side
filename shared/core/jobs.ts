@@ -34,6 +34,7 @@ import {
   type CrucibleClient,
   type DoneData,
   type InstallingDetails,
+  type JobStatus,
 } from '@crucible/client';
 
 import { clientFor } from './crucible';
@@ -49,6 +50,7 @@ import {
   type InstallView,
   type JobView,
   type RefusalView,
+  type SongFormat,
   type SongParams,
   type Take,
 } from '../types';
@@ -60,6 +62,8 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
 interface Job {
   view: Mutable<JobView>;
+  /** The file format the server renders: the hub's preference when the job was asked for. */
+  format: SongFormat;
   server: StoredServer;
   /** Null only for a resumed job whose server has since been removed: it is failed at once. */
   client: CrucibleClient | null;
@@ -139,7 +143,12 @@ export class JobRunner {
   }
 
   /** Queue `count` jobs on `server` for the device `asker`; with a seed they get seed, seed+1, ... */
-  generate(server: StoredServer, asker: { readonly id: string; readonly kind: ClientKind }, request: GenerateRequest): JobView[] {
+  generate(
+    server: StoredServer,
+    asker: { readonly id: string; readonly kind: ClientKind },
+    request: GenerateRequest,
+    format: SongFormat,
+  ): JobView[] {
     const seeds = batchSeeds(typeof request.params.seed === 'number' ? request.params.seed : null, request.count);
     const client = clientFor(server);
     const made: Job[] = seeds.map((seed, at) => {
@@ -150,6 +159,7 @@ export class JobRunner {
       const job: Job = {
         server,
         client,
+        format,
         taskId: null,
         gone: false,
         view: {
@@ -258,16 +268,18 @@ export class JobRunner {
       try {
         server = this.hooks.server(view.server);
       } catch (err) {
-        const job: Job = { server: { name: view.server, url: '', token: '' }, client: null, taskId: null, gone: false, view: { ...view } };
+        const job: Job = { server: { name: view.server, url: '', token: '' }, client: null, format: 'flac', taskId: null, gone: false, view: { ...view } };
         this.jobs.set(view.key, job);
         job.view.refusal = refusalOf(err);
         this.finish(job, 'failed');
         continue;
       }
-      const job: Job = { server, client: clientFor(server), taskId: null, gone: false, view: { ...view, message: 'Following it again after a restart' } };
+      // Already on the server: its format was sent then; the file's extension says which.
+      const job: Job = { server, client: clientFor(server), format: 'flac', taskId: null, gone: false, view: { ...view, message: 'Following it again after a restart' } };
       this.jobs.set(view.key, job);
       this.publish(job);
-      void this.follow(job);
+      // It may have ended while nobody followed it (a restart on either side): ask before following.
+      void this.endedOnServer(job, view.jobId).then((ended) => (ended ? undefined : this.follow(job)));
     }
   }
 
@@ -320,7 +332,7 @@ export class JobRunner {
     for (let round = 0; jobId === null; round += 1) {
       if (job.gone) return;
       try {
-        jobId = await client.audio({ model: SONG_MODEL, ...job.view.params });
+        jobId = await client.audio({ model: SONG_MODEL, ...job.view.params, format: job.format });
       } catch (error) {
         if (job.gone) return;
         if (!isInstalling(error) || round >= INSTALL_ROUNDS) {
@@ -470,9 +482,45 @@ export class JobRunner {
         }
       }
       if (job.gone || this.ended(job)) return;
+      if (await this.endedOnServer(job, jobId)) return;
       job.view.message = 'Lost the server; reconnecting';
       this.publish(job);
       await pause(RECONNECT_MS);
+    }
+  }
+
+  /**
+   * The stream dropped: ask the job itself before following it again. A server
+   * that restarted mid-job (a deploy) marks it failed or interrupted but may
+   * keep no event history to replay, so its stream would stay silent forever
+   * and the job would read "reconnecting" for good. Answers whether it ended.
+   * A `done` job is left to the stream, whose replay carries what landing needs.
+   */
+  private async endedOnServer(job: Job, jobId: string): Promise<boolean> {
+    let status: JobStatus;
+    try {
+      status = await this.clientOf(job).job(jobId);
+    } catch (error) {
+      if (error instanceof CrucibleUnreachable) return false;
+      this.finish(job, 'failed', refusalOf(error));
+      return true;
+    }
+    switch (status.status) {
+      case 'failed':
+      case 'interrupted':
+        this.finish(job, 'failed', status.error ?? {
+          code: `job_${status.status}`,
+          message: `${job.view.server} stopped while making this song (it ${status.status === 'interrupted' ? 'restarted' : 'failed'}). Generate again.`,
+        });
+        return true;
+      case 'cancelled':
+        this.finish(job, 'cancelled');
+        return true;
+      case 'removed':
+        this.finish(job, 'removed', { code: 'removed', message: `${job.view.server} removed this song before it was fetched.` });
+        return true;
+      default:
+        return false;
     }
   }
 

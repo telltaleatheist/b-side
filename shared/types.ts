@@ -141,6 +141,19 @@ export interface SongParams {
   readonly seed?: number;
 }
 
+/**
+ * How songs are kept. MP3 (192 kbps, rendered by Crucible) is about an eighth
+ * the size of FLAC and sounds the same on phones and earbuds; FLAC is lossless.
+ * WAV is not offered: the same sound as FLAC, bigger.
+ */
+export type SongFormat = 'mp3' | 'flac';
+export const SONG_FORMATS: readonly SongFormat[] = ['mp3', 'flac'];
+
+/** A hub's own choices, kept beside its takes (each hub has its own: the desktop's, the phone's). */
+export interface HubPreferences {
+  readonly songFormat: SongFormat;
+}
+
 /** A preset as the server stores it. `params` is whatever was saved, possibly by the web playground. */
 export interface Preset {
   readonly name: string;
