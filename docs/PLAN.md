@@ -136,7 +136,8 @@ BookForge/Bookshelf - find it there and reuse the idea before inventing anything
       list has a 40-take FIFO and is cleared 10 min after the tab stops listening.
 - [ ] Web build served by the hub; works in desktop Chrome and mobile Safari. Desktop
       Chrome verified (Mac Chrome -> PC hub, real render, save to playlist); the Electron
-      window verified over CDP. Mobile Safari not yet tried.
+      window verified over CDP; iOS WebKit verified in the simulator app (same engine as
+      mobile Safari). Mobile Safari itself not yet opened on a phone.
 
 ### Phase 4 - Crucible setup
 - [ ] Setup page: install Crucible on this computer via `@crucible/bootstrap` (how
@@ -144,11 +145,29 @@ BookForge/Bookshelf - find it there and reuse the idea before inventing anything
 
 ### Phase 5 - iOS (Capacitor)
 - [ ] Capacitor project wrapping the web UI; build and run on Owen's phone via Xcode on
-      the Mac (no TestFlight).
+      the Mac (no TestFlight). DONE EXCEPT THE PHONE: `mobile/` (Capacitor 8.4.1, SPM,
+      bundle com.owenmorgan.bside), built for the simulator and run on an iPhone 16 Pro
+      simulator, which connected to the PC hub (tunnelled) and drew the studio from the
+      server. The phone ("blip") was offline overnight. To install: plug it in, then on
+      the Mac `cd /Volumes/Callisto/Projects/b-side/mobile && npm run package:ios`
+      (Bookshelf's script; same paid team). The Mac checkout's origin is the PC checkout.
 - [ ] iOS audio adapter modelled on Bookshelf iOS (background audio, lock screen, now
-      playing, interruptions, audio element in the DOM).
-- [ ] Pick/add a hub; stream; save songs for offline; FIFO clearing of the playing list.
-- [ ] Battery/heat: no polling loops; SSE with backoff; pause network work in background.
+      playing, interruptions, audio element in the DOM). BUILT, NOT HEARD:
+      `NativeQueuePlugin.swift` holds the queue and advances by itself (the WebView is
+      frozen while locked), lock-screen next/prev/seek natively, interruptions resume,
+      Bookshelf's transient-load retry. The web side keeps the `<audio>` element in the DOM
+      and drives Media Session. Not played on the simulator: the Mac's output device has
+      no volume control, so a test could not be kept silent at night.
+- [x] Pick/add a hub; stream; save songs for offline; FIFO clearing of the playing list.
+      Hub picker (paste the link); streaming via the hub; "Keep on this phone" per
+      playlist (`OfflineService` + `NativeFilePlugin`, downloaded straight to disk,
+      deleted when no kept playlist holds them, the last library cached for no-hub use);
+      the phone stores no playing list at all - the hub keeps it, 60-take FIFO.
+      Offline download not exercised (needs the phone).
+- [x] Battery/heat: no polling loops; SSE with backoff; pause network work in background.
+      `HubService` closes its one stream when the app is hidden and reopens it in front;
+      offline downloads run only in front; native time ticks drop to 1 Hz in background;
+      Now Playing written on changes only.
 
 ### Phase 6 - Crucible SDK gaps (in the crucible repo)
 - [ ] `@crucible/client`: helpers for the playground routes (`GET /v1/playground`,
