@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 import { MAX_BATCH } from '@shared/batch';
@@ -8,6 +8,8 @@ import { QueuePanelComponent } from '../../components/queue-panel/queue-panel.co
 import { TagInputComponent } from '../../components/tag-input/tag-input.component';
 import { bytesText } from '../../core/format';
 import { HubService } from '../../core/hub.service';
+import { JobsService } from '../../core/jobs.service';
+import { LibraryService } from '../../core/library.service';
 import { StudioService } from '../../core/studio.service';
 
 /**
@@ -22,7 +24,14 @@ import { StudioService } from '../../core/studio.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, PresetBarComponent, TagInputComponent, QueuePanelComponent],
   template: `
-    <div class="studio">
+    <!-- Phones only (CSS): the form and the playing list are one screen each. -->
+    <div class="panes">
+      <button type="button" [class.on]="pane() === 'form'" (click)="pane.set('form')">Make</button>
+      <button type="button" [class.on]="pane() === 'list'" (click)="pane.set('list')">
+        Playing list ({{ library.takes().length }}{{ jobs.generating() ? ', making…' : '' }})
+      </button>
+    </div>
+    <div class="studio" [class.show-list]="pane() === 'list'">
       <section class="form">
         @if (hub.loaded() && hub.activeServer() === null) {
           <div class="card empty">
@@ -133,6 +142,7 @@ import { StudioService } from '../../core/studio.service';
   `,
   styles: [`
     :host { display: block; height: 100%; }
+    .panes { display: none; }
     .studio { display: grid; grid-template-columns: minmax(0, 1fr) 380px; height: 100%; }
     .form {
       overflow-y: auto; min-height: 0;
@@ -155,9 +165,13 @@ import { StudioService } from '../../core/studio.service';
     @media (max-width: 1100px) { .studio { grid-template-columns: minmax(0, 1fr) 320px; } }
     @media (max-width: 760px) {
       :host { overflow-y: auto; }
-      .studio { display: flex; flex-direction: column; height: auto; }
+      .studio { display: block; height: auto; }
       .form { overflow: visible; padding: 14px 16px 18px; }
-      app-queue-panel { height: auto; border-left: 0; border-top: 1px solid var(--border-subtle); }
+      app-queue-panel { height: auto; border-left: 0; }
+      .studio:not(.show-list) app-queue-panel, .studio.show-list .form { display: none; }
+      .panes { display: flex; gap: 6px; padding: 8px 16px 0; }
+      .panes button { flex: 1; height: 30px; font-size: 12.5px; }
+      .panes button.on { border-color: var(--accent); color: var(--accent); background: var(--accent-faint); }
       .describe-row { flex-direction: column; }
     }
   `],
@@ -165,6 +179,10 @@ import { StudioService } from '../../core/studio.service';
 export class StudioPageComponent {
   protected readonly studio = inject(StudioService);
   protected readonly hub = inject(HubService);
+  protected readonly library = inject(LibraryService);
+  protected readonly jobs = inject(JobsService);
+  /** Which half a phone shows. */
+  protected readonly pane = signal<'form' | 'list'>('form');
   protected readonly maxBatch = MAX_BATCH;
 
   protected readonly lyricsPlaceholder = computed(() =>
