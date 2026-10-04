@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 
 import type { Outcome, RefusalView, ServerInput, ServerProbe, ServerView } from '@shared/types';
 
+import { CrucibleSetupComponent } from '../../components/crucible-setup/crucible-setup.component';
 import { ConfirmService } from '../../core/confirm.service';
 import { HubService } from '../../core/hub.service';
 
@@ -17,12 +18,15 @@ interface Editing {
  *
  * Add one by pasting its pairing line (`crucible://<name>@<host>:<port>/#<token>`,
  * what Crucible's console and `crucible pair` print) or by typing its address
- * and token. The token field is write-only: this card is never told a stored
- * token, so editing a server leaves the token box empty and empty keeps it.
+ * and token — or, on the desktop, install, start or use the Crucible on this
+ * computer (app-crucible-setup; a phone or a browser tab is told where to do
+ * that). The token field is write-only: this card is never told a stored token,
+ * so editing a server leaves the token box empty and empty keeps it.
  */
 @Component({
   selector: 'app-servers-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [CrucibleSetupComponent],
   template: `
     <div class="card">
       <h2 class="card-title">Crucible servers</h2>
@@ -70,8 +74,13 @@ interface Editing {
           }
         </div>
       } @empty {
-        <p class="notice">No server yet. Paste a pairing line below.</p>
+        <p class="notice">No server yet. Install Crucible on this computer, or paste a pairing line below.</p>
       }
+
+      <div class="add">
+        <span class="label">Crucible on this computer</span>
+        <app-crucible-setup [manage]="true" />
+      </div>
 
       <div class="add">
         <span class="label">Add a server from its pairing line</span>

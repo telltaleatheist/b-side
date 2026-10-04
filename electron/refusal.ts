@@ -2,9 +2,9 @@
  * refusal — every failure becomes a `RefusalView` with the server's own code.
  *
  * The SDK raises one error type per failure and carries the server's `code` and
- * `message`; the playground routes (which the SDK has no helper for) raise
- * `PlaygroundRefusal` the same way. This is the one place either is turned into
- * what the screen shows.
+ * `message`; B-Side raises `Refusal` for its own (no server, bad input), and
+ * `@crucible/bootstrap` (installing Crucible on this computer) raises its own two.
+ * This is the one place any of them is turned into what the screen shows.
  */
 import {
   CrucibleAuthError,
@@ -16,6 +16,7 @@ import {
   CrucibleUnreachable,
   CrucibleVersionError,
 } from '@crucible/client';
+import { BootstrapRefusal, LocalInstallationError } from '@crucible/bootstrap';
 
 import type { Outcome, RefusalView } from '../shared/types';
 
@@ -46,6 +47,11 @@ export function refusalOf(error: unknown): RefusalView {
   if (error instanceof CrucibleNotACrucible) return { code: 'not_a_crucible', message: error.message };
   if (error instanceof CruciblePairingError) return { code: 'invalid_pairing', message: error.message };
   if (error instanceof CrucibleError) return { code: 'crucible_error', message: error.message };
+  // Installing Crucible on this computer: the installer's own names (`release_channel_unreadable`,
+  // `host_unreachable`, `step_failed`, ...) and its sentences, which already say what to do.
+  if (error instanceof BootstrapRefusal || error instanceof LocalInstallationError) {
+    return { code: error.code, message: error.message };
+  }
   if (error instanceof Error) return { code: 'error', message: error.message };
   return { code: 'error', message: String(error) };
 }

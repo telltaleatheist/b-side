@@ -142,6 +142,24 @@ BookForge/Bookshelf - find it there and reuse the idea before inventing anything
 ### Phase 4 - Crucible setup
 - [ ] Setup page: install Crucible on this computer via `@crucible/bootstrap` (how
       Foundry/BookForge do it), or add/pick an existing server (pairing line).
+      Built 2026-10-04 on branch `phase4-crucible-setup`, ported from Foundry's app
+      (`electron/crucible-install*.ts`, `crucible-local.ts`, `crucible-uninstall.ts`,
+      `shared/crucible-install-wire.ts`, `shared/uninstall-wire.ts`,
+      `src/app/components/crucible-setup/`), `@crucible/bootstrap` 1.0.99 vendored
+      beside the client. Desktop-only, over the preload bridge (never the hub): the
+      studio's first-run card offers the ONE act this computer needs (Install /
+      Start / Use the Crucible on this computer) plus "add an existing server" by
+      pairing line; Settings' servers card adds install-the-newest and remove.
+      Web/iOS read that the install happens on the B-Side computer and can still add
+      a server by line. Verified: typecheck, build, bun tests (release gate, rows
+      reducer, tray-step fold, uninstall plan reader, registry adoption), and the
+      read-only probes against the PC's Crucible 1.0.99 (local status: running,
+      pairing file read, plan sentence, uninstall availability, running version).
+      NOT verified: an actual install, start, retry, restart or uninstall (Crucible
+      is in use on the PC; needs a clean machine), and the UI has not been opened.
+      Found on the PC: the tray's install door cannot be asked (`host_no_token`:
+      `%LOCALAPPDATA%\Crucible\config.toml` has only `[orchestrator]`); Settings
+      says so in one quiet line.
 
 ### Phase 5 - iOS (Capacitor)
 - [ ] Capacitor project wrapping the web UI; build and run on Owen's phone via Xcode on

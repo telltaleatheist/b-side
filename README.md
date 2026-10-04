@@ -17,9 +17,13 @@ npm install
 npm run electron:dev     # ng serve on port 4270 + Electron --dev (the hub listens on 7300)
 ```
 
-Then open **Settings**, paste a Crucible pairing line
-(`crucible://<name>@<host>:<port>/#<token>`), or enter an address and token by hand, and
-press **Test connection**.
+With no Crucible server yet, the studio offers the one thing this computer needs:
+**Install Crucible** (it installs, starts and connects Crucible, with its progress as it
+goes, and never shows a command), **Start Crucible** when it is installed and stopped, or
+**Use the Crucible on this computer** when it is running. Or paste an existing server's
+pairing line (`crucible://<name>@<host>:<port>/#<token>`) there or in **Settings**, or
+enter an address and token by hand, and press **Test connection**. Installing (and
+removing) Crucible is done only from the desktop app, never from a phone or browser tab.
 
 **Other devices:** Settings → *Other devices* → *Share on my network*. Open one of the links
 it shows (`http://<this computer>:7300/#key=...`) in a browser on a phone or another
@@ -70,12 +74,15 @@ electron/        main process
   takes.ts       the take cache: every device's playing list, FIFO
   library.ts     saved songs and playlists.json
   servers.ts     <userData>/servers.json (Crucible tokens never leave main)
-  ipc.ts         the desktop-only bridge: the hub's address, folder and save dialogs
+  ipc.ts         the desktop-only bridge: the hub's address, folder and save dialogs,
+                 and the Crucible on this computer
+  crucible-install*.ts, crucible-local.ts, crucible-uninstall.ts
+                 install / start / use / remove Crucible here (@crucible/bootstrap)
 shared/          types and pure logic compiled by both programs
 src/             the Angular app every device runs (HubService: one HTTP + SSE transport)
 mobile/          the iPhone app: Capacitor wrapper, native queue player and file store
 test/            bun tests, the hub over real HTTP included
-vendor/          @crucible/client tarball from the Crucible GitHub release
+vendor/          @crucible/client and @crucible/bootstrap tarballs from the Crucible release
 docs/PLAN.md     the plan, what is done and what is verified
 ```
 

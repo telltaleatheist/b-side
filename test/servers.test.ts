@@ -74,3 +74,28 @@ test('addresses are normalised the way the SDK wants them', () => {
   expect(normaliseUrl('http://host:7100/v1/')).toBe('http://host:7100');
   expect(() => normaliseUrl('  ')).toThrow();
 });
+
+test('the Crucible this computer published is added under its own name and made the one in use', async () => {
+  await registry.add({ name: 'mac', url: 'http://10.0.0.9:7100', token: TOKEN });
+  const used = await registry.usePublished({ name: 'crucible@pc', url: 'http://127.0.0.1:7100', token: 'published-made-up-token' });
+  expect(used.name).toBe('crucible@pc');
+  expect(used.servers.find((view) => view.active)?.name).toBe('crucible@pc');
+  expect(registry.active()).toEqual({ name: 'crucible@pc', url: 'http://127.0.0.1:7100', token: 'published-made-up-token' });
+  expect(JSON.stringify(used.servers)).not.toContain('published-made-up-token');
+});
+
+test('using it again where a server already has that address keeps its name and takes the published token', async () => {
+  await registry.add({ name: 'my pc', url: 'HTTP://127.0.0.1:7100/v1/', token: 'stale-made-up-token' });
+  await registry.add({ name: 'mac', url: 'http://10.0.0.9:7100', token: TOKEN });
+  await registry.setActive('mac');
+  const used = await registry.usePublished({ name: 'crucible@pc', url: 'http://127.0.0.1:7100', token: 'fresh-made-up-token' });
+  expect(used.name).toBe('my pc');
+  expect(used.servers.map((view) => view.name)).toEqual(['my pc', 'mac']);
+  expect(registry.active()).toEqual({ name: 'my pc', url: 'http://127.0.0.1:7100', token: 'fresh-made-up-token' });
+});
+
+test('an address is found however it was typed, and not found when nothing points there', async () => {
+  await registry.add({ name: 'pc', url: '127.0.0.1:7100', token: TOKEN });
+  expect(registry.atAddress('http://127.0.0.1:7100/')?.name).toBe('pc');
+  expect(registry.atAddress('http://127.0.0.1:7101')).toBeNull();
+});
