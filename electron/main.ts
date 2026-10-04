@@ -1,18 +1,19 @@
 /**
- * main — B-Side's lifecycle: ready → IPC + song scheme → window; all windows
- * closed → quit (except on macOS, where the app stays until Cmd+Q).
+ * main — B-Side's lifecycle: ready → the hub → the desktop bridge → window; all
+ * windows closed → quit (except on macOS, where the app stays until Cmd+Q).
  *
- * Everything with a lifetime lives in main — the job runner, because a renderer
- * reload must not lose a song that is generating; the library and the server
- * registry, because the renderer is not allowed to touch the disk or a token.
+ * Everything with a lifetime lives in the hub, in main — the job runner, because
+ * a renderer reload must not lose a song that is generating; the take cache and
+ * the library, because no client is allowed to touch the disk; the server
+ * registry, because no client is allowed a Crucible token.
  */
-import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron';
+import * as path from 'node:path';
 
-import { libraryNow, registerIpc } from './ipc';
-import { registerSongScheme, serveSongs } from './song-protocol';
+import { app, BrowserWindow, dialog, Menu, type MenuItemConstructorOptions } from 'electron';
+
+import { Hub } from './hub/hub';
+import { registerIpc } from './ipc';
 import { isDev, openWindow } from './window';
-
-registerSongScheme();
 
 function buildMenu(): void {
   const isMac = process.platform === 'darwin';
@@ -46,18 +47,34 @@ if (!single) {
     }
   });
 
+  const hub = new Hub({
+    userData: app.getPath('userData'),
+    defaultLibraryDir: path.join(app.getPath('music'), 'B-Side'),
+    appRoot: path.join(__dirname, '..', 'renderer', 'browser'),
+    version: app.getVersion(),
+  });
+
   void app.whenReady().then(async () => {
     buildMenu();
-    const jobs = registerIpc();
-    serveSongs(libraryNow);
-    openWindow();
-    await jobs.resume();
+    try {
+      await hub.start();
+    } catch (err) {
+      dialog.showErrorBox('B-Side could not start', (err as Error).message);
+      app.quit();
+      return;
+    }
+    registerIpc(hub);
+    openWindow(hub.localAddress().url);
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) openWindow();
+      if (BrowserWindow.getAllWindows().length === 0) openWindow(hub.localAddress().url);
     });
   });
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
+  });
+
+  app.on('will-quit', () => {
+    void hub.stop();
   });
 }

@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, viewChi
 
 import { clashesWith, clashText, indexOfTag } from '@shared/tags';
 
-import { api } from '../../core/bside';
+import { copyText } from '../../core/clipboard';
 import { StudioService } from '../../core/studio.service';
 
 /**
@@ -160,8 +160,7 @@ export class TagInputComponent {
 
   protected async copy(): Promise<void> {
     this.commit();
-    if (api === null) return;
-    await api.clipboard.write(this.studio.tagLine());
+    await copyText(this.studio.tagLine());
     this.copied.set(true);
     setTimeout(() => this.copied.set(false), 1500);
   }

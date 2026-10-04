@@ -4,9 +4,8 @@ import { batchCount } from '@shared/batch';
 import { addTags, clashesWith, joinTags, splitTags, toggleTag } from '@shared/tags';
 import type { Preset, RefusalView, SongForm, SongPage, SongParams } from '@shared/types';
 
-import { api } from './bside';
+import { HubService } from './hub.service';
 import { JobsService } from './jobs.service';
-import { ServersService } from './servers.service';
 
 /**
  * The studio's state: the active server's song page and presets, and the form.
@@ -17,7 +16,7 @@ import { ServersService } from './servers.service';
  */
 @Injectable({ providedIn: 'root' })
 export class StudioService {
-  private readonly servers = inject(ServersService);
+  private readonly hub = inject(HubService);
   private readonly jobs = inject(JobsService);
 
   readonly page = signal<SongPage | null>(null);
@@ -48,10 +47,9 @@ export class StudioService {
   });
 
   constructor() {
-    if (api === null) return;
     // Whenever the active server changes (and once it is first known), read its page and presets.
     effect(() => {
-      const active = this.servers.active();
+      const active = this.hub.activeServer();
       untracked(() => {
         if (active === null) {
           this.page.set(null);
@@ -65,9 +63,8 @@ export class StudioService {
   }
 
   async reload(): Promise<void> {
-    if (api === null) return;
     this.loadingPage.set(true);
-    const outcome = await api.song.page();
+    const outcome = await this.hub.call<SongPage>('GET', '/api/song-page');
     this.loadingPage.set(false);
     if (outcome.ok) {
       this.page.set(outcome.value);
@@ -83,8 +80,7 @@ export class StudioService {
   }
 
   async loadPresets(): Promise<void> {
-    if (api === null) return;
-    const outcome = await api.presets.list();
+    const outcome = await this.hub.call<Preset[]>('GET', '/api/presets');
     if (outcome.ok) {
       this.presets.set(outcome.value);
       this.presetsRefusal.set(null);
@@ -132,18 +128,16 @@ export class StudioService {
   }
 
   async savePreset(name: string): Promise<RefusalView | null> {
-    if (api === null) return null;
     const checked = this.params();
     if ('code' in checked) return checked;
-    const outcome = await api.presets.save(name, this.form());
+    const outcome = await this.hub.call<Preset[]>('PUT', `/api/presets/${encodeURIComponent(name.trim())}`, this.form());
     if (!outcome.ok) return outcome.refusal;
     this.presets.set(outcome.value);
     return null;
   }
 
   async deletePreset(name: string): Promise<RefusalView | null> {
-    if (api === null) return null;
-    const outcome = await api.presets.remove(name);
+    const outcome = await this.hub.call<Preset[]>('DELETE', `/api/presets/${encodeURIComponent(name)}`);
     if (!outcome.ok) return outcome.refusal;
     this.presets.set(outcome.value);
     return null;

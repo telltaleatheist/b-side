@@ -1,32 +1,43 @@
 /**
- * library — the songs on disk, which is what makes B-Side an app and not a page.
+ * library — the songs somebody saved, and the playlists they were saved to.
  *
- * Every finished song is two files in the library folder (default
- * `<Music>/B-Side`, changeable in Settings):
+ * Owen, 2026-10-04: "Saved playlist songs on electron live in a dedicated
+ * library folder ... Things only save long term if the user saves them to a
+ * playlist." So the library folder (default `<Music>/B-Side`, changeable in
+ * Settings) holds:
  *
- *   <id>.flac   the audio, exactly as the server made it
- *   <id>.json   the sidecar: title, params, server, Crucible job id, created
- *               time, duration, batch place — and `effective`, the server's own
- *               record of every parameter it used (the `done` event's `audio`),
- *               kept verbatim so a song can be made again
+ *   <id>.flac        a saved song's audio, exactly as the server made it
+ *   <id>.json        its sidecar: title, params, server, Crucible job id,
+ *                    created time, duration, batch place — and `effective`, the
+ *                    server's own record of every parameter it used (the `done`
+ *                    event's `audio`), kept verbatim so a song can be made again
+ *   playlists.json   the named playlists, each an ordered list of song ids
  *
- * The sidecar is written first, then the audio, both atomically — so a song
- * whose audio exists always has its sidecar, and a half-written FLAC never sits
- * under a real name. The id is the file stem and never changes: renaming a song
- * changes its `title` only.
+ * A song lives exactly as long as some playlist holds it: one that leaves its
+ * last playlist is deleted (the UI says so first). Songs a v1 B-Side saved
+ * before there were playlists are adopted, once, into "Saved before playlists".
  *
- * Like `ServerRegistry`, this takes its folder rather than asking Electron, so it
- * runs under a test without an Electron process.
+ * Writes are atomic and run one at a time. A song's sidecar is written before its
+ * audio, so a song whose audio exists always has its sidecar. The id is the file
+ * stem and never changes: renaming a song changes its `title` only.
+ *
+ * Like `TakeStore`, this takes its folder rather than asking Electron, so it runs
+ * under a test without an Electron process.
  */
+import { randomUUID } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
 
 import { writeAtomically } from './atomic';
 import { Refusal } from './refusal';
-import type { LibraryView, Song } from '../shared/types';
+import { checkId, stamp } from './takes';
+import type { LibraryView, Playlist, Song, SongFacts } from '../shared/types';
 
 /** Marks a sidecar as B-Side's, and its shape's version. */
 const SIDECAR_VERSION = 1;
+const PLAYLISTS_FILE = 'playlists.json';
+const PLAYLISTS_VERSION = 1;
+export const ADOPTED_PLAYLIST = 'Saved before playlists';
 
 interface Sidecar extends Song {
   readonly bside: number;
@@ -34,31 +45,15 @@ interface Sidecar extends Song {
   readonly effective: unknown;
 }
 
-export interface NewSong {
-  readonly title: string;
-  readonly extension: string;
-  readonly bytes: Uint8Array;
-  readonly model: string;
-  readonly params: Song['params'];
-  readonly server: Song['server'];
-  readonly jobId: string;
-  readonly durationS: number | null;
-  readonly batch: Song['batch'];
+interface PlaylistsDocument {
+  readonly bsidePlaylists: number;
+  readonly playlists: Playlist[];
+}
+
+/** A song to file: its facts, and the audio file to copy in (a take's). */
+export interface NewSong extends Omit<SongFacts, 'id' | 'file'> {
+  readonly audioFrom: string;
   readonly effective: unknown;
-  readonly createdAt: Date;
-}
-
-function stamp(date: Date): string {
-  const two = (n: number): string => String(n).padStart(2, '0');
-  return `${date.getFullYear()}${two(date.getMonth() + 1)}${two(date.getDate())}-${two(date.getHours())}${two(date.getMinutes())}${two(date.getSeconds())}`;
-}
-
-/** An id is a bare file stem: nothing that could climb out of the library folder. */
-function checkId(id: string): string {
-  if (!/^[A-Za-z0-9._-]+$/.test(id) || id.startsWith('.')) {
-    throw new Refusal('song_id_invalid', `${id} is not a song in the library.`);
-  }
-  return id;
 }
 
 function songOf(sidecar: Sidecar): Song {
@@ -77,11 +72,27 @@ function songOf(sidecar: Sidecar): Song {
   };
 }
 
+function cleanName(name: string): string {
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  if (trimmed === '') throw new Refusal('playlist_name_missing', 'A playlist needs a name.');
+  if (trimmed.length > 120) throw new Refusal('playlist_name_long', 'A playlist name is at most 120 characters.');
+  return trimmed;
+}
+
 export class Library {
+  /** Writes, one at a time: a playlist edit reads what the last one wrote. */
+  private line: Promise<unknown> = Promise.resolve();
+
   constructor(readonly dir: string) {}
 
+  private serial<T>(work: () => Promise<T>): Promise<T> {
+    const next = this.line.then(work);
+    this.line = next.catch(() => undefined);
+    return next;
+  }
+
   private sidecarPath(id: string): string {
-    return path.join(this.dir, `${checkId(id)}.json`);
+    return path.join(this.dir, `${checkId(id, 'song')}.json`);
   }
 
   /** The audio file a song's sidecar names, or a refusal when it is not a library file. */
@@ -99,7 +110,7 @@ export class Library {
       text = await fsp.readFile(this.sidecarPath(id), 'utf8');
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new Refusal('song_missing', `The song ${id} is no longer in ${this.dir}.`);
+        throw new Refusal('song_missing', `The song ${id} is no longer in ${this.dir}.`, 404);
       }
       throw err;
     }
@@ -110,19 +121,43 @@ export class Library {
     return parsed;
   }
 
-  /** Every song in the folder, oldest first. A sidecar that will not read is listed as a problem, never removed. */
+  private async readPlaylists(): Promise<Playlist[]> {
+    let text: string;
+    try {
+      text = await fsp.readFile(path.join(this.dir, PLAYLISTS_FILE), 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw err;
+    }
+    const parsed = JSON.parse(text) as Partial<PlaylistsDocument>;
+    if (parsed.bsidePlaylists !== PLAYLISTS_VERSION || !Array.isArray(parsed.playlists)) {
+      throw new Refusal(
+        'playlists_unreadable',
+        `${path.join(this.dir, PLAYLISTS_FILE)} is not a B-Side playlist file; move it aside to start over.`,
+      );
+    }
+    return parsed.playlists;
+  }
+
+  private async writePlaylists(playlists: Playlist[]): Promise<void> {
+    const document: PlaylistsDocument = { bsidePlaylists: PLAYLISTS_VERSION, playlists };
+    await writeAtomically(path.join(this.dir, PLAYLISTS_FILE), `${JSON.stringify(document, null, 2)}\n`);
+  }
+
+  /** Every saved song (oldest first) and every playlist. A sidecar that will not read is listed as a problem, never removed. */
   async list(): Promise<LibraryView> {
+    const playlists = await this.readPlaylists();
     let names: string[];
     try {
       names = await fsp.readdir(this.dir);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { dir: this.dir, songs: [], problems: [] };
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { dir: this.dir, songs: [], playlists, problems: [] };
       throw err;
     }
     const songs: Song[] = [];
     const problems: string[] = [];
     for (const name of names) {
-      if (!name.endsWith('.json')) continue;
+      if (!name.endsWith('.json') || name === PLAYLISTS_FILE) continue;
       const id = name.slice(0, -'.json'.length);
       let sidecar: Sidecar;
       try {
@@ -143,18 +178,42 @@ export class Library {
       songs.push(songOf(sidecar));
     }
     songs.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
-    return { dir: this.dir, songs, problems };
+    return { dir: this.dir, songs, playlists, problems };
   }
 
-  /** File a finished song: the sidecar first, then the audio, each atomically. */
-  async add(song: NewSong): Promise<Song> {
+  /**
+   * Adopt songs no playlist holds (saved by a B-Side from before playlists) into
+   * one playlist, so the rule "a song lives while a playlist holds it" is true of
+   * every song in the folder. Run when a library folder is opened.
+   */
+  async adoptLoose(): Promise<void> {
+    await this.serial(async () => {
+      const view = await this.list();
+      const held = new Set(view.playlists.flatMap((playlist) => playlist.songs));
+      const loose = view.songs.filter((song) => !held.has(song.id)).map((song) => song.id);
+      if (loose.length === 0) return;
+      const playlists = [...view.playlists];
+      const at = playlists.findIndex((playlist) => playlist.name === ADOPTED_PLAYLIST);
+      if (at >= 0) {
+        const found = playlists[at] as Playlist;
+        playlists[at] = { ...found, songs: [...found.songs, ...loose] };
+      } else {
+        playlists.push({ id: randomUUID(), name: ADOPTED_PLAYLIST, songs: loose, createdAt: new Date().toISOString() });
+      }
+      await this.writePlaylists(playlists);
+      console.log(`[library] adopted ${loose.length} song(s) into "${ADOPTED_PLAYLIST}"`);
+    });
+  }
+
+  /** File a song: the sidecar first, then the audio (copied from the take), each atomically. */
+  private async addSong(song: NewSong): Promise<Song> {
     await fsp.mkdir(this.dir, { recursive: true });
-    const extension = song.extension.toLowerCase();
+    const extension = path.extname(song.audioFrom).slice(1).toLowerCase();
     if (extension !== 'flac' && extension !== 'wav') {
-      throw new Refusal('song_format', `B-Side keeps flac or wav audio, not .${song.extension}.`);
+      throw new Refusal('song_format', `B-Side keeps flac or wav audio, not .${extension}.`);
     }
     // Unique, sortable, readable: when it was made and which take it was.
-    const base = `${stamp(song.createdAt)}-${song.params.seed ?? 'noseed'}`;
+    const base = `${stamp(new Date(song.createdAt))}-${song.params.seed ?? 'noseed'}`;
     let id = base;
     for (let n = 2; await exists(path.join(this.dir, `${id}.json`)); n += 1) id = `${base}-${n}`;
     const sidecar: Sidecar = {
@@ -166,34 +225,171 @@ export class Library {
       params: song.params,
       server: song.server,
       jobId: song.jobId,
-      createdAt: song.createdAt.toISOString(),
+      createdAt: song.createdAt,
       durationS: song.durationS,
       batch: song.batch,
       album: null,
       effective: song.effective,
     };
     await writeAtomically(this.sidecarPath(id), `${JSON.stringify(sidecar, null, 2)}\n`);
-    await writeAtomically(this.audioPath(sidecar.file), song.bytes);
+    const target = this.audioPath(sidecar.file);
+    const temporary = `${target}.writing`;
+    await fsp.copyFile(song.audioFrom, temporary);
+    await fsp.rename(temporary, target);
     return songOf(sidecar);
+  }
+
+  /**
+   * Save a song into a playlist. `existing` is the library song a take was
+   * already saved as (a second playlist reuses it); otherwise `song` is filed.
+   * Answers the song, which is now in the playlist (once — adding it twice is a
+   * no-op).
+   */
+  async saveTo(playlistId: string, existing: string | null, song: NewSong): Promise<Song> {
+    return this.serial(async () => {
+      const playlists = await this.readPlaylists();
+      const at = this.playlistIndex(playlists, playlistId);
+      let saved: Song | null = null;
+      if (existing !== null) {
+        try {
+          saved = songOf(await this.readSidecar(existing));
+        } catch (err) {
+          // Saved once, then deleted from the library: file it again.
+          if (!(err instanceof Refusal && err.code === 'song_missing')) throw err;
+        }
+      }
+      if (saved === null) saved = await this.addSong(song);
+      const playlist = playlists[at] as Playlist;
+      if (!playlist.songs.includes(saved.id)) {
+        playlists[at] = { ...playlist, songs: [...playlist.songs, saved.id] };
+        await this.writePlaylists(playlists);
+      }
+      return saved;
+    });
+  }
+
+  /** Add a song already in the library to another playlist. */
+  async addTo(playlistId: string, songId: string): Promise<void> {
+    await this.serial(async () => {
+      await this.readSidecar(songId);
+      const playlists = await this.readPlaylists();
+      const at = this.playlistIndex(playlists, playlistId);
+      const playlist = playlists[at] as Playlist;
+      if (playlist.songs.includes(songId)) return;
+      playlists[at] = { ...playlist, songs: [...playlist.songs, songId] };
+      await this.writePlaylists(playlists);
+    });
+  }
+
+  async createPlaylist(name: string): Promise<Playlist> {
+    return this.serial(async () => {
+      const clean = cleanName(name);
+      const playlists = await this.readPlaylists();
+      if (playlists.some((playlist) => playlist.name.toLowerCase() === clean.toLowerCase())) {
+        throw new Refusal('playlist_name_taken', `There is already a playlist named ${clean}.`);
+      }
+      const playlist: Playlist = { id: randomUUID(), name: clean, songs: [], createdAt: new Date().toISOString() };
+      await fsp.mkdir(this.dir, { recursive: true });
+      await this.writePlaylists([...playlists, playlist]);
+      return playlist;
+    });
+  }
+
+  async renamePlaylist(id: string, name: string): Promise<void> {
+    await this.serial(async () => {
+      const clean = cleanName(name);
+      const playlists = await this.readPlaylists();
+      const at = this.playlistIndex(playlists, id);
+      if (playlists.some((playlist) => playlist.id !== id && playlist.name.toLowerCase() === clean.toLowerCase())) {
+        throw new Refusal('playlist_name_taken', `There is already a playlist named ${clean}.`);
+      }
+      playlists[at] = { ...(playlists[at] as Playlist), name: clean };
+      await this.writePlaylists(playlists);
+    });
+  }
+
+  /** Put a playlist's songs in a new order: the same songs, each once. */
+  async reorder(id: string, songs: readonly string[]): Promise<void> {
+    await this.serial(async () => {
+      const playlists = await this.readPlaylists();
+      const at = this.playlistIndex(playlists, id);
+      const playlist = playlists[at] as Playlist;
+      const same = songs.length === playlist.songs.length
+        && new Set(songs).size === songs.length
+        && songs.every((song) => playlist.songs.includes(song));
+      if (!same) {
+        throw new Refusal('playlist_order_invalid', `A new order for ${playlist.name} must list each of its songs once.`);
+      }
+      playlists[at] = { ...playlist, songs: [...songs] };
+      await this.writePlaylists(playlists);
+    });
+  }
+
+  /** Take a song out of a playlist; a song no playlist holds any more is deleted. Answers whether it was. */
+  async removeFrom(id: string, songId: string): Promise<boolean> {
+    return this.serial(async () => {
+      const playlists = await this.readPlaylists();
+      const at = this.playlistIndex(playlists, id);
+      const playlist = playlists[at] as Playlist;
+      playlists[at] = { ...playlist, songs: playlist.songs.filter((song) => song !== songId) };
+      await this.writePlaylists(playlists);
+      return this.deleteIfLoose(playlists, [songId]);
+    });
+  }
+
+  /** Delete a playlist; its songs no other playlist holds are deleted with it. Answers how many were. */
+  async deletePlaylist(id: string): Promise<number> {
+    return this.serial(async () => {
+      const playlists = await this.readPlaylists();
+      const at = this.playlistIndex(playlists, id);
+      const songs = (playlists[at] as Playlist).songs;
+      playlists.splice(at, 1);
+      await this.writePlaylists(playlists);
+      let deleted = 0;
+      for (const song of songs) if (await this.deleteIfLoose(playlists, [song])) deleted += 1;
+      return deleted;
+    });
   }
 
   async rename(id: string, title: string): Promise<Song> {
-    const trimmed = title.trim();
-    if (trimmed === '') throw new Refusal('song_title_missing', 'A song needs a title.');
-    const sidecar = { ...(await this.readSidecar(id)), title: trimmed };
-    await writeAtomically(this.sidecarPath(id), `${JSON.stringify(sidecar, null, 2)}\n`);
-    return songOf(sidecar);
-  }
-
-  /** Delete the audio, then the sidecar — so a crash between leaves a listed problem, not an orphaned file. */
-  async remove(id: string): Promise<void> {
-    const sidecar = await this.readSidecar(id);
-    await fsp.rm(this.audioPath(sidecar.file), { force: true });
-    await fsp.rm(this.sidecarPath(id));
+    return this.serial(async () => {
+      const trimmed = title.trim();
+      if (trimmed === '') throw new Refusal('song_title_missing', 'A song needs a title.');
+      const sidecar = { ...(await this.readSidecar(id)), title: trimmed };
+      await writeAtomically(this.sidecarPath(id), `${JSON.stringify(sidecar, null, 2)}\n`);
+      return songOf(sidecar);
+    });
   }
 
   async song(id: string): Promise<Song> {
     return songOf(await this.readSidecar(id));
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+
+  private playlistIndex(playlists: Playlist[], id: string): number {
+    const at = playlists.findIndex((playlist) => playlist.id === id);
+    if (at < 0) throw new Refusal('playlist_missing', 'That playlist is no longer in the library.', 404);
+    return at;
+  }
+
+  /** Delete each of `songs` no playlist holds: the audio, then the sidecar (a crash between leaves a listed problem). */
+  private async deleteIfLoose(playlists: Playlist[], songs: string[]): Promise<boolean> {
+    let any = false;
+    for (const songId of songs) {
+      if (playlists.some((playlist) => playlist.songs.includes(songId))) continue;
+      let sidecar: Sidecar;
+      try {
+        sidecar = await this.readSidecar(songId);
+      } catch (err) {
+        if (err instanceof Refusal && err.code === 'song_missing') continue;
+        throw err;
+      }
+      await fsp.rm(this.audioPath(sidecar.file), { force: true });
+      await fsp.rm(this.sidecarPath(songId));
+      any = true;
+    }
+    return any;
   }
 }
 

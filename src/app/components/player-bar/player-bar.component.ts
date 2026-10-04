@@ -64,7 +64,9 @@ export class PlayerBarComponent {
     const song = this.player.current();
     if (song === null) return 'Nothing playing yet — finished songs play here';
     const waiting = this.player.waiting() ? ' — waiting for the next song to finish' : '';
-    return `${song.title}${song.params.tags ? ` — ${song.params.tags}` : ''}${waiting}`;
+    const problem = this.player.problem();
+    if (problem !== null) return problem;
+    return `${song.title}${song.tags ? ` — ${song.tags}` : ''} · ${this.player.sourceName()}${waiting}`;
   });
 
   protected clock(seconds: number): string {

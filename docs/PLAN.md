@@ -89,6 +89,17 @@ BookForge/Bookshelf - find it there and reuse the idea before inventing anything
 - [ ] Desktop playing list: decide its own retention (temp folder, FIFO cap) - songs not
       saved are temporary on desktop too.
 
+### Phase 1b - describe it, get the tags (Owen, 2026-10-04)
+- [ ] "Describe the music" box: e.g. "in the style of One Must Fall 2097, the DOS game" or
+      "smooth lo-fi with jazz/sax" -> a small Crucible LLM (`qwen3.5-4b`, installed on the
+      PC) fills the tag chips. It picks from the server's own tag vocabulary (the song
+      page's suggestions + conflicts), adds free text only for BPM/key, and the result is
+      checked against the conflict map before it reaches the chips. The hub makes the call
+      (it holds the Crucible token), through the same `/api` as everything else.
+- [ ] Measure the swap first: Crucible holds one model per card, so on the PC (YuE ~16 GB
+      of 24 GB) describing evicts YuE and the next song reloads it. Time both loads, say
+      the cost in the UI ("swaps the song model out for ~N s"), and describe once per batch.
+
 ### Phase 2 - the desktop hub server
 - [ ] Find BookForge's Bookshelf server (the in-app HTTP server) and mirror it: an HTTP
       server in Electron main serving the web build and a REST/SSE API.

@@ -14,7 +14,8 @@
  *            dropped stream is weather: it reconnects with the last event id, and
  *            says so while it does.
  *   land     on `done`, read the server's effective params (`readAudioResult`),
- *            fetch the audio artifact, and file it in the library.
+ *            fetch the audio artifact, and hand it to the take cache: it joins
+ *            the playing list of the client that asked for it.
  *
  * Jobs that have a server id are written to `pending.json`, so a job still
  * generating when B-Side quits is followed again on the next launch (its events
@@ -41,12 +42,13 @@ import { batchSeeds } from '../shared/batch';
 import {
   ENDED_PHASES,
   SONG_MODEL,
+  type ClientKind,
   type GenerateRequest,
   type InstallView,
   type JobView,
   type RefusalView,
-  type Song,
   type SongParams,
+  type Take,
 } from '../shared/types';
 
 const INSTALL_ROUNDS = 5;
@@ -65,7 +67,7 @@ interface Job {
   gone: boolean;
 }
 
-/** What a finished job hands the library. */
+/** What a finished job hands the take cache. */
 export interface Landed {
   readonly job: JobView;
   readonly server: StoredServer;
@@ -79,8 +81,8 @@ export interface Landed {
 export interface JobHooks {
   /** Every change to a job, for the renderer. */
   publish(job: JobView): void;
-  /** File a finished song; answers the library entry it became. */
-  land(landed: Landed): Promise<Song>;
+  /** Keep a finished song as a take in its client's playing list; answers the take. */
+  land(landed: Landed): Promise<Take>;
   /** Find a server again by name (to resume a pending job after a restart). */
   server(name: string): StoredServer;
 }
@@ -112,12 +114,21 @@ export class JobRunner {
     private readonly pendingFile: string,
   ) {}
 
-  list(): JobView[] {
-    return [...this.jobs.values()].map((job) => ({ ...job.view })).sort((a, b) => a.number - b.number);
+  /** One client's jobs, oldest first. */
+  list(client: string): JobView[] {
+    return [...this.jobs.values()]
+      .filter((job) => job.view.client === client)
+      .map((job) => ({ ...job.view }))
+      .sort((a, b) => a.number - b.number);
   }
 
-  /** Queue `count` jobs on `server`; with a seed they get seed, seed+1, ... */
-  generate(server: StoredServer, request: GenerateRequest): JobView[] {
+  /** Whose job `key` is, so the hub can refuse another device's cancel. */
+  owner(key: string): string | null {
+    return this.jobs.get(key)?.view.client ?? null;
+  }
+
+  /** Queue `count` jobs on `server` for the device `asker`; with a seed they get seed, seed+1, ... */
+  generate(server: StoredServer, asker: { readonly id: string; readonly kind: ClientKind }, request: GenerateRequest): JobView[] {
     const seeds = batchSeeds(typeof request.params.seed === 'number' ? request.params.seed : null, request.count);
     const client = clientFor(server);
     const made: Job[] = seeds.map((seed, at) => {
@@ -132,6 +143,8 @@ export class JobRunner {
         gone: false,
         view: {
           key: randomUUID(),
+          client: asker.id,
+          clientKind: asker.kind,
           number: this.numbered,
           index: at + 1,
           batch: seeds.length,
@@ -146,7 +159,7 @@ export class JobRunner {
           refusal: null,
           params,
           seed,
-          songId: null,
+          takeId: null,
           since: Date.now(),
           ended: null,
         },
@@ -192,6 +205,25 @@ export class JobRunner {
     void this.savePending();
   }
 
+  /**
+   * A client that is gone (a closed browser tab): cancel what it still has
+   * generating, and forget the rest. Nobody is left to hear any of it.
+   */
+  async forgetClient(client: string): Promise<void> {
+    for (const job of [...this.jobs.values()].filter((other) => other.view.client === client)) {
+      if (!this.ended(job)) {
+        try {
+          await this.cancel(job.view.key);
+        } catch (err) {
+          console.error(`[jobs] could not cancel ${job.view.key} for the closed client ${client}:`, err);
+        }
+      }
+      job.gone = true;
+      this.jobs.delete(job.view.key);
+    }
+    await this.savePending();
+  }
+
   /** Follow again the jobs that were generating when B-Side last quit. */
   async resume(): Promise<void> {
     let entries: PendingEntry[];
@@ -205,6 +237,10 @@ export class JobRunner {
     for (const entry of entries) {
       const view = entry.view;
       if (view.jobId === null || ENDED_PHASES.includes(view.phase)) continue;
+      if (typeof view.client !== 'string' || typeof view.clientKind !== 'string') {
+        console.error(`[jobs] pending job ${view.key} names no client (written before the hub); not resumed`);
+        continue;
+      }
       this.numbered = Math.max(this.numbered, view.number);
       let server: StoredServer;
       try {
@@ -244,7 +280,7 @@ export class JobRunner {
     job.view.ended = Date.now();
     job.view.install = null;
     this.publish(job);
-    // A finished job IS its library song now; the renderer lists the song, so the job is done with.
+    // A finished job IS its take now; the playing list shows the take, so the job is done with.
     if (phase === 'done') this.jobs.delete(job.view.key);
     void this.savePending();
   }
@@ -450,7 +486,7 @@ export class JobRunner {
         }
       }
       const extension = result.artifact.slice(result.artifact.lastIndexOf('.') + 1);
-      const song = await this.hooks.land({
+      const take = await this.hooks.land({
         job: { ...job.view },
         server: job.server,
         bytes,
@@ -459,7 +495,7 @@ export class JobRunner {
         durationS: result.audioSeconds,
         effective: (done.extra as Record<string, unknown>)['audio'],
       });
-      job.view.songId = song.id;
+      job.view.takeId = take.id;
       job.view.message = null;
       this.finish(job, 'done');
     } catch (error) {

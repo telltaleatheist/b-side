@@ -7,7 +7,7 @@ import { PresetBarComponent } from '../../components/preset-bar/preset-bar.compo
 import { QueuePanelComponent } from '../../components/queue-panel/queue-panel.component';
 import { TagInputComponent } from '../../components/tag-input/tag-input.component';
 import { bytesText } from '../../core/format';
-import { ServersService } from '../../core/servers.service';
+import { HubService } from '../../core/hub.service';
 import { StudioService } from '../../core/studio.service';
 
 /**
@@ -24,7 +24,7 @@ import { StudioService } from '../../core/studio.service';
   template: `
     <div class="studio">
       <section class="form">
-        @if (servers.loaded() && servers.active() === null) {
+        @if (hub.loaded() && hub.activeServer() === null) {
           <div class="card empty">
             <h2 class="card-title">Connect a Crucible server</h2>
             <p class="detail">B-Side makes songs with YuE2 on a Crucible server. Paste the server's pairing line in Settings.</p>
@@ -47,7 +47,7 @@ import { StudioService } from '../../core/studio.service';
               <div class="refusal"><code>not_ready</code><span>{{ page.reason }}</span></div>
             }
           } @else if (studio.loadingPage()) {
-            <p class="hint">Reading the song page from {{ servers.active()?.name }}…</p>
+            <p class="hint">Reading the song page from {{ hub.activeServer()?.name }}…</p>
           }
 
           <app-preset-bar />
@@ -89,7 +89,7 @@ import { StudioService } from '../../core/studio.service';
           </div>
 
           <div class="row go">
-            <button type="button" class="primary generate" [disabled]="studio.sending() || servers.active() === null" (click)="studio.generate()">
+            <button type="button" class="primary generate" [disabled]="studio.sending() || hub.activeServer() === null" (click)="studio.generate()">
               Generate
             </button>
             <label class="count">
@@ -136,7 +136,7 @@ import { StudioService } from '../../core/studio.service';
 })
 export class StudioPageComponent {
   protected readonly studio = inject(StudioService);
-  protected readonly servers = inject(ServersService);
+  protected readonly hub = inject(HubService);
   protected readonly maxBatch = MAX_BATCH;
 
   protected readonly lyricsPlaceholder = computed(() =>

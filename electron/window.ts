@@ -2,7 +2,8 @@
  * window — the one B-Side window.
  *
  * `--dev` on the command line loads the renderer from `ng serve` on port 4270
- * (Foundry's is 4260); otherwise the built renderer beside this file.
+ * (Foundry's is 4260); otherwise the app the hub serves — the same page a
+ * browser on the network opens. Either way it talks to the hub over HTTP.
  */
 import * as path from 'node:path';
 
@@ -18,12 +19,7 @@ export function appWindow(): BrowserWindow | null {
   return mainWindow;
 }
 
-/** Send to the renderer if there is one; a message with no window has nobody to tell. */
-export function sendToRenderer(channel: string, value: unknown): void {
-  if (mainWindow !== null && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, value);
-}
-
-export function openWindow(): BrowserWindow {
+export function openWindow(hubUrl: string): BrowserWindow {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -52,13 +48,9 @@ export function openWindow(): BrowserWindow {
     return { action: 'deny' };
   });
 
-  if (isDev) {
-    void mainWindow.loadURL(DEV_SERVER);
-  } else {
-    const index = path.join(__dirname, '..', 'renderer', 'browser', 'index.html');
-    mainWindow.loadFile(index).catch((err: Error) => {
-      console.error(`[window] could not load ${index}: ${err.message}. Run "npm run build" first.`);
-    });
-  }
+  const page = isDev ? DEV_SERVER : `${hubUrl}/`;
+  mainWindow.loadURL(page).catch((err: Error) => {
+    console.error(`[window] could not load ${page}: ${err.message}`);
+  });
   return mainWindow;
 }

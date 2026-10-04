@@ -1,10 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 
-import type { Outcome, RefusalView, ServerProbe, ServerView } from '@shared/types';
+import type { Outcome, RefusalView, ServerInput, ServerProbe, ServerView } from '@shared/types';
 
-import { api } from '../../core/bside';
 import { ConfirmService } from '../../core/confirm.service';
-import { ServersService } from '../../core/servers.service';
+import { HubService } from '../../core/hub.service';
 
 interface Editing {
   readonly name: string;
@@ -29,7 +28,7 @@ interface Editing {
       <h2 class="card-title">Crucible servers</h2>
       <p class="detail">B-Side sends every song to the server marked "in use". Its songs, presets and tag suggestions come from that server.</p>
 
-      @for (server of servers.servers(); track server.name) {
+      @for (server of hub.servers(); track server.name) {
         <div class="server" [class.active]="server.active">
           @if (editing()?.name === server.name) {
             <div class="grid">
@@ -54,7 +53,7 @@ interface Editing {
             </div>
             <div class="actions">
               @if (!server.active) {
-                <button type="button" class="primary small" (click)="run(server.name, api!.servers.setActive(server.name))">Use this server</button>
+                <button type="button" class="primary small" (click)="run(server.name, calls.setActive(server.name))">Use this server</button>
               }
               <button type="button" class="ghost small" [disabled]="testing() === server.name" (click)="test(server)">
                 {{ testing() === server.name ? 'Testing…' : 'Test connection' }}
@@ -126,9 +125,20 @@ interface Editing {
   `],
 })
 export class ServersCardComponent {
-  protected readonly servers = inject(ServersService);
+  protected readonly hub = inject(HubService);
   private readonly confirm = inject(ConfirmService);
-  protected readonly api = api;
+
+  /** The hub's server routes. Every change answers the whole list, applied at once. */
+  protected readonly calls = {
+    addPairing: (line: string) => this.changed(this.hub.call<ServerView[]>('POST', '/api/servers/pairing', { line })),
+    add: (input: ServerInput) => this.changed(this.hub.call<ServerView[]>('POST', '/api/servers', input)),
+    update: (name: string, input: ServerInput) =>
+      this.changed(this.hub.call<ServerView[]>('PUT', `/api/servers/${encodeURIComponent(name)}`, input)),
+    remove: (name: string) => this.changed(this.hub.call<ServerView[]>('DELETE', `/api/servers/${encodeURIComponent(name)}`)),
+    setActive: (name: string) =>
+      this.changed(this.hub.call<ServerView[]>('POST', `/api/servers/${encodeURIComponent(name)}/activate`)),
+    test: (name: string) => this.hub.call<ServerProbe>('POST', `/api/servers/${encodeURIComponent(name)}/test`),
+  };
 
   protected readonly pairing = signal('');
   protected readonly handName = signal('');
@@ -142,15 +152,13 @@ export class ServersCardComponent {
   protected readonly refusals = signal<Record<string, RefusalView>>({});
 
   protected async addPairing(): Promise<void> {
-    if (api === null) return;
-    const outcome = await api.servers.addPairing(this.pairing());
+    const outcome = await this.calls.addPairing(this.pairing());
     this.addRefusal.set(outcome.ok ? null : outcome.refusal);
     if (outcome.ok) this.pairing.set('');
   }
 
   protected async addByHand(): Promise<void> {
-    if (api === null) return;
-    const outcome = await api.servers.add({ name: this.handName(), url: this.handUrl(), token: this.handToken() });
+    const outcome = await this.calls.add({ name: this.handName(), url: this.handUrl(), token: this.handToken() });
     this.addRefusal.set(outcome.ok ? null : outcome.refusal);
     if (outcome.ok) {
       this.handName.set('');
@@ -169,8 +177,8 @@ export class ServersCardComponent {
 
   protected async saveEdit(): Promise<void> {
     const editing = this.editing();
-    if (api === null || editing === null) return;
-    const ok = await this.run(editing.name, api.servers.update(editing.name, {
+    if (editing === null) return;
+    const ok = await this.run(editing.name, this.calls.update(editing.name, {
       name: editing.newName,
       url: editing.url,
       token: editing.token === '' ? null : editing.token,
@@ -179,20 +187,18 @@ export class ServersCardComponent {
   }
 
   protected async remove(server: ServerView): Promise<void> {
-    if (api === null) return;
     const yes = await this.confirm.ask({
       title: `Remove ${server.name}?`,
       message: 'B-Side forgets its address and token. Songs it made stay in your library.',
       confirm: 'Remove',
       danger: true,
     });
-    if (yes) await this.run(server.name, api.servers.remove(server.name));
+    if (yes) await this.run(server.name, this.calls.remove(server.name));
   }
 
   protected async test(server: ServerView): Promise<void> {
-    if (api === null) return;
     this.testing.set(server.name);
-    const outcome = await api.servers.test(server.name);
+    const outcome = await this.calls.test(server.name);
     this.testing.set(null);
     this.probes.update((all) => {
       const next = { ...all };
@@ -208,6 +214,12 @@ export class ServersCardComponent {
     const outcome = await pending;
     this.note(name, outcome.ok ? null : outcome.refusal);
     return outcome.ok;
+  }
+
+  private async changed(pending: Promise<Outcome<ServerView[]>>): Promise<Outcome<ServerView[]>> {
+    const outcome = await pending;
+    if (outcome.ok) this.hub.servers.set(outcome.value);
+    return outcome;
   }
 
   private note(name: string, refusal: RefusalView | null): void {

@@ -1,68 +1,65 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
-import { ENDED_PHASES, type InstallView, type JobView, type RefusalView, type Song } from '@shared/types';
+import { ENDED_PHASES, type InstallView, type JobView, type RefusalView, type Take } from '@shared/types';
 
-import { api } from '../../core/bside';
-import { ConfirmService } from '../../core/confirm.service';
 import { bytesText, clockText, secondsText } from '../../core/format';
 import { JobsService } from '../../core/jobs.service';
 import { LibraryService } from '../../core/library.service';
 import { PlayerService } from '../../core/player.service';
+import { SaveMenuComponent } from '../save-menu/save-menu.component';
 
 type Row =
-  | { readonly kind: 'song'; readonly number: number; readonly song: Song }
+  | { readonly kind: 'take'; readonly number: number; readonly take: Take }
   | { readonly kind: 'job'; readonly number: number; readonly job: JobView };
 
 /**
- * The queue, oldest first — the order songs play in. The library's songs come
- * first (they survive restarts), then every job still generating or that ended
- * without a song. A job that finishes turns into its song in place.
+ * The playing list, oldest first — the order songs play in: this device's takes
+ * (songs made and not saved), then every job still generating or that ended
+ * without a song. A job that finishes turns into its take in place.
+ *
+ * Nothing here is kept for long: the hub clears the oldest takes first (FIFO)
+ * well before they are a problem. "Save" copies a take into a playlist in the
+ * library, which is the only way a song is kept.
  */
 @Component({
   selector: 'app-queue-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [SaveMenuComponent],
   template: `
     <div class="head">
-      <span class="label">Queue</span>
-      <span class="count">{{ library.songs().length }} {{ library.songs().length === 1 ? 'song' : 'songs' }}@if (generatingCount() > 0) {, {{ generatingCount() }} generating}</span>
+      <span class="label">Playing list</span>
+      <span class="count">{{ library.takes().length }} {{ library.takes().length === 1 ? 'song' : 'songs' }}@if (generatingCount() > 0) {, {{ generatingCount() }} generating}</span>
     </div>
-    <p class="hint">Songs play in this order. Click one to play it.</p>
-    @for (problem of library.problems(); track problem) {
-      <div class="notice">{{ problem }}</div>
-    }
+    <p class="hint">Songs play in this order. Only songs you save to a playlist are kept; the oldest here clear on their own.</p>
     <div class="list">
-      @for (row of rows(); track row.kind === 'song' ? row.song.id : row.job.key) {
-        @if (row.kind === 'song') {
-          <div class="item playable" [class.current]="player.current()?.id === row.song.id" (click)="play(row.song, $event)">
+      @for (row of rows(); track row.kind === 'take' ? row.take.id : row.job.key) {
+        @if (row.kind === 'take') {
+          <div class="item playable" [class.current]="isCurrent(row.take)" (click)="play(row.take, $event)">
             <div class="main">
-              @if (renaming() === row.song.id) {
-                <input type="text" class="rename" maxlength="200" [value]="row.song.title"
-                       (keydown.enter)="rename(row.song, $any($event.target).value)"
-                       (keydown.escape)="renaming.set(null)"
-                       (blur)="rename(row.song, $any($event.target).value)" />
-              } @else {
-                <div class="title">
-                  <span class="num">{{ row.number }}</span>
-                  @if (player.current()?.id === row.song.id) { <span class="now">{{ player.paused() ? '❚❚' : '▶︎' }}</span> }
-                  {{ row.song.title }}
-                </div>
-              }
-              <div class="sub">{{ row.song.params.tags ?? '' }}</div>
-              <div class="meta">
-                {{ clock(row.song.durationS) }}
-                @if (row.song.batch; as batch) { · {{ batch.index }} of {{ batch.of }} }
-                @if (row.song.params.seed !== null) { · seed {{ row.song.params.seed }} }
-                @if (row.song.params.instrumental) { · instrumental }
+              <div class="title">
+                <span class="num">{{ row.number }}</span>
+                @if (isCurrent(row.take)) { <span class="now">{{ player.paused() ? '❚❚' : '▶︎' }}</span> }
+                {{ row.take.title }}
               </div>
-              @if (songRefusal()?.id === row.song.id) {
-                <div class="refusal"><code>{{ songRefusal()!.refusal.code }}</code><span>{{ songRefusal()!.refusal.message }}</span></div>
+              <div class="sub">{{ row.take.params.tags ?? '' }}</div>
+              <div class="meta">
+                {{ clock(row.take.durationS) }}
+                @if (row.take.batch; as batch) { · {{ batch.index }} of {{ batch.of }} }
+                @if (row.take.params.seed !== null) { · seed {{ row.take.params.seed }} }
+                @if (row.take.params.instrumental) { · instrumental }
+                @if (savedIn(row.take); as where) { · <span class="saved">saved in {{ where }}</span> }
+              </div>
+              @if (saving() === row.take.id) {
+                <app-save-menu [take]="row.take" (closed)="saving.set(null)" />
+              }
+              @if (takeRefusal()?.id === row.take.id) {
+                <div class="refusal"><code>{{ takeRefusal()!.refusal.code }}</code><span>{{ takeRefusal()!.refusal.message }}</span></div>
               }
             </div>
             <div class="actions">
-              <button type="button" class="icon" title="Rename" (click)="renaming.set(row.song.id)">✎</button>
-              <button type="button" class="icon" title="Save a copy…" (click)="saveCopy(row.song)">⤓</button>
-              <button type="button" class="icon" title="Show in folder" (click)="reveal(row.song)">⌂</button>
-              <button type="button" class="icon" title="Delete this song" (click)="remove(row.song)">×</button>
+              <button type="button" class="ghost small" title="Keep this song: save it to a playlist"
+                      (click)="saving.set(saving() === row.take.id ? null : row.take.id)">Save</button>
+              <button type="button" class="icon" title="Remove from the playing list" (click)="remove(row.take)">×</button>
             </div>
           </div>
         } @else {
@@ -92,13 +89,13 @@ type Row =
                 <button type="button" class="ghost small" (click)="cancel(row.job)">Cancel</button>
               }
               @if (ended(row.job)) {
-                <button type="button" class="icon" title="Remove from the queue" (click)="jobs.dismiss(row.job.key)">×</button>
+                <button type="button" class="icon" title="Remove from the list" (click)="jobs.dismiss(row.job.key)">×</button>
               }
             </div>
           </div>
         }
       } @empty {
-        <p class="empty">Nothing yet. Generated songs line up here, and stay in your library folder.</p>
+        <p class="empty">Nothing yet. Generated songs line up here and play in turn.</p>
       }
     </div>
   `,
@@ -125,7 +122,7 @@ type Row =
     .now { color: var(--audio); margin-right: 4px; font-size: 10px; }
     .sub { font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .meta { font-size: 11.5px; color: var(--text-secondary); }
-    .rename { padding: 3px 6px; font-size: 12.5px; }
+    .saved { color: var(--ok); }
     .actions { display: flex; align-items: flex-start; gap: 2px; }
     .icon {
       border: 0; background: transparent; color: var(--text-tertiary);
@@ -139,20 +136,30 @@ export class QueuePanelComponent {
   protected readonly library = inject(LibraryService);
   protected readonly jobs = inject(JobsService);
   protected readonly player = inject(PlayerService);
-  private readonly confirm = inject(ConfirmService);
 
-  protected readonly renaming = signal<string | null>(null);
-  protected readonly songRefusal = signal<{ id: string; refusal: RefusalView } | null>(null);
+  protected readonly saving = signal<string | null>(null);
+  protected readonly takeRefusal = signal<{ id: string; refusal: RefusalView } | null>(null);
   protected readonly jobRefusal = signal<{ key: string; refusal: RefusalView } | null>(null);
 
   protected readonly rows = computed<Row[]>(() => {
-    const songs = this.library.songs();
-    const rows: Row[] = songs.map((song, at) => ({ kind: 'song', number: at + 1, song }));
-    this.jobs.jobs().forEach((job, at) => rows.push({ kind: 'job', number: songs.length + at + 1, job }));
+    const takes = this.library.takes();
+    const rows: Row[] = takes.map((take, at) => ({ kind: 'take', number: at + 1, take }));
+    this.jobs.jobs().forEach((job, at) => rows.push({ kind: 'job', number: takes.length + at + 1, job }));
     return rows;
   });
 
   protected readonly generatingCount = computed(() => this.jobs.jobs().filter((job) => !this.ended(job)).length);
+
+  protected isCurrent(take: Take): boolean {
+    return this.player.current()?.key === `take:${take.id}`;
+  }
+
+  /** The playlists a saved take's song is in, by name. */
+  protected savedIn(take: Take): string | null {
+    if (take.savedAs === null) return null;
+    const names = this.library.holding(take.savedAs).map((playlist) => playlist.name);
+    return names.length === 0 ? null : names.join(', ');
+  }
 
   protected clock(seconds: number | null): string {
     return seconds === null ? 'length unknown' : clockText(seconds);
@@ -230,9 +237,9 @@ export class QueuePanelComponent {
     return true;
   }
 
-  protected play(song: Song, event: MouseEvent): void {
-    if ((event.target as HTMLElement).closest('button, input')) return;
-    this.player.play(song);
+  protected play(take: Take, event: MouseEvent): void {
+    if ((event.target as HTMLElement).closest('button, input, app-save-menu')) return;
+    this.player.playTake(take);
   }
 
   protected async cancel(job: JobView): Promise<void> {
@@ -240,38 +247,8 @@ export class QueuePanelComponent {
     this.jobRefusal.set(refusal === null ? null : { key: job.key, refusal });
   }
 
-  protected async rename(song: Song, title: string): Promise<void> {
-    if (this.renaming() !== song.id) return;
-    this.renaming.set(null);
-    if (title.trim() === '' || title.trim() === song.title) return;
-    const refusal = await this.library.rename(song.id, title);
-    this.songRefusal.set(refusal === null ? null : { id: song.id, refusal });
-  }
-
-  protected async saveCopy(song: Song): Promise<void> {
-    if (api === null) return;
-    const outcome = await api.library.saveCopy(song.id);
-    this.songRefusal.set(outcome.ok ? null : { id: song.id, refusal: outcome.refusal });
-  }
-
-  protected async reveal(song: Song): Promise<void> {
-    if (api === null) return;
-    try {
-      await api.library.reveal(song.id);
-    } catch (error) {
-      this.songRefusal.set({ id: song.id, refusal: { code: 'reveal', message: (error as Error).message } });
-    }
-  }
-
-  protected async remove(song: Song): Promise<void> {
-    const yes = await this.confirm.ask({
-      title: `Delete "${song.title}"?`,
-      message: `Its audio file and its sidecar are deleted from ${this.library.dir()}. This cannot be undone.`,
-      confirm: 'Delete song',
-      danger: true,
-    });
-    if (!yes) return;
-    const refusal = await this.library.remove(song.id);
-    this.songRefusal.set(refusal === null ? null : { id: song.id, refusal });
+  protected async remove(take: Take): Promise<void> {
+    const refusal = await this.library.removeTake(take);
+    this.takeRefusal.set(refusal === null ? null : { id: take.id, refusal });
   }
 }
