@@ -11,6 +11,7 @@
 #   - Developer Mode enabled on the phone
 #
 # Usage: plug the phone in, unlock it, then:  npm run package:ios
+#        (two phones? DEVICE="part of its name" npm run package:ios)
 #        (or run this directly:  ./package-ios.sh)
 #
 set -euo pipefail
@@ -36,8 +37,12 @@ echo "Node: $(node -v)"
 # Mac a standard 8-4-4-4-12 UUID, so neither matches. (A blind `head -1` here used to
 # grab "Blaine's Apple Watch" and hand xcodebuild a destination it couldn't find,
 # silently failing every deploy.)
+#
+# With more than one iPhone around, name the one to install on:
+#   DEVICE="Victoria" npm run package:ios     (any part of its name)
 DEVICE_UDID="$(xcrun xctrace list devices 2>/dev/null \
   | grep -viE 'watch|simulator' \
+  | grep -iF "${DEVICE:-}" \
   | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}' \
   | head -1)"
 if [ -z "$DEVICE_UDID" ]; then
