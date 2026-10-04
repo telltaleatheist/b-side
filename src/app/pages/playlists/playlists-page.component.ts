@@ -6,6 +6,7 @@ import { ConfirmService } from '../../core/confirm.service';
 import { clockText } from '../../core/format';
 import { desktop } from '../../core/hub.service';
 import { LibraryService } from '../../core/library.service';
+import { OfflineService } from '../../core/offline.service';
 import { PlayerService } from '../../core/player.service';
 
 /**
@@ -52,6 +53,16 @@ import { PlayerService } from '../../core/player.service';
             <button type="button" class="ghost small" (click)="deletePlaylist(playlist)">Delete</button>
           </div>
           <p class="hint">{{ songs().length }} {{ songs().length === 1 ? 'song' : 'songs' }}{{ total() }}</p>
+          @if (offline.available) {
+            <label class="keep">
+              <input type="checkbox" [checked]="offline.kept().has(playlist.id)" (change)="offline.keep(playlist.id, $any($event.target).checked)" />
+              <span>Keep on this phone</span>
+              @if (offline.kept().has(playlist.id)) {
+                <span class="hint">{{ offline.countOn(playlist.songs) }} of {{ playlist.songs.length }} on the phone{{ offline.busy() ? ' — saving…' : '' }}</span>
+              }
+            </label>
+            @if (offline.problem(); as trouble) { <div class="notice">{{ trouble }}</div> }
+          }
           <div class="list">
             @for (song of songs(); track song.id; let at = $index) {
               <div class="item" [class.current]="isCurrent(song)" (click)="play(playlist, song, $event)">
@@ -141,6 +152,7 @@ import { PlayerService } from '../../core/player.service';
     }
     .icon:hover:not(:disabled) { color: var(--accent); background: var(--bg-hover); }
     .pad { padding: 8px 0; }
+    .keep { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
     @media (max-width: 700px) {
       .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
       .lists { border-right: 0; border-bottom: 1px solid var(--border-subtle); max-height: 40vh; }
@@ -151,6 +163,7 @@ import { PlayerService } from '../../core/player.service';
 export class PlaylistsPageComponent {
   protected readonly library = inject(LibraryService);
   protected readonly player = inject(PlayerService);
+  protected readonly offline = inject(OfflineService);
   private readonly confirm = inject(ConfirmService);
   protected readonly isDesktop = desktop !== null;
 

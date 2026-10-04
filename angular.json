@@ -40,6 +40,16 @@
               ],
               "outputHashing": "all"
             },
+            "mobile": {
+              "outputPath": "dist/mobile",
+              "baseHref": "./",
+              "optimization": {
+                "scripts": true,
+                "styles": { "minify": true, "inlineCritical": false },
+                "fonts": true
+              },
+              "outputHashing": "all"
+            },
             "development": {
               "optimization": false,
               "extractLicenses": false,

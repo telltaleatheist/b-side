@@ -2,9 +2,11 @@ import { computed, effect, inject, Injectable, signal, untracked } from '@angula
 
 import type { Song, Take } from '@shared/types';
 
-import { HubService } from './hub.service';
+import { HtmlAudioOutput, NativeAudioOutput, type AudioOutput, type QueueItem } from './audio-output';
+import { HubService, isNative } from './hub.service';
 import { JobsService } from './jobs.service';
 import { LibraryService } from './library.service';
+import { OfflineService } from './offline.service';
 
 /** What the player plays from: this device's playing list, or one saved playlist. */
 export type PlaySource = { readonly kind: 'takes' } | { readonly kind: 'playlist'; readonly id: string };
@@ -38,16 +40,19 @@ function itemOfSong(song: Song): PlayItem {
  *    there is none yet but a song is generating, it waits for it;
  *  - previous restarts the song when more than 3 s in (or at the first song).
  *
- * The `<audio>` element lives in the DOM (iOS Safari will not play one that is
- * not), and the lock screen / media keys drive it through the Media Session API.
+ * The sound itself comes out of an `AudioOutput` that holds the queue — the
+ * `<audio>` element on the desktop and in a browser, AVPlayer in the iOS app —
+ * so the next song starts even while the phone's WebView is frozen. This
+ * service keeps the output's queue in step with the list and mirrors what it
+ * reports.
  */
 @Injectable({ providedIn: 'root' })
 export class PlayerService {
   private readonly hub = inject(HubService);
   private readonly library = inject(LibraryService);
   private readonly jobs = inject(JobsService);
+  private readonly offline = inject(OfflineService);
 
-  readonly audio = document.createElement('audio');
   readonly source = signal<PlaySource>({ kind: 'takes' });
   readonly current = signal<PlayItem | null>(null);
   readonly waiting = signal(false);
@@ -56,6 +61,8 @@ export class PlayerService {
   readonly duration = signal(0);
   /** Why the current song would not play, when it would not. */
   readonly problem = signal<string | null>(null);
+
+  private readonly output: AudioOutput;
 
   /** The list being played, in play order. */
   readonly items = computed<PlayItem[]>(() => {
@@ -82,34 +89,37 @@ export class PlayerService {
   );
 
   constructor() {
-    this.audio.preload = 'auto';
-    this.audio.setAttribute('playsinline', '');
-    this.audio.style.display = 'none';
-    document.body.appendChild(this.audio);
-    const sync = (): void => {
-      this.paused.set(this.audio.paused);
-      this.time.set(this.audio.currentTime);
-      this.duration.set(Number.isFinite(this.audio.duration) ? this.audio.duration : 0);
+    const listener = {
+      track: (key: string): void => {
+        const found = this.items().find((item) => item.key === key) ?? null;
+        this.current.set(found);
+        this.waiting.set(false);
+        this.problem.set(null);
+      },
+      playing: (playing: boolean): void => this.paused.set(!playing),
+      time: (seconds: number, duration: number): void => {
+        this.time.set(seconds);
+        this.duration.set(duration);
+      },
+      finished: (): void => {
+        // Nothing after it yet: on the playing list, the next take to land plays the moment it does.
+        if (this.source().kind === 'takes') this.waiting.set(true);
+        this.paused.set(true);
+      },
+      error: (message: string): void => this.problem.set(message),
     };
-    for (const name of ['timeupdate', 'play', 'pause', 'loadedmetadata', 'durationchange', 'emptied']) {
-      this.audio.addEventListener(name, sync);
-    }
-    this.audio.addEventListener('ended', () => this.step(1));
-    this.audio.addEventListener('error', () => {
-      const current = this.current();
-      if (current !== null && this.audio.getAttribute('src') !== null) {
-        this.problem.set(`${current.title} could not be played (it may have been cleared from the playing list).`);
-      }
-    });
-    // A rename shows in the bar; a song that left its list stops it.
+    this.output = isNative ? new NativeAudioOutput(listener) : new HtmlAudioOutput(listener);
+
+    // The list changed under the player (a take landed or cleared, a playlist was edited):
+    // the output's queue follows; a song that left the list stops.
     effect(() => {
-      this.items();
-      untracked(() => this.refresh());
+      const items = this.items();
+      untracked(() => this.follow(items));
     });
     this.hub.onTake((take) => {
-      if (this.source().kind === 'takes' && (this.current() === null || this.waiting())) this.play(itemOfTake(take), { kind: 'takes' });
+      if (this.source().kind !== 'takes') return;
+      if (this.current() === null || this.waiting()) this.play(itemOfTake(take), { kind: 'takes' });
     });
-    this.wireMediaSession();
   }
 
   play(item: PlayItem, source: PlaySource = this.source()): void {
@@ -117,12 +127,7 @@ export class PlayerService {
     this.current.set(item);
     this.waiting.set(false);
     this.problem.set(null);
-    this.audio.src = this.hub.audioUrl(item.kind === 'take' ? 'takes' : 'songs', item.id);
-    this.audio.play().catch((error: unknown) => {
-      // Autoplay refused (a browser before any tap), or a load that failed: paused on it; play tries again.
-      console.error('[player] could not play', item.key, error);
-    });
-    this.describe(item);
+    this.output.start(this.queue(), item.key);
   }
 
   /** Play a take from this device's playing list. */
@@ -134,79 +139,57 @@ export class PlayerService {
   playPlaylist(playlistId: string, song?: Song): void {
     const playlist = this.library.playlist(playlistId);
     if (playlist === null) return;
-    const songs = this.library.songsOf(playlist);
-    const first = song ?? songs[0];
+    const first = song ?? this.library.songsOf(playlist)[0];
     if (first !== undefined) this.play(itemOfSong(first), { kind: 'playlist', id: playlistId });
   }
 
   toggle(): void {
     if (this.current() === null) return;
-    if (this.audio.paused) void this.audio.play();
-    else this.audio.pause();
+    if (this.paused()) this.output.play();
+    else this.output.pause();
   }
 
   seek(seconds: number): void {
-    this.audio.currentTime = seconds;
+    this.output.seek(seconds);
   }
 
   previous(): void {
-    if (this.audio.currentTime > 3 || this.index() <= 0) {
-      this.audio.currentTime = 0;
-      return;
-    }
-    this.step(-1);
+    this.output.previous();
   }
 
   next(): void {
-    this.step(1);
+    this.output.next();
   }
 
   stop(): void {
-    this.audio.pause();
-    this.audio.removeAttribute('src');
-    this.audio.load();
+    this.output.stop();
     this.current.set(null);
     this.waiting.set(false);
     this.problem.set(null);
+    this.paused.set(true);
   }
 
-  private refresh(): void {
+  /** The output's queue: the list being played, each song at the URL this device plays it from. */
+  private queue(): QueueItem[] {
+    const album = this.sourceName();
+    return this.items().map((item) => ({
+      key: item.key,
+      url: item.kind === 'song' ? this.offline.urlOf(item.id) ?? this.hub.audioUrl('songs', item.id) : this.hub.audioUrl('takes', item.id),
+      title: item.title,
+      artist: item.tags ?? 'B-Side',
+      album,
+    }));
+  }
+
+  private follow(items: PlayItem[]): void {
     const current = this.current();
     if (current === null) return;
-    const found = this.items().find((item) => item.key === current.key);
-    if (found === undefined) this.stop();
-    else if (found.title !== current.title) {
-      this.current.set(found);
-      this.describe(found);
+    const found = items.find((item) => item.key === current.key);
+    if (found === undefined) {
+      this.stop();
+      return;
     }
-  }
-
-  private step(direction: 1 | -1): void {
-    const items = this.items();
-    if (items.length === 0) return;
-    const next = items[this.index() + direction];
-    if (next !== undefined) {
-      this.play(next);
-    } else if (direction > 0 && this.source().kind === 'takes') {
-      // Nothing after it yet: the next take to land plays the moment it does.
-      this.waiting.set(true);
-    }
-  }
-
-  private describe(item: PlayItem): void {
-    if (!('mediaSession' in navigator)) return;
-    navigator.mediaSession.metadata = new MediaMetadata({ title: item.title, artist: item.tags ?? 'B-Side', album: this.sourceName() });
-  }
-
-  private wireMediaSession(): void {
-    if (!('mediaSession' in navigator)) return;
-    const session = navigator.mediaSession;
-    session.setActionHandler('play', () => void this.audio.play());
-    session.setActionHandler('pause', () => this.audio.pause());
-    session.setActionHandler('previoustrack', () => this.previous());
-    session.setActionHandler('nexttrack', () => this.next());
-    session.setActionHandler('seekto', (details) => {
-      if (details.seekTime !== undefined) this.seek(details.seekTime);
-    });
+    if (found.title !== current.title) this.current.set(found);
+    this.output.update(this.queue());
   }
 }

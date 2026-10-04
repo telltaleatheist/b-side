@@ -35,7 +35,7 @@ import { PlayerService } from '../../core/player.service';
   styles: [`
     :host {
       display: flex; align-items: center; gap: 16px;
-      height: 72px; padding: 0 20px;
+      height: calc(72px + env(safe-area-inset-bottom)); padding: 0 20px env(safe-area-inset-bottom);
       border-top: 1px solid var(--border-default);
       background: var(--bg-elevated);
     }

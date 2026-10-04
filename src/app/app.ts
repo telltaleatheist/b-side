@@ -68,7 +68,8 @@ import { PlayerService } from './core/player.service';
     .shell { display: flex; flex-direction: column; height: 100%; }
     .top {
       display: flex; align-items: center; gap: 18px;
-      height: 44px; padding: 0 16px;
+      /* The phone draws under the notch: the safe-area inset is 0 everywhere else. */
+      height: calc(44px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 16px 0;
       border-bottom: 1px solid var(--border-subtle);
       background: var(--bg-sunken);
     }
