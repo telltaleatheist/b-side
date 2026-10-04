@@ -81,13 +81,13 @@ BookForge/Bookshelf - find it there and reuse the idea before inventing anything
       6.5 MB FLAC fetched and filed with its sidecar (seed 2481639261).
 
 ### Phase 1 - playing list vs playlists
-- [ ] Split the model: the playing list (ephemeral session queue) vs named playlists.
+- [x] Split the model: the playing list (ephemeral session queue) vs named playlists.
       Generated songs land in the playing list; only "Save to playlist" copies a song into
-      the library folder.
-- [ ] Playlist CRUD (create, rename, delete, add/remove/reorder songs) and a playlists view
-      to play a saved playlist.
-- [ ] Desktop playing list: decide its own retention (temp folder, FIFO cap) - songs not
-      saved are temporary on desktop too.
+      the library folder. (a142217: `takes.ts`, `library.ts`; verified from a browser tab.)
+- [x] Playlist CRUD (create, rename, delete, add/remove/reorder songs) and a playlists view
+      to play a saved playlist. (Playlists page; bun tests cover every rule.)
+- [x] Desktop playing list: decide its own retention (temp folder, FIFO cap) - songs not
+      saved are temporary on desktop too. (The take cache: desktop 200 takes, 4 GB overall.)
 
 ### Phase 1b - describe it, get the tags (Owen, 2026-10-04)
 - [ ] "Describe the music" box: e.g. "in the style of One Must Fall 2097, the DOS game" or
@@ -101,17 +101,24 @@ BookForge/Bookshelf - find it there and reuse the idea before inventing anything
       the cost in the UI ("swaps the song model out for ~N s"), and describe once per batch.
 
 ### Phase 2 - the desktop hub server
-- [ ] Find BookForge's Bookshelf server (the in-app HTTP server) and mirror it: an HTTP
-      server in Electron main serving the web build and a REST/SSE API.
-- [ ] API: generation (proxied to Crucible by the hub), job events (SSE), song streaming
+- [x] Find BookForge's Bookshelf server (the in-app HTTP server) and mirror it: an HTTP
+      server in Electron main serving the web build and a REST/SSE API. (`electron/hub/`.)
+- [x] API: generation (proxied to Crucible by the hub), job events (SSE), song streaming
       with HTTP range requests, playlists, presets, tag suggestions/conflicts.
-- [ ] Pairing/auth for remote devices (how Bookshelf does it), bind address choices
-      (localhost, LAN), a settings toggle to share.
+- [x] Pairing/auth for remote devices (how Bookshelf does it), bind address choices
+      (localhost, LAN), a settings toggle to share. Key + link (`/#key=`), 127.0.0.1 by
+      default. NOT yet exercised live: turning sharing ON (binding 0.0.0.0 makes Windows
+      show a firewall prompt, which nobody was awake to answer) - Owen's first try.
 
 ### Phase 3 - web client
-- [ ] Transport layer in the Angular app (IPC vs HTTP) so one UI runs in both.
-- [ ] Web playing list in memory/IndexedDB with a FIFO budget; cleared on close.
-- [ ] Web build served by the hub; works in desktop Chrome and mobile Safari.
+- [x] Transport layer in the Angular app (IPC vs HTTP) so one UI runs in both. Decided:
+      HTTP everywhere (`HubService`), the desktop window included; see the hub design.
+- [x] Web playing list in memory/IndexedDB with a FIFO budget; cleared on close. Decided:
+      the hub keeps every playing list (a browser stores nothing but its key); a tab's
+      list has a 40-take FIFO and is cleared 10 min after the tab stops listening.
+- [ ] Web build served by the hub; works in desktop Chrome and mobile Safari. Desktop
+      Chrome verified (Mac Chrome -> PC hub, real render, save to playlist); the Electron
+      window verified over CDP. Mobile Safari not yet tried.
 
 ### Phase 4 - Crucible setup
 - [ ] Setup page: install Crucible on this computer via `@crucible/bootstrap` (how
