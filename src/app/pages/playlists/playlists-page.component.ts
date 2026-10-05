@@ -140,7 +140,7 @@ import { PlayerService } from '../../core/player.service';
             </div>
           }
           @if (playlist.album?.stage === 'planning') {
-            <p class="hint">The first two tracks are being made already, so the music starts while the rest is written.</p>
+            <p class="hint">Everything is written and painted first: the names, tags{{ playlist.album?.ask?.sung ? ', lyrics' : '' }} and the cover. The music starts once it is all ready.</p>
           }
         </div>
       } @else {

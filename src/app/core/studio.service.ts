@@ -199,7 +199,10 @@ export class StudioService {
    */
   params(): SongParams | RefusalView {
     const params: { -readonly [K in keyof SongParams]: SongParams[K] } = {};
-    const tags = this.tagLine();
+    // A song is made to be fast (Owen, 2026-10-05): with no tags picked, the description itself is
+    // the style line, straight to the song model, with no chat model in the way. "Fill in the tags"
+    // is there for whoever wants the tag model's pick (and lyrics) first.
+    const tags = this.tagLine() || this.description().trim();
     if (tags !== '') params.tags = tags;
     if (!this.instrumental() && this.lyrics().trim() !== '') params.lyrics = this.lyrics();
     if (this.page()?.instrumental !== false) params.instrumental = this.instrumental();

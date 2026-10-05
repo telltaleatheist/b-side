@@ -368,7 +368,7 @@ export interface AlbumMeta {
 
 /** One step of an album before its tracks: a line to show and, when it counts, how far through. */
 export interface AlbumStep {
-  readonly kind: 'openers' | 'plan' | 'lyrics';
+  readonly kind: 'openers' | 'plan' | 'lyrics' | 'cover';
   readonly done: number;
   readonly of: number;
 }

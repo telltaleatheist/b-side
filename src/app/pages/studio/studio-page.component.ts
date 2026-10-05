@@ -117,7 +117,7 @@ import { StudioService } from '../../core/studio.service';
                 <button type="button" class="chip" [class.on]="albumSung()" (click)="albumSung.set(true)">Sung</button>
               </div>
             </div>
-            <p class="opt-note hint">The biggest chat model on {{ hub.activeServer()?.name }} writes the name, the artist and every track{{ albumSung() ? '; ' + studio.tagModel + ' writes the lyrics, a song per two minutes so ' + albumLength() + ' minutes is always filled' : '' }}; its image model paints the cover. The first track is ready in a few minutes; the rest fill in while you listen.</p>
+            <p class="opt-note hint">The biggest chat model on {{ hub.activeServer()?.name }} writes the name, the artist and every track{{ albumSung() ? '; ' + studio.tagModel + ' writes the lyrics, a song per two minutes so ' + albumLength() + ' minutes is always filled' : '' }}; its image model paints the cover. All of that is done first, so the album comes out right; then the music is made, track by track, and fills in while you listen.</p>
           </div>
           @if (spaceFull()) {
             <div class="room-card">
@@ -197,6 +197,9 @@ import { StudioService } from '../../core/studio.service';
             {{ studio.count() > 1 ? 'Make ' + studio.count() + ' songs' : 'Make the song' }}
           </button>
         </div>
+        @if (studio.tags().length === 0 && studio.description().trim() !== '') {
+          <p class="hint center">No tags picked: the description goes straight to the song model as its style, for speed.</p>
+        }
         @if (studio.count() > 1 && studio.seed().trim() !== '') {
           <p class="hint center">Seeds {{ studio.seed() }}, {{ +studio.seed() + 1 }}, …</p>
         }

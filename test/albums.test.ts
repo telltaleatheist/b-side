@@ -32,8 +32,11 @@ test('the progress line says what the maker is doing, and the bar only goes forw
   expect(planning.waiting).toBe(true);
   const lyrics = albumProgress(album({ step: { kind: 'lyrics', done: 3, of: 13 } }));
   expect(lyrics.label).toBe('Writing lyrics: 4 of 13…');
-  const making = albumProgress(album({ stage: 'making', madeS: 900, coverState: 'painting' }));
-  expect(making.label).toBe('Making the music: 15 of 30 min · painting the album art…');
-  expect(making.share).toBeGreaterThan(lyrics.share);
+  const cover = albumProgress(album({ step: { kind: 'cover', done: 0, of: 1 } }));
+  expect(cover.label).toBe('Painting the album art…');
+  expect(cover.share).toBeGreaterThan(lyrics.share);
+  const making = albumProgress(album({ stage: 'making', madeS: 900 }));
+  expect(making.label).toBe('Making the music: 15 of 30 min');
+  expect(making.share).toBeGreaterThan(cover.share);
   expect(albumProgress(album({ stage: 'done', madeS: 1900 })).share).toBe(1);
 });
