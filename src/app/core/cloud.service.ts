@@ -17,7 +17,7 @@ export interface CloudSave {
 }
 
 /**
- * The phone's cloud: a B-Side computer it links to, as Bookshelf links to
+ * The phone's cloud: a B-Sides computer it links to, as Bookshelf links to
  * BookForge (Owen, 2026-10-04: "the computer can act like a cloud ... you
  * download the albums, or you stream them").
  *
@@ -127,7 +127,7 @@ export class CloudService {
    */
   async saveAlbum(playlist: Playlist, songs: readonly Song[]): Promise<RefusalView | null> {
     const address = this.address();
-    if (address === null) return { code: 'no_cloud', message: 'Link a B-Side computer in Settings first.' };
+    if (address === null) return { code: 'no_cloud', message: 'Link a B-Sides computer in Settings first.' };
     if (playlist.album === undefined) return { code: 'not_an_album', message: 'Only albums are saved to the cloud.' };
     const { NativeDisk } = await import('../phone/native-disk');
     const headers = { [HUB_KEY_HEADER]: address.key };
@@ -173,7 +173,7 @@ export class CloudService {
 
   private async call<T>(method: string, path: string, body?: unknown): Promise<{ ok: true; value: T } | { ok: false; refusal: RefusalView }> {
     const address = this.address();
-    if (address === null) return { ok: false, refusal: { code: 'no_cloud', message: 'No B-Side computer is linked.' } };
+    if (address === null) return { ok: false, refusal: { code: 'no_cloud', message: 'No B-Sides computer is linked.' } };
     if (method === 'GET') this.state.set(this.state() === 'ok' ? 'ok' : 'loading');
     const headers: Record<string, string> = { [HUB_KEY_HEADER]: address.key, 'X-BSide-Client': this.hub.client, 'X-BSide-Client-Kind': 'ios' };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -182,7 +182,7 @@ export class CloudService {
       response = await fetch(`${address.url}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
     } catch {
       this.state.set('unreachable');
-      this.trouble.set(`${this.host()} is not answering (is B-Side running there, with sharing on?)`);
+      this.trouble.set(`${this.host()} is not answering (is B-Sides running there, with sharing on?)`);
       return { ok: false, refusal: { code: 'cloud_unreachable', message: this.trouble() as string } };
     }
     const parsed = (await response.json().catch(() => null)) as unknown;

@@ -1,5 +1,5 @@
 /**
- * crucible-install-door — the one seam every install surface in B-Side uses.
+ * crucible-install-door — the one seam every install surface in B-Sides uses.
  *
  * Ported from Foundry (app/electron/crucible-install-door.ts). Crucible's
  * Windows tray has an install door that can be WATCHED, not only driven
@@ -7,12 +7,12 @@
  * running and how the last one ended, `GET /install/events` replays the last
  * 200 events and then follows, `POST /install` is Try again.
  * `@crucible/bootstrap` carries those as `installStatus()`, `watchInstall()` and
- * `requestHostInstall()`, and this file is the whole of what B-Side knows about
+ * `requestHostInstall()`, and this file is the whole of what B-Sides knows about
  * them. The move outlives a button press — the tray runs it, a restart can
  * happen in the middle — so a window that opens later ASKS where it got to
  * rather than having had to be listening.
  *
- * What is B-Side's and not the SDK's: the ROWS. The tray names its own steps;
+ * What is B-Sides' and not the SDK's: the ROWS. The tray names its own steps;
  * {@link rowForHostStep} folds them into the five a person reads.
  *
  * One install per computer, so the state here is the module's: who is
@@ -49,7 +49,7 @@ import type {
  *   wsl-state, import-distro, guest-ready,
  *   guest-install, migrate-config, lan-door,
  *   stop-windows-server, switch-pairing            → Setting up the Linux engine
- *   install-job-types                              → Preparing what B-Side needs
+ *   install-job-types                              → Preparing what B-Sides needs
  *   prepare-weights, migrate-weights               → Moving models to the Linux engine
  *
  * NULL for a name this build does not know: the row on screen does not move,
@@ -111,7 +111,7 @@ function emit(event: CrucibleInstallEvent): void {
 /**
  * The tray's events, translated. Two kinds are not passed straight through:
  *
- *   - its `done` is DROPPED: it means the MOVE finished, and B-Side's `done`
+ *   - its `done` is DROPPED: it means the MOVE finished, and B-Sides' `done`
  *     means the whole sequence did (started, registered, measured), which the
  *     run emits itself — forwarding the tray's would skip rows still to come;
  *   - a `step` may emit two of ours: nothing in the tray's stream announces
@@ -145,7 +145,7 @@ function relay(event: HostEvent): void {
     case 'done':
       return;
     case 'unknown':
-      console.log(`[crucible] the install door sent a "${event.kind}" event this B-Side does not know; not drawn.`);
+      console.log(`[crucible] the install door sent a "${event.kind}" event this B-Sides does not know; not drawn.`);
       return;
   }
 }
@@ -179,7 +179,7 @@ export interface CrucibleInstallDoor {
   /** Install Crucible on this computer, narrating into every watcher. */
   install(): Promise<void>;
   /**
-   * §2.5's Try again — the same move once more, then B-Side's server follows
+   * §2.5's Try again — the same move once more, then B-Sides' server follows
    * whatever connection it left. Offered only on `cannot` or `failed`.
    */
   retry(): Promise<void>;
@@ -277,7 +277,7 @@ export function crucibleInstallDoor(registry: ServerRegistry, runner: Runner = p
           await watchInstall({ onEvent: relay }, runner);
         }
         // The move may have switched the published connection to the Linux
-        // engine, so it is read again and B-Side's server follows it.
+        // engine, so it is read again and B-Sides' server follows it.
         const line = (text: string): void => emit({ event: 'line', text, stream: 'stdout' });
         emit({ event: 'done', backend: await connectInstalled(registry, '', line) });
       } catch (error) {

@@ -15,7 +15,7 @@ const STORED_OUTPUT = 'bside.output';
 export type PlaySource =
   | { readonly kind: 'takes' }
   | { readonly kind: 'playlist'; readonly id: string }
-  /** A playlist in the phone's cloud (a B-Side computer): streamed from it, or played from the phone's copy. */
+  /** A playlist in the phone's cloud (a B-Sides computer): streamed from it, or played from the phone's copy. */
   | { readonly kind: 'cloud'; readonly id: string };
 
 /** One thing the player can play, whichever list it came from. */
@@ -204,7 +204,7 @@ export class PlayerService {
 
   /**
    * Play through one output device on this computer ('' = the system default)
-   * and remember it, so B-Side keeps to that route whatever the computer's
+   * and remember it, so B-Sides keeps to that route whatever the computer's
    * default becomes.
    */
   async useOutput(deviceId: string, remember = true): Promise<void> {
@@ -219,7 +219,7 @@ export class PlayerService {
     }
     this.outputDevice.set(deviceId);
     const problem = await this.output.setDevice(deviceId);
-    this.outputProblem.set(problem === null ? null : `B-Side could not play through the chosen output (${problem}); it is using the system default.`);
+    this.outputProblem.set(problem === null ? null : `B-Sides could not play through the chosen output (${problem}); it is using the system default.`);
     if (problem !== null) await this.output.setDevice('');
   }
 
@@ -231,7 +231,7 @@ export class PlayerService {
     const there = devices.some((device) => device.kind === 'audiooutput' && device.deviceId === wanted);
     if (!there) {
       await this.output.setDevice('');
-      this.outputProblem.set('The chosen output is not connected; B-Side is using the system default until it is back.');
+      this.outputProblem.set('The chosen output is not connected; B-Sides is using the system default until it is back.');
     } else {
       await this.useOutput(wanted, false);
     }
@@ -297,7 +297,7 @@ export class PlayerService {
           ? this.offline.urlOf(item.id) ?? this.cloud.audioUrl(item.id)
           : this.hub.audioUrl('takes', item.id),
       title: item.title,
-      artist: item.tags ?? 'B-Side',
+      artist: item.tags ?? 'B-Sides',
       album,
     }));
   }

@@ -11,8 +11,8 @@ import { PHONE_DATA, PHONE_LIBRARY } from './phone-paths';
 const VAULT_KEY = 'crucible-servers';
 
 /**
- * The phone's own B-Side hub: the shared core (shared/core/hub-core.ts) run in
- * the app, so the phone talks to a Crucible server itself, with no B-Side
+ * The phone's own B-Sides hub: the shared core (shared/core/hub-core.ts) run in
+ * the app, so the phone talks to a Crucible server itself, with no B-Sides
  * computer. The screens do not know: HubService sends its calls here instead of
  * over HTTP, and hears events from here instead of a stream.
  *

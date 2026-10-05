@@ -1,5 +1,5 @@
 /**
- * hub-core — what a B-Side hub IS, wherever it runs: the desktop's HTTP hub
+ * hub-core — what a B-Sides hub IS, wherever it runs: the desktop's HTTP hub
  * (electron/hub/hub.ts) and the phone's own (src/app/phone/phone-hub.ts) are
  * two doors onto this one class.
  *

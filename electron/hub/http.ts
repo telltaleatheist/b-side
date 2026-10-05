@@ -54,7 +54,7 @@ export async function readJson(req: IncomingMessage): Promise<unknown> {
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > MAX_BODY) throw new Refusal('body_too_large', 'That request is larger than B-Side accepts.', 413);
+    if (size > MAX_BODY) throw new Refusal('body_too_large', 'That request is larger than B-Sides accepts.', 413);
     chunks.push(chunk as Buffer);
   }
   const text = Buffer.concat(chunks).toString('utf8');
@@ -149,7 +149,7 @@ export async function sendApp(req: IncomingMessage, res: ServerResponse, root: s
   const index = path.join(base, 'index.html');
   if (!fs.existsSync(index)) {
     res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end(`B-Side's web app is not built here (${index} is missing). Run "npm run build".`);
+    res.end(`B-Sides' web app is not built here (${index} is missing). Run "npm run build".`);
     return;
   }
   await sendFile(req, res, index, 'no-cache');
@@ -173,7 +173,7 @@ export async function receiveFile(req: IncomingMessage, target: string): Promise
       if (received > MOST_UPLOAD_BYTES) {
         req.destroy();
         out.destroy();
-        reject(new Refusal('upload_too_big', 'That file is bigger than any song B-Side makes.', 413));
+        reject(new Refusal('upload_too_big', 'That file is bigger than any song B-Sides makes.', 413));
       }
     });
     req.on('error', reject);

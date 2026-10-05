@@ -1,4 +1,4 @@
-# B-Side
+# B-Sides
 
 A music generator and player for [Crucible](https://github.com/telltaleatheist/crucible):
 describe the music or pick style tags, write lyrics (or make an instrumental), generate
@@ -44,12 +44,12 @@ Other scripts: `npm run typecheck`, `npm run build` (main to `dist/electron`, th
   with jazz sax") and a small model on the server (`qwen3.5-4b`) fills in the style tags.
 - **Style tags as chips**, the server's suggestions by group, **conflicts in red** with why.
   **Copy** puts them on the clipboard. The vocabulary and conflict map are the server's
-  (`GET /v1/playground`); B-Side keeps no copy.
+  (`GET /v1/playground`); B-Sides keeps no copy.
 - **Lyrics** with `[Verse]` / `[Chorus]` sections, an **Instrumental** switch, **guidance
   (cfg)**, **seed** (blank = random), **Generate N in a row** (with a seed: seed, seed+1, ...).
 - **Presets** kept on the server, never the seed.
 - **Jobs** followed by the hub through `@crucible/client`: queue position, progress, a first-use
-  install followed and the job sent again, cancel. Jobs still generating when B-Side quits
+  install followed and the job sent again, cancel. Jobs still generating when B-Sides quits
   are followed again on the next launch.
 - **The playing list**: what each device generated, oldest first, playing in turn; the next
   song plays the moment it lands. Nothing here is kept for long — the hub clears the oldest

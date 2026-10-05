@@ -6,7 +6,7 @@
  * `electron:dev` starts ng serve on 4270 and dies the moment anything already
  * holds it: *"Port 4270 is already in use"*, concurrently SIGTERMs the other
  * half, and the whole launch is over before a window exists. What holds the
- * port is never a stranger — 4270 is B-Side's own dedicated dev port — it is
+ * port is never a stranger — 4270 is B-Sides' own dedicated dev port — it is
  * a STALE COPY OF OURSELVES: an ng serve that outlived a crashed session, a
  * concurrently tree that half-died, a debugging session's background server
  * nobody remembered. Asking a person to hunt PIDs for a port they never chose

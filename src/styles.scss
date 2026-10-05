@@ -1,4 +1,4 @@
-/* Night Deck (the B-Side redesign, 2026-10-04): a late-night cassette deck.
+/* Night Deck (the B-Sides redesign, 2026-10-04): a late-night cassette deck.
    Warm near-black grounds, one neon cyan for what you can press and what is
    playing, amber for what is still being made. Dark only.
 
@@ -183,8 +183,8 @@ select:disabled { cursor: default; background-image: none; opacity: 0.7; }
 }
 * { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track); }
 
-/* ── B-Side's shared pieces ─────────────────────────────────────────────────
-   Foundry dresses these per component; B-Side has few enough screens that one
+/* ── B-Sides' shared pieces ─────────────────────────────────────────────────
+   Foundry dresses these per component; B-Sides has few enough screens that one
    definition here is the plainer choice. Same values as Foundry's cards and
    buttons (servers-card, settings page). */
 

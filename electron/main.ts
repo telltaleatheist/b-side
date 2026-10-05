@@ -1,5 +1,5 @@
 /**
- * main — B-Side's lifecycle: ready → the hub → the desktop bridge → window; all
+ * main — B-Sides' lifecycle: ready → the hub → the desktop bridge → window; all
  * windows closed → quit (except on macOS, where the app stays until Cmd+Q).
  *
  * Everything with a lifetime lives in the hub, in main — the job runner, because
@@ -7,6 +7,7 @@
  * the library, because no client is allowed to touch the disk; the server
  * registry, because no client is allowed a Crucible token.
  */
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import { app, BrowserWindow, dialog, Menu, type MenuItemConstructorOptions } from 'electron';
@@ -35,6 +36,27 @@ function buildMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+/**
+ * The app was called B-Side until 2026-10-05; its folders were named after it. On the first start
+ * as B-Sides, the old settings folder (servers, tokens, the take cache) and the default library
+ * folder take the new name, so nothing is left behind. A rename on the same disk, done once: when
+ * the new folder already exists, nothing is touched.
+ */
+function adoptOldFolders(): void {
+  const moves = [
+    [path.join(app.getPath('appData'), 'B-Side'), app.getPath('userData')],
+    [path.join(app.getPath('music'), 'B-Side'), path.join(app.getPath('music'), 'B-Sides')],
+  ] as const;
+  for (const [from, to] of moves) {
+    try {
+      if (fs.existsSync(from) && !fs.existsSync(to)) fs.renameSync(from, to);
+    } catch (err) {
+      console.error(`[main] could not rename ${from} to ${to}; using it where it is:`, err);
+    }
+  }
+}
+
+adoptOldFolders();
 const single = app.requestSingleInstanceLock();
 if (!single) {
   app.quit();
@@ -49,7 +71,9 @@ if (!single) {
 
   const hub = new Hub({
     userData: app.getPath('userData'),
-    defaultLibraryDir: path.join(app.getPath('music'), 'B-Side'),
+    // The old folder only when the rename above could not happen: never an empty library in its place.
+    defaultLibraryDir: [path.join(app.getPath('music'), 'B-Sides'), path.join(app.getPath('music'), 'B-Side')]
+      .find((dir) => fs.existsSync(dir)) ?? path.join(app.getPath('music'), 'B-Sides'),
     appRoot: path.join(__dirname, '..', 'renderer', 'browser'),
     version: app.getVersion(),
   });
@@ -61,7 +85,7 @@ if (!single) {
     try {
       await hub.start();
     } catch (err) {
-      dialog.showErrorBox('B-Side could not start', (err as Error).message);
+      dialog.showErrorBox('B-Sides could not start', (err as Error).message);
       app.quit();
       return;
     }

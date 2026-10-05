@@ -80,9 +80,9 @@ interface Room {
         @if (hub.state() === 'key' || hub.state() === 'no-hub') {
           <div class="gate">
             <div class="card">
-              <h2 class="card-title">{{ hub.state() === 'key' ? 'This device needs a new B-Side link' : 'Set up B-Side' }}</h2>
+              <h2 class="card-title">{{ hub.state() === 'key' ? 'This device needs a new B-Sides link' : 'Set up B-Sides' }}</h2>
               @if (hub.state() === 'key') {
-                <p class="detail">The B-Side at {{ hub.address()?.url }} did not accept this device's key (it may have been replaced).</p>
+                <p class="detail">The B-Sides at {{ hub.address()?.url }} did not accept this device's key (it may have been replaced).</p>
                 <app-hub-picker />
               } @else if (hub.kind === 'ios') {
                 <div class="choice">
@@ -91,13 +91,13 @@ interface Room {
                   <button type="button" class="primary" (click)="hub.usePhone()">Use a Crucible server</button>
                 </div>
                 <div class="choice">
-                  <span class="door-name">Connect to a B-Side computer</span>
-                  <p class="detail">Use B-Side running on a computer: its playlists, its servers. Paste the link its Settings shows.</p>
+                  <span class="door-name">Connect to a B-Sides computer</span>
+                  <p class="detail">Use B-Sides running on a computer: its playlists, its servers. Paste the link its Settings shows.</p>
                   <app-hub-picker />
                 </div>
                 <p class="hint">Either way, Settings switches later.</p>
               } @else {
-                <p class="detail">This app plays and makes songs through B-Side running on a computer.</p>
+                <p class="detail">This app plays and makes songs through B-Sides running on a computer.</p>
                 <app-hub-picker />
               }
             </div>

@@ -7,12 +7,12 @@
  * the secret.
  */
 
-/** The one model B-Side makes songs with. */
+/** The one model B-Sides makes songs with. */
 export const SONG_MODEL = 'yue2-3b';
 
 /**
  * The chat model that turns a description into style tags and lyrics (shared/core/describe.ts):
- * qwen3.5-4b fine-tuned on B-Side's own describe answers (training/lyrics), served by Crucible 1.0.108+.
+ * qwen3.5-4b fine-tuned on B-Sides' own describe answers (training/lyrics), served by Crucible 1.0.108+.
  */
 export const TAG_MODEL = 'qwen3.5-4b-bside';
 
@@ -98,9 +98,9 @@ export interface NumberField {
 }
 
 /**
- * The parts of the server's `yue2-3b` playground page B-Side draws. The tag
+ * The parts of the server's `yue2-3b` playground page B-Sides draws. The tag
  * vocabulary, the conflict map and the cfg limits are the server's, read every
- * time the page is opened: B-Side keeps no copy of any of them.
+ * time the page is opened: B-Sides keeps no copy of any of them.
  */
 export interface SongPage {
   readonly model: string;
@@ -205,7 +205,7 @@ export interface InstallView {
 
 /** One generation, as main follows it. */
 export interface JobView {
-  /** B-Side's own id for the row, stable before the server has given one. */
+  /** B-Sides' own id for the row, stable before the server has given one. */
   readonly key: string;
   /** The hub client that asked for it: the playing list its take joins. */
   readonly client: string;
@@ -309,7 +309,7 @@ export interface Playlist {
   readonly name: string;
   readonly songs: readonly string[];
   readonly createdAt: string;
-  /** Set when B-Side made this playlist as an album (Make → Album). */
+  /** Set when B-Sides made this playlist as an album (Make → Album). */
   readonly album?: AlbumMeta;
 }
 
@@ -358,7 +358,7 @@ export interface AlbumMeta {
   /** Which server makes it, and which chat model wrote it. */
   readonly server: string;
   readonly writer: string | null;
-  /** Once saved to a B-Side computer (the phone's cloud): which, and when. Absent while it lives only here. */
+  /** Once saved to a B-Sides computer (the phone's cloud): which, and when. Absent while it lives only here. */
   readonly cloud?: { readonly host: string; readonly at: string } | null;
   /** What the maker is doing before the tracks (planning, writing lyrics), for the progress line; null once making. */
   readonly step?: AlbumStep | null;

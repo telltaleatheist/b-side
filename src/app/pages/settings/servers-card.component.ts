@@ -15,9 +15,9 @@ interface Editing {
 }
 
 /**
- * The Crucible servers B-Side can use, and the one it does.
+ * The Crucible servers B-Sides can use, and the one it does.
  *
- * Add one by its address (app-pair-server: the server hands B-Side a token),
+ * Add one by its address (app-pair-server: the server hands B-Sides a token),
  * by pasting its pairing line (`crucible://<name>@<host>:<port>/#<token>`, what
  * Crucible's console and `crucible pair` print), or by typing its address and
  * token — or, on the desktop, install, start or use the Crucible on this
@@ -32,7 +32,7 @@ interface Editing {
   template: `
     <div class="card">
       <h2 class="card-title">Crucible servers</h2>
-      <p class="detail">B-Side sends every song to the server marked "in use". Its songs, presets and tag suggestions come from that server.</p>
+      <p class="detail">B-Sides sends every song to the server marked "in use". Its songs, presets and tag suggestions come from that server.</p>
 
       @for (server of hub.servers(); track server.name) {
         <div class="server" [class.active]="server.active">
@@ -87,7 +87,7 @@ interface Editing {
       <div class="add">
         <span class="label">Add a server by its address</span>
         <app-pair-server />
-        <p class="hint">Its name on your network, its IP address, or http://server:7100. B-Side keeps every server you add here; "Use this server" switches between them.</p>
+        <p class="hint">Its name on your network, its IP address, or http://server:7100. B-Sides keeps every server you add here; "Use this server" switches between them.</p>
       </div>
 
       <details class="add">
@@ -193,7 +193,7 @@ export class ServersCardComponent {
   protected async remove(server: ServerView): Promise<void> {
     const yes = await this.confirm.ask({
       title: `Remove ${server.name}?`,
-      message: 'B-Side forgets its address and token. Songs it made stay in your library.',
+      message: 'B-Sides forgets its address and token. Songs it made stay in your library.',
       confirm: 'Remove',
       danger: true,
     });

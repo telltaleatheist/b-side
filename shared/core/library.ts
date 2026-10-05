@@ -3,7 +3,7 @@
  *
  * Owen, 2026-10-04: "Saved playlist songs on electron live in a dedicated
  * library folder ... Things only save long term if the user saves them to a
- * playlist." So the library folder (default `<Music>/B-Side`, changeable in
+ * playlist." So the library folder (default `<Music>/B-Sides`, changeable in
  * Settings) holds:
  *
  *   <id>.flac        a saved song's audio, exactly as the server made it
@@ -14,7 +14,7 @@
  *   playlists.json   the named playlists, each an ordered list of song ids
  *
  * A song lives exactly as long as some playlist holds it: one that leaves its
- * last playlist is deleted (the UI says so first). Songs a v1 B-Side saved
+ * last playlist is deleted (the UI says so first). Songs a v1 B-Sides saved
  * before there were playlists are adopted, once, into "Saved before playlists".
  *
  * Writes are atomic and run one at a time. A song's sidecar is written before its
@@ -29,7 +29,7 @@ import { Refusal } from './refusal';
 import { AUDIO_FILE, checkId, stamp } from './takes';
 import type { AlbumMeta, LibraryView, Playlist, Song, SongFacts } from '../types';
 
-/** Marks a sidecar as B-Side's, and its shape's version. */
+/** Marks a sidecar as B-Sides', and its shape's version. */
 const SIDECAR_VERSION = 1;
 const PLAYLISTS_FILE = 'playlists.json';
 const PLAYLISTS_VERSION = 1;
@@ -46,7 +46,7 @@ interface PlaylistsDocument {
   readonly playlists: Playlist[];
 }
 
-/** An album as another B-Side sends it: the playlist, its details, and each song's sidecar. */
+/** An album as another B-Sides sends it: the playlist, its details, and each song's sidecar. */
 export interface ImportedAlbum {
   readonly id: string;
   readonly name: string;
@@ -119,7 +119,7 @@ export class Library {
     if (text === null) throw new Refusal('song_missing', `The song ${id} is no longer in ${this.dir}.`, 404);
     const parsed = JSON.parse(text) as Sidecar;
     if (parsed.bside !== SIDECAR_VERSION || parsed.id !== id) {
-      throw new Refusal('song_unreadable', `${id}.json is not a B-Side song sidecar.`);
+      throw new Refusal('song_unreadable', `${id}.json is not a B-Sides song sidecar.`);
     }
     return parsed;
   }
@@ -131,7 +131,7 @@ export class Library {
     if (parsed.bsidePlaylists !== PLAYLISTS_VERSION || !Array.isArray(parsed.playlists)) {
       throw new Refusal(
         'playlists_unreadable',
-        `${join(this.dir, PLAYLISTS_FILE)} is not a B-Side playlist file; move it aside to start over.`,
+        `${join(this.dir, PLAYLISTS_FILE)} is not a B-Sides playlist file; move it aside to start over.`,
       );
     }
     return parsed.playlists;
@@ -173,7 +173,7 @@ export class Library {
   }
 
   /**
-   * Adopt songs no playlist holds (saved by a B-Side from before playlists) into
+   * Adopt songs no playlist holds (saved by a B-Sides from before playlists) into
    * one playlist, so the rule "a song lives while a playlist holds it" is true of
    * every song in the folder. Run when a library folder is opened.
    */
@@ -202,7 +202,7 @@ export class Library {
     const from = basename(song.audioFrom);
     const extension = from.slice(from.lastIndexOf('.') + 1).toLowerCase();
     if (!AUDIO_FILE.test(`.${extension}`)) {
-      throw new Refusal('song_format', `B-Side keeps flac, wav or mp3 audio, not .${extension}.`);
+      throw new Refusal('song_format', `B-Sides keeps flac, wav or mp3 audio, not .${extension}.`);
     }
     // Unique, sortable, readable: when it was made and which take it was.
     const base = `${stamp(new Date(song.createdAt))}-${song.params.seed ?? 'noseed'}`;
@@ -316,7 +316,7 @@ export class Library {
   }
 
   /**
-   * File an album another B-Side sent (a phone saving to its cloud). Its audio
+   * File an album another B-Sides sent (a phone saving to its cloud). Its audio
    * files and cover are already in the folder (sent first); this writes each
    * song's sidecar and the playlist. Sending the same album again replaces it.
    */

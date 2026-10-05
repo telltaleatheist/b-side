@@ -42,7 +42,7 @@ export type HubState =
   | 'reconnecting'
   /** The hub said the key is wrong or missing: this device needs the link again. */
   | 'key'
-  /** The phone has no hub chosen yet (neither a B-Side computer nor its own). */
+  /** The phone has no hub chosen yet (neither a B-Sides computer nor its own). */
   | 'no-hub'
   /** The phone is in the background: no network on purpose (heat, battery). */
   | 'paused';
@@ -53,7 +53,7 @@ export interface HubAddress {
 }
 
 const STORED_HUB = 'bside.hub';
-/** The phone's choice: `computer` (a B-Side hub on a computer) or `phone` (its own hub, talking to Crucible). */
+/** The phone's choice: `computer` (a B-Sides hub on a computer) or `phone` (its own hub, talking to Crucible). */
 const STORED_MODE = 'bside.mode';
 const STORED_KEY = 'bside.key';
 const STORED_CLIENT = 'bside.client';
@@ -92,7 +92,7 @@ function newId(prefix: string): string {
  *   - a browser tab: a new id per tab (sessionStorage, so it dies with the tab,
  *     and the hub clears its playing list after), served by the hub itself, the
  *     key read once from the link's `#key=` and kept in localStorage;
- *   - the iOS app: one id kept for good, and the hub the person chose — a B-Side
+ *   - the iOS app: one id kept for good, and the hub the person chose — a B-Sides
  *     computer, or the phone's own (src/app/phone/phone-hub.ts: the shared core
  *     run in the app, talking to a Crucible server itself). Calls and events go
  *     to whichever it is; the screens never know which.
@@ -109,7 +109,7 @@ export class HubService {
   readonly client: string;
 
   readonly address = signal<HubAddress | null>(null);
-  /** The phone runs its own hub (talks to Crucible itself) instead of using a B-Side computer. */
+  /** The phone runs its own hub (talks to Crucible itself) instead of using a B-Sides computer. */
   readonly onPhone = signal(false);
   readonly state = signal<HubState>('connecting');
   /** Why the stream is down, while it is. */
@@ -218,7 +218,7 @@ export class HubService {
       }
     }
     const address = this.address();
-    if (address === null) return { ok: false, refusal: { code: 'no_hub', message: 'Choose a B-Side hub first.' } };
+    if (address === null) return { ok: false, refusal: { code: 'no_hub', message: 'Choose a B-Sides hub first.' } };
     const headers: Record<string, string> = {
       [HUB_KEY_HEADER]: address.key,
       'X-BSide-Client': this.client,
@@ -233,7 +233,7 @@ export class HubService {
     try {
       response = await fetch(`${address.url}${path}`, init);
     } catch {
-      return { ok: false, refusal: { code: 'hub_unreachable', message: `The B-Side hub at ${address.url} is not answering.` } };
+      return { ok: false, refusal: { code: 'hub_unreachable', message: `The B-Sides hub at ${address.url} is not answering.` } };
     }
     let parsed: unknown = null;
     try {
@@ -438,7 +438,7 @@ export class HubService {
     );
   }
 
-  /** Back to a B-Side computer: stop hearing the phone's hub (its files stay for next time). */
+  /** Back to a B-Sides computer: stop hearing the phone's hub (its files stay for next time). */
   private leavePhone(): void {
     this.onPhone.set(false);
     this.unsubscribe?.();

@@ -1,5 +1,5 @@
 /**
- * disk — the few file operations B-Side's song logic needs, so the same logic
+ * disk — the few file operations B-Sides' song logic needs, so the same logic
  * runs on the desktop (Node's fs, electron/node-disk.ts) and on the phone (the
  * native file plugin, src/app/phone/native-disk.ts).
  *

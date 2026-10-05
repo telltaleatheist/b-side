@@ -64,7 +64,7 @@ export interface CrucibleInstallPlan {
 export type CrucibleFault = 'wrong_service' | 'unauthorized' | 'broken';
 
 /**
- * What the local Crucible is doing, in the distinctions B-Side acts on
+ * What the local Crucible is doing, in the distinctions B-Sides acts on
  * (Foundry's electron/crucible-start.ts `CrucibleRunState`, which split the
  * SDK's eight states this way after a three-second `/v1/info` timeout drew a
  * "repair your installation" card over a healthy engine):
@@ -92,9 +92,9 @@ export type LocalCrucibleState =
 export interface PublishedCrucible {
   readonly name: string;
   readonly url: string;
-  /** The B-Side server that points at this address, or null when none does yet. */
+  /** The B-Sides server that points at this address, or null when none does yet. */
   readonly registeredAs: string | null;
-  /** Whether that server is the one B-Side uses. */
+  /** Whether that server is the one B-Sides uses. */
   readonly active: boolean;
 }
 

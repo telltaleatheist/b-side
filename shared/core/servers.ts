@@ -1,5 +1,5 @@
 /**
- * servers — the Crucible servers B-Side knows, and which one it uses.
+ * servers — the Crucible servers B-Sides knows, and which one it uses.
  *
  * One document, kept in a `Vault` (`<userData>/servers.json` on the desktop, the
  * Keychain on the phone):
@@ -47,7 +47,7 @@ export function normaliseUrl(raw: string): string {
   try {
     parsed = new URL(url);
   } catch {
-    throw new Refusal('server_url_invalid', `${raw.trim()} is not an address B-Side can reach (e.g. http://192.168.1.20:7100)`);
+    throw new Refusal('server_url_invalid', `${raw.trim()} is not an address B-Sides can reach (e.g. http://192.168.1.20:7100)`);
   }
   const pathname = parsed.pathname.replace(/\/+$/, '').replace(/\/v1$/, '');
   return `${parsed.protocol}//${parsed.host}${pathname}`;
@@ -67,7 +67,7 @@ export class ServerRegistry {
     }
     const parsed: unknown = JSON.parse(text);
     if (typeof parsed !== 'object' || parsed === null || !Array.isArray((parsed as Document).servers)) {
-      throw new Refusal('servers_unreadable', `${this.vault.where} is not a B-Side server list; move it aside to start over.`);
+      throw new Refusal('servers_unreadable', `${this.vault.where} is not a B-Sides server list; move it aside to start over.`);
     }
     const document = parsed as Document;
     this.document = {
@@ -103,7 +103,7 @@ export class ServerRegistry {
   /** The stored entry, token included — main only. */
   get(name: string): StoredServer {
     const found = this.read().servers.find((server) => server.name === name);
-    if (found === undefined) throw new Refusal('unknown_server', `B-Side has no server named ${name}.`);
+    if (found === undefined) throw new Refusal('unknown_server', `B-Sides has no server named ${name}.`);
     return found;
   }
 
@@ -205,7 +205,7 @@ export class ServerRegistry {
   async remove(name: string): Promise<ServerView[]> {
     const document = this.read();
     if (!document.servers.some((server) => server.name === name)) {
-      throw new Refusal('unknown_server', `B-Side has no server named ${name}.`);
+      throw new Refusal('unknown_server', `B-Sides has no server named ${name}.`);
     }
     document.servers = document.servers.filter((server) => server.name !== name);
     if (document.active === name) document.active = document.servers[0]?.name ?? null;
@@ -216,7 +216,7 @@ export class ServerRegistry {
   async setActive(name: string): Promise<ServerView[]> {
     const document = this.read();
     if (!document.servers.some((server) => server.name === name)) {
-      throw new Refusal('unknown_server', `B-Side has no server named ${name}.`);
+      throw new Refusal('unknown_server', `B-Sides has no server named ${name}.`);
     }
     document.active = name;
     await this.write(document);

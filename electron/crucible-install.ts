@@ -3,13 +3,13 @@
  *
  * Ported from Foundry (app/electron/crucible-install.ts). Owen: "We need to be
  * able to install crucible on the computer through the electron app setup
- * page". B-Side is for other people too, so a person with no Crucible presses
- * one button and ends with Crucible installed, running, and the server B-Side
+ * page". B-Sides is for other people too, so a person with no Crucible presses
+ * one button and ends with Crucible installed, running, and the server B-Sides
  * uses — and is never shown a command (crucible PHASE19 §0: "a command a person
  * could run is a step the app should be running").
  *
  * The installer and every native/WSL decision are Crucible's
- * (`@crucible/bootstrap`). What is B-Side's:
+ * (`@crucible/bootstrap`). What is B-Sides':
  *
  *   1. WHICH release: the channel's promoted latest, and never an older one than
  *      is running here (`releaseToInstall`);
@@ -22,7 +22,7 @@
  * a type is enabled, and enabling `audio` here would make the first install
  * build YuE2's environment before the person has seen the app. Crucible installs
  * a type the moment a job asks for one (install-on-submit: a `409 installing`
- * that B-Side's job runner already follows, electron/jobs.ts), so the first
+ * that B-Sides' job runner already follows, electron/jobs.ts), so the first
  * Generate is what fetches the song model — and the studio says so.
  */
 import {
@@ -97,7 +97,7 @@ export async function releaseToInstall(sources: CrucibleReleaseSources): Promise
     throw new Refusal(
       'install_older_than_running',
       `The newest Crucible release is ${latest} and Crucible ${running} is already running on this computer; `
-        + 'B-Side never installs an older Crucible over a newer one.',
+        + 'B-Sides never installs an older Crucible over a newer one.',
     );
   }
   if (order === 0) {
@@ -142,7 +142,7 @@ export function installationSteps(platform: InstallPlatform): CrucibleInstallSte
       detail: 'Crucible sets this up by itself. Windows may ask for permission, and may ask for a restart.',
     }, {
       id: 'job-types',
-      title: 'Preparing what B-Side needs',
+      title: 'Preparing what B-Sides needs',
       detail: 'The song model itself downloads with your first song.',
     }, {
       id: 'models',
@@ -172,7 +172,7 @@ export async function crucibleInstallPlan(): Promise<CrucibleInstallPlan> {
 
 /**
  * The three sinks a run narrates into, all owned by the door
- * (crucible-install-door.ts): `event` is B-Side's own rows; `hostEvent` is
+ * (crucible-install-door.ts): `event` is B-Sides' own rows; `hostEvent` is
  * Crucible's Windows tray's stream, verbatim, which the door folds into rows;
  * `windowsEngineUp` is a one-shot the door makes idempotent, because the second
  * row is finished by whichever proof arrives first.
@@ -288,7 +288,7 @@ async function verifyInstalled(
   if (installedName !== '' && installedName !== used.published) {
     onLine(
       `Note: Crucible installed an engine calling itself "${installedName}", but the connection it published on `
-        + `this computer names "${used.published}". B-Side uses the published one.`,
+        + `this computer names "${used.published}". B-Sides uses the published one.`,
     );
   }
   try {

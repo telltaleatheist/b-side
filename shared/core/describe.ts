@@ -7,7 +7,7 @@
  * A small chat model on the same Crucible server (`TAG_MODEL`) reads the
  * description and answers structured fields — language, genre, mood, vocal,
  * instruments, sound, tempo, instrumental — held to a JSON schema, so the answer
- * is always parseable and always the right shape. B-Side then lays the fields out
+ * is always parseable and always the right shape. B-Sides then lays the fields out
  * in the order YuE2's own docs show a style line ("English, warm piano pop,
  * expressive female voice, acoustic piano, ..., 88 BPM").
  *

@@ -62,7 +62,7 @@ export class OfflineService {
   private readonly cloud = inject(CloudService);
   /**
    * The computer whose library this keeps a copy of: the hub itself when the
-   * phone uses a B-Side computer, the cloud when the phone runs its own hub.
+   * phone uses a B-Sides computer, the cloud when the phone runs its own hub.
    * A phone on its own hub with no cloud has nothing to keep (its songs are on
    * it already), and this stands down, so its cleanup never reads the phone's
    * own library.

@@ -1,7 +1,7 @@
 /**
  * api — `window.bside`, what only the desktop window has.
  *
- * Everything B-Side does goes through the hub's HTTP API, from every client,
+ * Everything B-Sides does goes through the hub's HTTP API, from every client,
  * the desktop window included. The bridge is left with what a browser tab or a
  * phone cannot do: know where the hub is without being told, use this
  * computer's own dialogs and folders, and install Crucible on this computer.
@@ -26,17 +26,17 @@ import type {
  *
  * On the bridge and never on the hub's HTTP API, on purpose: a phone or a
  * browser tab must not be able to install (or remove) software on the computer
- * B-Side runs on. Every act that changes B-Side's server list also reaches every
+ * B-Sides runs on. Every act that changes B-Sides' server list also reaches every
  * other device through the hub's `servers` event.
  */
 export interface CrucibleSetupBridge {
-  /** What this computer has: a Crucible or not, running or not, and whether B-Side uses it. Reads only. */
+  /** What this computer has: a Crucible or not, running or not, and whether B-Sides uses it. Reads only. */
   local(): Promise<Outcome<LocalCrucibleView>>;
   /** The rows an install would have here, and a sentence about this computer. Reads only. */
   installPlan(): Promise<Outcome<CrucibleInstallPlan>>;
   /** Is an install running here, and how did the last engine move end? Also joins a running one's events. */
   installStatus(): Promise<Outcome<CrucibleInstallStatus>>;
-  /** Install Crucible here, start it, and make it the server B-Side uses. Progress arrives on `onInstallEvent`. */
+  /** Install Crucible here, start it, and make it the server B-Sides uses. Progress arrives on `onInstallEvent`. */
   install(): Promise<Outcome<null>>;
   /** Try the engine move again (Windows, after `cannot` or `failed`). */
   installRetry(): Promise<Outcome<null>>;
@@ -44,9 +44,9 @@ export interface CrucibleSetupBridge {
   onInstallEvent(listener: (event: CrucibleInstallEvent) => void): () => void;
   /** Hear that a move Crucible's tray ran by itself has ended (ask `installStatus` again). Answers the unsubscribe. */
   onInstallSettled(listener: () => void): () => void;
-  /** Start the Crucible installed here (it stays running after B-Side closes), then use it. */
+  /** Start the Crucible installed here (it stays running after B-Sides closes), then use it. */
   start(): Promise<Outcome<CrucibleStartResult>>;
-  /** Use the Crucible this computer published, and make it the server B-Side uses. */
+  /** Use the Crucible this computer published, and make it the server B-Sides uses. */
   useLocal(): Promise<Outcome<ServerView[]>>;
   /** Restart Windows, when Crucible's engine move is waiting for one. Only ever on a press. */
   restartWindows(): Promise<Outcome<null>>;

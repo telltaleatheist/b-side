@@ -2,7 +2,7 @@
  * system-probe — what this computer is, measured once and said in one sentence.
  *
  * Ported from Foundry (app/electron/system-probe.ts), cut to the one thing
- * B-Side uses it for: the line at the top of "Install Crucible on this
+ * B-Sides uses it for: the line at the top of "Install Crucible on this
  * computer", which tells somebody before they press anything whether this
  * computer has a GPU the song model can run on. YuE2 wants a large NVIDIA card
  * or Apple silicon; a person deserves to read that it has neither before a
@@ -13,7 +13,7 @@
  * says which. Every probe is a spawn with a deadline, so a wedged driver costs
  * eight seconds and a sentence, never a frozen window.
  *
- * Cached for the process: nobody gains VRAM while B-Side is open.
+ * Cached for the process: nobody gains VRAM while B-Sides is open.
  */
 import { spawn } from 'node:child_process';
 import * as os from 'node:os';
@@ -89,7 +89,7 @@ export async function machineSentence(): Promise<string> {
   }
   const card = await nvidia();
   if (typeof card === 'string') {
-    cached = `${gb(ramMB)} GB of RAM and ${card}. B-Side's song model runs on a GPU, so this computer can install Crucible but not make songs with it.`;
+    cached = `${gb(ramMB)} GB of RAM and ${card}. B-Sides' song model runs on a GPU, so this computer can install Crucible but not make songs with it.`;
   } else if (card.vramMB === null) {
     cached = `${card.name ?? 'An NVIDIA GPU'} (nvidia-smi did not say how much memory it has), ${gb(ramMB)} GB of RAM.`;
   } else {

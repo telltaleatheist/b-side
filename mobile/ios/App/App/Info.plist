@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>B-Side</string>
+	<string>B-Sides</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -30,7 +30,7 @@
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>B-Side plays and makes songs through the B-Side app running on a computer on your network.</string>
+	<string>B-Sides plays and makes songs through the B-Sides app running on a computer on your network.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

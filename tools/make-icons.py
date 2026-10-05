@@ -1,5 +1,5 @@
 """
-make-icons: every B-Side icon, from one square picture.
+make-icons: every B-Sides icon, from one square picture.
 
     python3 tools/make-icons.py [tools/icon-source.png]
 

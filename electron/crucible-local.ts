@@ -1,9 +1,9 @@
 /**
  * crucible-local — the Crucible on THIS computer: is there one, is it running,
- * and does B-Side use it.
+ * and does B-Sides use it.
  *
  * Ported from Foundry (app/electron/crucible-pairing.ts, crucible-start.ts and
- * the local half of crucible-registry.ts). Crucible owns all of it and B-Side
+ * the local half of crucible-registry.ts). Crucible owns all of it and B-Sides
  * only asks:
  *
  *   - Crucible's installation record and its own `crucible local status`
@@ -17,7 +17,7 @@
  * An absent pairing file is a FACT ("no Crucible published a connection
  * here"), never a reason to guess an address.
  *
- * Desktop-only: these run on the computer B-Side runs on, for its window, over
+ * Desktop-only: these run on the computer B-Sides runs on, for its window, over
  * the preload bridge (electron/ipc.ts). The token read here goes straight into
  * the server registry and is never logged or answered to the window.
  */
@@ -76,7 +76,7 @@ export async function pairingFileRead(): Promise<PairingFileRead> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * `crucible local status`, in the distinctions B-Side acts on (see
+ * `crucible local status`, in the distinctions B-Sides acts on (see
  * `LocalCrucibleState`). `localStatus` answers `broken` rather than throwing for
  * every fault it anticipated, so a throw is a status document that could not be
  * obtained — `broken` too, with the reason.
@@ -96,13 +96,13 @@ export async function localState(): Promise<LocalCrucibleState> {
       case 'broken':
         return { kind: 'problem', fault: status.state, why: status.detail, what: faultWords(status.state) };
       default:
-        // A word this build has not heard of is NAMED: the Crucible here is newer than B-Side.
+        // A word this build has not heard of is NAMED: the Crucible here is newer than B-Sides.
         return {
           kind: 'problem',
           fault: 'broken',
           what: faultWords('broken'),
-          why: `Crucible reported a state this version of B-Side does not know: "${String(status.state)}". `
-            + 'B-Side may be older than the Crucible on this computer.',
+          why: `Crucible reported a state this version of B-Sides does not know: "${String(status.state)}". `
+            + 'B-Sides may be older than the Crucible on this computer.',
         };
     }
   } catch (err) {
@@ -122,15 +122,15 @@ export async function localState(): Promise<LocalCrucibleState> {
 function faultWords(fault: CrucibleFault): string {
   switch (fault) {
     case 'wrong_service':
-      return 'Another program is answering on the address Crucible was set up on, so B-Side cannot reach it. '
+      return 'Another program is answering on the address Crucible was set up on, so B-Sides cannot reach it. '
         + 'Close that program, or open Crucible and let it pair again.';
     case 'unauthorized':
       return 'Crucible is running and refused the credentials it published on this computer. That happens when '
         + 'it was reinstalled or paired afresh since; open Crucible and let it pair again.';
     case 'broken':
       return 'Crucible is on this computer, but the record it publishes for other programs is missing, unreadable, '
-        + 'or written by a version B-Side cannot read. Open Crucible and let its installer repair it; nothing in '
-        + 'B-Side can do that from here.';
+        + 'or written by a version B-Sides cannot read. Open Crucible and let its installer repair it; nothing in '
+        + 'B-Sides can do that from here.';
   }
 }
 
@@ -160,7 +160,7 @@ export async function localView(registry: ServerRegistry): Promise<LocalCrucible
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Register the Crucible this computer published and make it the one B-Side
+ * Register the Crucible this computer published and make it the one B-Sides
  * uses. Refuses by name when nothing was published (there is nothing to use)
  * or the file cannot be read.
  */
@@ -181,8 +181,8 @@ export async function useLocal(
 }
 
 /**
- * After an engine move B-Side only followed (the tray ran it by itself), the
- * server B-Side ALREADY has at the published address takes the published token:
+ * After an engine move B-Sides only followed (the tray ran it by itself), the
+ * server B-Sides ALREADY has at the published address takes the published token:
  * the pairing file is the token's one owner, and a move can rewrite it. Nothing
  * is added and nothing is made active — that stays a person's press. Answers
  * whether anything changed.
@@ -198,7 +198,7 @@ export async function refreshPublished(registry: ServerRegistry): Promise<boolea
 }
 
 /**
- * Start Crucible's managed service (it stays running after B-Side closes), then
+ * Start Crucible's managed service (it stays running after B-Sides closes), then
  * use it. Answered with Crucible's own sentence: "started", "still coming up"
  * and "nothing here to start" are all facts somebody should read.
  */

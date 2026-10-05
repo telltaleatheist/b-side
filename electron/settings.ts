@@ -1,13 +1,13 @@
 /**
- * settings — B-Side's own preferences, `<userData>/settings.json`.
+ * settings — B-Sides' own preferences, `<userData>/settings.json`.
  *
- *   libraryDir  where saved songs and playlists live; absent means `<Music>/B-Side`
+ *   libraryDir  where saved songs and playlists live; absent means `<Music>/B-Sides`
  *   sharing     whether the hub listens beyond this computer (default: no)
  *   hubPort     the hub's port (default DEFAULT_HUB_PORT); edit the file to change it
  *   hubKey      the key every hub request carries; made on first run, replaced
  *               from Settings (which signs every other device out)
  *
- * Unknown keys are kept on write, so a newer B-Side's settings survive an older
+ * Unknown keys are kept on write, so a newer B-Sides' settings survive an older
  * one saving over them.
  */
 import { randomBytes } from 'node:crypto';

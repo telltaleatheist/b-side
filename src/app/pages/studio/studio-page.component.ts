@@ -43,7 +43,7 @@ import { StudioService } from '../../core/studio.service';
       @if (hub.loaded() && hub.activeServer() === null) {
         <div class="card">
           <h2 class="card-title">Get a Crucible server</h2>
-          <p class="detail">B-Side makes songs with YuE2 on a Crucible server{{ isDesktop ? ': install Crucible on this computer, or use one that already runs somewhere.' : ' that already runs somewhere.' }}</p>
+          <p class="detail">B-Sides makes songs with YuE2 on a Crucible server{{ isDesktop ? ': install Crucible on this computer, or use one that already runs somewhere.' : ' that already runs somewhere.' }}</p>
           <app-crucible-setup [addByLine]="true" />
         </div>
       } @else {
@@ -123,7 +123,7 @@ import { StudioService } from '../../core/studio.service';
             <div class="room-card">
               <span class="kicker amber">Album space is full</span>
               <span class="room-title">Make room for the next album</span>
-              <p class="detail">Albums on this phone take {{ gb(spaceUsed()) }} of {{ spaceLimitGb() }} GB. {{ cloud.linked() ? 'Save some to your cloud on ' + cloud.host() + ' (they stay playable, streamed)' : 'Link a B-Side computer as your cloud in Settings to keep more, or delete one' }}, then make the next. Settings changes the limit.</p>
+              <p class="detail">Albums on this phone take {{ gb(spaceUsed()) }} of {{ spaceLimitGb() }} GB. {{ cloud.linked() ? 'Save some to your cloud on ' + cloud.host() + ' (they stay playable, streamed)' : 'Link a B-Sides computer as your cloud in Settings to keep more, or delete one' }}, then make the next. Settings changes the limit.</p>
               @if (cloud.saving(); as saving) { <p class="hint">Saving to the cloud: {{ saving.done }} of {{ saving.of }}…</p> }
               <div class="bar room-bar"><span [style.width.%]="Math.min(100, spaceUsed() / (spaceLimitGb() * 1e9) * 100)"></span></div>
               @for (row of albumsBySize(); track row.playlist.id) {

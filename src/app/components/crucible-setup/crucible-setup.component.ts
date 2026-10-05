@@ -24,11 +24,11 @@ type Face =
   | 'install'
   /** Installed and not serving: offer to start it. */
   | 'start'
-  /** Serving (or published) and B-Side does not use it yet: offer to use it. */
+  /** Serving (or published) and B-Sides does not use it yet: offer to use it. */
   | 'use'
-  /** B-Side uses it. */
+  /** B-Sides uses it. */
   | 'in-use'
-  /** Installed and serving, and it published no connection B-Side can read. */
+  /** Installed and serving, and it published no connection B-Sides can read. */
   | 'unpublished'
   /** The installation itself is at fault. */
   | 'problem'
@@ -44,9 +44,9 @@ type Busy = 'install' | 'start' | 'use' | 'retry' | 'restart' | 'pairing' | 'uni
  *
  * Ported from Foundry's crucible-doors and install-outcome components (Phase 4:
  * "install crucible on the computer through the electron app setup page, or
- * pick/add a crucible server"). B-Side is for other people too, so the person
+ * pick/add a crucible server"). B-Sides is for other people too, so the person
  * with nothing installed gets ONE button and is never shown a command: it
- * installs Crucible, starts it, and makes it the server B-Side uses, with the
+ * installs Crucible, starts it, and makes it the server B-Sides uses, with the
  * install's rows filling in as it goes (crucible PHASE19 §3.1).
  *
  * Two hosts: the studio's first-run card (`[addByLine]`: also paste an existing
@@ -70,7 +70,7 @@ type Busy = 'install' | 'start' | 'use' | 'retry' | 'restart' | 'pairing' | 'uni
             <div class="door">
               <span class="door-name">Install Crucible on this computer</span>
               @if (plan(); as it) { <span class="hint">{{ it.machine }}</span> }
-              <span class="hint">One button: B-Side installs Crucible, starts it and uses it. A first install downloads several gigabytes and can take a while; it keeps going if you close this.</span>
+              <span class="hint">One button: B-Sides installs Crucible, starts it and uses it. A first install downloads several gigabytes and can take a while; it keeps going if you close this.</span>
               @if (!installing()) {
                 <div class="actions">
                   <button type="button" class="primary" [disabled]="busy() !== null" (click)="install()">Install Crucible</button>
@@ -82,7 +82,7 @@ type Busy = 'install' | 'start' | 'use' | 'retry' | 'restart' | 'pairing' | 'uni
             <div class="door">
               <span class="door-name">Crucible is installed on this computer and is not running</span>
               <span class="hint">{{ local()?.state?.why }}</span>
-              <span class="hint">Starting it starts Crucible's own service, which keeps running after B-Side closes. B-Side then uses it.</span>
+              <span class="hint">Starting it starts Crucible's own service, which keeps running after B-Sides closes. B-Sides then uses it.</span>
               <div class="actions">
                 <button type="button" class="primary" [disabled]="busy() !== null" (click)="start()">
                   {{ busy() === 'start' ? 'Starting…' : 'Start Crucible' }}
@@ -102,10 +102,10 @@ type Busy = 'install' | 'start' | 'use' | 'retry' | 'restart' | 'pairing' | 'uni
             </div>
           }
           @case ('in-use') {
-            <p class="hint">B-Side uses the Crucible on this computer ({{ local()?.published?.registeredAs }}).</p>
+            <p class="hint">B-Sides uses the Crucible on this computer ({{ local()?.published?.registeredAs }}).</p>
           }
           @case ('unpublished') {
-            <div class="notice">Crucible is running on this computer but published no connection B-Side can read. {{ local()?.publishedRefusal ?? '' }}</div>
+            <div class="notice">Crucible is running on this computer but published no connection B-Sides can read. {{ local()?.publishedRefusal ?? '' }}</div>
           }
           @case ('problem') {
             <div class="notice">
@@ -165,7 +165,7 @@ type Busy = 'install' | 'start' | 'use' | 'retry' | 'restart' | 'pairing' | 'uni
         @if (manage() && face() !== 'install' && face() !== 'looking' && face() !== 'unsupported' && !installing()) {
           <details class="more" (toggle)="openedMore($any($event.target).open)">
             <summary class="label">Install or update Crucible on this computer</summary>
-            <p class="hint">Installs Crucible's newest release. B-Side never installs an older Crucible over a newer one, and says so if this computer already has the newest.</p>
+            <p class="hint">Installs Crucible's newest release. B-Sides never installs an older Crucible over a newer one, and says so if this computer already has the newest.</p>
             <div class="actions">
               <button type="button" class="ghost small" [disabled]="busy() !== null" (click)="install()">Install the newest Crucible</button>
             </div>
@@ -201,9 +201,9 @@ type Busy = 'install' | 'start' | 'use' | 'retry' | 'restart' | 'pairing' | 'uni
                 <div class="notice">One step refused (above, by name). Everything that did finish is gone; nothing was half-removed silently.</div>
               }
               @if (removed() === null) {
-                <p class="hint">Removing Crucible removes its token, so every app that uses it, B-Side included, has to connect to it again after a reinstall.</p>
+                <p class="hint">Removing Crucible removes its token, so every app that uses it, B-Sides included, has to connect to it again after a reinstall.</p>
               } @else if (unregistered(); as gone) {
-                <p class="hint">{{ gone }} was removed from B-Side's servers: its token went with the uninstall.</p>
+                <p class="hint">{{ gone }} was removed from B-Sides' servers: its token went with the uninstall.</p>
               }
             }
             <div class="actions">
@@ -222,10 +222,10 @@ type Busy = 'install' | 'start' | 'use' | 'retry' | 'restart' | 'pairing' | 'uni
           </details>
         }
       } @else if (hub.onPhone()) {
-        <p class="hint">This phone makes songs on a Crucible server by itself. Add one by its name or address; B-Side remembers each one you add.</p>
+        <p class="hint">This phone makes songs on a Crucible server by itself. Add one by its name or address; B-Sides remembers each one you add.</p>
       } @else {
         <p class="hint">
-          Crucible is installed from the B-Side app on the computer B-Side runs on{{ hostWords() }}.
+          Crucible is installed from the B-Sides app on the computer B-Sides runs on{{ hostWords() }}.
           From here you can add a Crucible server that is already running somewhere, by its address.
         </p>
       }
@@ -233,7 +233,7 @@ type Busy = 'install' | 'start' | 'use' | 'retry' | 'restart' | 'pairing' | 'uni
       @if (addByLine()) {
         <div class="door">
           <span class="door-name">Use a Crucible server</span>
-          <span class="hint">A Crucible running on another computer: type its name or address. B-Side remembers it, and Settings switches between the ones you add.</span>
+          <span class="hint">A Crucible running on another computer: type its name or address. B-Sides remembers it, and Settings switches between the ones you add.</span>
           <app-pair-server />
           <details>
             <summary class="hint">…or paste its pairing line</summary>
@@ -338,13 +338,13 @@ export class CrucibleSetupComponent {
 
   /**
    * The rows: while anything installs, and after a run pressed here. A move the
-   * tray ran by itself ends without B-Side's `done` (it did not register or
+   * tray ran by itself ends without B-Sides' `done` (it did not register or
    * measure anything), so its rows go when it does and its outcome is the readout.
    */
   protected readonly rowsShown = computed(() => this.installing() || this.ranHere());
 
   /**
-   * The one act to offer. A stopped Crucible is offered Start even when B-Side
+   * The one act to offer. A stopped Crucible is offered Start even when B-Sides
    * already uses it — that is exactly when songs cannot be made. "No
    * installation record" with a published connection is a Crucible somebody
    * set up by hand: it is used, not installed over.
@@ -423,7 +423,7 @@ export class CrucibleSetupComponent {
     this.local.set(local.value);
     // A tray that will not say where its engine move got to is a fact worth a
     // sentence — said quietly, in Settings, because it blocks none of the doors
-    // and is not something B-Side or the person can repair from here. The
+    // and is not something B-Sides or the person can repair from here. The
     // first-run card does not talk about Crucible's plumbing at all.
     const status = await bridge.installStatus();
     this.status.set(status.ok ? status.value : null);
@@ -574,7 +574,7 @@ export class CrucibleSetupComponent {
       : backend === 'llama-windows' ? ' on the Windows engine'
       : backend === 'mlx-darwin' ? ' on Apple silicon'
       : backend !== null ? ` (${backend})` : '';
-    return `Done: Crucible is running${engine}, and B-Side uses it. The song model downloads the first time you press Generate.`;
+    return `Done: Crucible is running${engine}, and B-Sides uses it. The song model downloads the first time you press Generate.`;
   }
 
   /** Apply an outcome's refusal; answers whether it was a success. */

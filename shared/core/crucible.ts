@@ -1,5 +1,5 @@
 /**
- * crucible — B-Side's door to a Crucible server, main process only.
+ * crucible — B-Sides' door to a Crucible server, main process only.
  *
  * Everything goes through the official SDK (`@crucible/client`): jobs, job
  * events, install tasks, artifacts, `info()`, chat (describe -> tags), and —
@@ -13,7 +13,7 @@ import { Refusal } from './refusal';
 import type { StoredServer } from './servers';
 import { SONG_MODEL, type NumberField, type Preset, type ServerProbe, type SongForm, type SongPage } from '../types';
 
-export const CLIENT_NAME = 'b-side';
+export const CLIENT_NAME = 'b-sides';
 
 export function clientFor(server: StoredServer): CrucibleClient {
   return new CrucibleClient({ url: server.url, token: server.token, clientName: CLIENT_NAME });
@@ -52,7 +52,7 @@ export async function songPage(server: StoredServer): Promise<SongPage> {
   const tags = named('tags');
   const lyrics = named('lyrics');
   if (page.available && tags === undefined) {
-    throw new Refusal('page_unreadable', `${server.name}'s ${SONG_MODEL} page has no tags field; is this a newer Crucible than B-Side knows?`);
+    throw new Refusal('page_unreadable', `${server.name}'s ${SONG_MODEL} page has no tags field; is this a newer Crucible than B-Sides knows?`);
   }
   return {
     model: SONG_MODEL,
@@ -64,7 +64,7 @@ export async function songPage(server: StoredServer): Promise<SongPage> {
     tagsPlaceholder: tags?.placeholder ?? null,
     tagsHint: tags?.hint ?? null,
     suggestions: tags?.suggestions ?? [],
-    // The server keys conflicts lower-cased already; B-Side looks them up the same way.
+    // The server keys conflicts lower-cased already; B-Sides looks them up the same way.
     conflicts: tags?.conflicts ?? {},
     lyricsPlaceholder: lyrics?.placeholder ?? null,
     lyricsHint: lyrics?.hint ?? null,

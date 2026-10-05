@@ -6,7 +6,7 @@ import { HubService } from '../../core/hub.service';
 
 /**
  * Add a Crucible server by typing its address: `owens-pc`, `192.168.1.20`,
- * `http://server:7100`. B-Side asks the server for a connection and waits for
+ * `http://server:7100`. B-Sides asks the server for a connection and waits for
  * it; a server with open pairing (Crucible's default) answers at once, one
  * that asks for approval shows the code here and on its own console. The
  * token goes into the hub's server list and never comes back here.
@@ -33,7 +33,7 @@ import { HubService } from '../../core/hub.service';
       </div>
       @if (waiting(); as pending) {
         @if (pending.approvalRequired) {
-          <p class="hint">Approve B-Side on {{ pending.name }}: its console shows code <strong class="mono">{{ pending.userCode }}</strong>.</p>
+          <p class="hint">Approve B-Sides on {{ pending.name }}: its console shows code <strong class="mono">{{ pending.userCode }}</strong>.</p>
         } @else {
           <p class="hint">Connecting to {{ pending.name }}…</p>
         }

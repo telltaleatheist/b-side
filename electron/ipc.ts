@@ -31,7 +31,7 @@ export function registerIpc(hub: Hub): void {
     answer(async () => {
       const window = appWindow();
       const options = {
-        title: 'Choose the B-Side library folder',
+        title: 'Choose the B-Sides library folder',
         defaultPath: hub.settings.view().libraryDir,
         properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>,
       };
@@ -72,7 +72,7 @@ export function registerIpc(hub: Hub): void {
  * through the electron app setup page, or pick/add a crucible server").
  *
  * Here and not on the hub on purpose: installing or removing software is an act
- * of the computer B-Side runs on, and the hub serves phones and browser tabs
+ * of the computer B-Sides runs on, and the hub serves phones and browser tabs
  * too. Adding or picking an existing server stays on the hub (any device may do
  * that); every act here that changes the server list tells every device through
  * `hub.serversChanged()`.

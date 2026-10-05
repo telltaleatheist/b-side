@@ -2,7 +2,7 @@
  * refusal — every failure becomes a `RefusalView` with the server's own code.
  *
  * The SDK raises one error type per failure and carries the server's `code` and
- * `message`; B-Side raises `Refusal` for its own (no server, bad input). This is
+ * `message`; B-Sides raises `Refusal` for its own (no server, bad input). This is
  * where any of them is turned into what the screen shows. The desktop adds the
  * installer's own two (electron/refusal.ts), which never run on the phone.
  */
@@ -20,7 +20,7 @@ import {
 
 import type { RefusalView } from '../types';
 
-/** A refusal B-Side raises itself (no server, bad input), or one read off a playground route. */
+/** A refusal B-Sides raises itself (no server, bad input), or one read off a playground route. */
 export class Refusal extends Error {
   constructor(
     readonly code: string,
@@ -32,7 +32,7 @@ export class Refusal extends Error {
   }
 }
 
-/** The SDK's errors and B-Side's own; anything else is null, for the caller to name. */
+/** The SDK's errors and B-Sides' own; anything else is null, for the caller to name. */
 export function crucibleRefusalOf(error: unknown): RefusalView | null {
   if (error instanceof Refusal) return { code: error.code, message: error.message };
   if (error instanceof CrucibleRefused || error instanceof CrucibleServerError) {

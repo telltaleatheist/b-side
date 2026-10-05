@@ -18,7 +18,7 @@
  *            the playing list of the client that asked for it.
  *
  * Jobs that have a server id are written to `pending.json`, so a job still
- * generating when B-Side quits is followed again on the next launch (its events
+ * generating when B-Sides quits is followed again on the next launch (its events
  * replay from the start, so nothing is missed).
  *
  * The audio is fetched by the platform's `AudioFetcher`: the SDK on the desktop,
@@ -207,7 +207,7 @@ export class JobRunner {
     if (job === undefined || this.ended(job)) return null;
     if (job.view.phase === 'installing') {
       if (job.taskId === null || job.view.install?.ours !== true) {
-        throw new Refusal('install_not_ours', 'This install was started by another client; it is not B-Side\'s to cancel.');
+        throw new Refusal('install_not_ours', 'This install was started by another client; it is not B-Sides\'s to cancel.');
       }
       await this.clientOf(job).cancelTask(job.taskId);
       return null;
@@ -249,7 +249,7 @@ export class JobRunner {
     await this.savePending();
   }
 
-  /** Follow again the jobs that were generating when B-Side last quit. */
+  /** Follow again the jobs that were generating when B-Sides last quit. */
   async resume(): Promise<void> {
     let entries: PendingEntry[];
     try {
@@ -294,7 +294,7 @@ export class JobRunner {
   }
 
   private clientOf(job: Job): CrucibleClient {
-    if (job.client === null) throw new Refusal('unknown_server', `B-Side no longer has the server ${job.view.server}.`);
+    if (job.client === null) throw new Refusal('unknown_server', `B-Sides no longer has the server ${job.view.server}.`);
     return job.client;
   }
 

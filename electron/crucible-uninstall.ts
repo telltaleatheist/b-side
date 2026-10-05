@@ -10,7 +10,7 @@
  * flags for real — and reads the one JSON document it prints
  * (shared/uninstall-wire.ts).
  *
- * The door is offered only for a Crucible B-Side can PROVE is this computer's:
+ * The door is offered only for a Crucible B-Sides can PROVE is this computer's:
  * Crucible's own installation record here. Never for a registry entry as such.
  *
  * Desktop-only, over the preload bridge.
@@ -53,9 +53,9 @@ export async function uninstallAvailability(registry: ServerRegistry): Promise<C
     return refused('uninstall_not_available', err instanceof Error ? err.message : String(err));
   }
   if (installed === null) {
-    return refused('uninstall_not_available', 'Crucible has no installation record on this computer, so there is nothing here B-Side can remove.');
+    return refused('uninstall_not_available', 'Crucible has no installation record on this computer, so there is nothing here B-Sides can remove.');
   }
-  // The B-Side server whose address AND token are the ones Crucible published here: the one whose token dies with it.
+  // The B-Sides server whose address AND token are the ones Crucible published here: the one whose token dies with it.
   const pairing = await pairingFileRead();
   const server = pairing.found === 'pairing' ? registry.atAddress(pairing.pairing.url) : null;
   const via = installed.platform === 'win32' ? 'windows-host' : 'server-pack';
@@ -79,9 +79,9 @@ export function uninstallDryRun(registry: ServerRegistry, flags: CrucibleUninsta
 }
 
 /**
- * The same flags, performed — and the one thing B-Side does that the verb
+ * The same flags, performed — and the one thing B-Sides does that the verb
  * cannot: the token always goes with an uninstall (`remove-config` is
- * unconditional), so a run that stopped the engine leaves B-Side's server for it
+ * unconditional), so a run that stopped the engine leaves B-Sides' server for it
  * holding a dead credential, and that server is removed. Read off the PLAN, not
  * the exit code: a fatal `stop_failed` is a run where other steps happened and
  * the engine did not stop.
@@ -120,7 +120,7 @@ async function invokeUninstall(
   if (result.code === 2) {
     throw refuse(
       'uninstall_not_available',
-      `The Crucible installed on this computer has no uninstall command; it is older than B-Side needs${said(result.stderr)}`,
+      `The Crucible installed on this computer has no uninstall command; it is older than B-Sides needs${said(result.stderr)}`,
     );
   }
   if (result.stdout.trim() === '') {
@@ -154,7 +154,7 @@ export function readUninstallDocument(text: string): CrucibleUninstallPlan {
   } catch (error) {
     throw refuse(
       'uninstall_unreadable',
-      `Crucible's uninstall did not print a plan B-Side can read (${error instanceof Error ? error.message : String(error)}).`,
+      `Crucible's uninstall did not print a plan B-Sides can read (${error instanceof Error ? error.message : String(error)}).`,
     );
   }
   const doc = asObject(parsed, 'the plan');
@@ -210,7 +210,7 @@ function readKept(raw: unknown): CrucibleUninstallKept {
 
 function asObject(raw: unknown, what: string): Record<string, unknown> {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-    throw refuse('uninstall_unreadable', `Crucible's uninstall printed ${what} in a shape B-Side cannot read.`);
+    throw refuse('uninstall_unreadable', `Crucible's uninstall printed ${what} in a shape B-Sides cannot read.`);
   }
   return raw as Record<string, unknown>;
 }
@@ -243,6 +243,6 @@ function needNumber(row: Record<string, unknown>, key: string): number {
 function missing(key: string): Refusal {
   return refuse(
     'uninstall_unreadable',
-    `Crucible's uninstall printed a plan with no readable "${key}" in it, so B-Side cannot say what it would do.`,
+    `Crucible's uninstall printed a plan with no readable "${key}" in it, so B-Sides cannot say what it would do.`,
   );
 }

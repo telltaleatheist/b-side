@@ -182,7 +182,7 @@ export class Hub {
         if (err.code === 'EADDRINUSE') {
           reject(new Refusal(
             'hub_port_taken',
-            `Port ${view.port} is already in use by another program, so B-Side cannot start its hub. ` +
+            `Port ${view.port} is already in use by another program, so B-Sides cannot start its hub. ` +
               `Close that program, or set "hubPort" to another number in ${path.join(this.options.userData, 'settings.json')}.`,
           ));
         } else {
@@ -261,7 +261,7 @@ export class Hub {
     const given = String(req.headers[HUB_KEY_HEADER.toLowerCase()] ?? url.searchParams.get('key') ?? '');
     if (!sameKey(given, this.settings.view().key)) {
       // `code` lets a client tell "wrong key" from a hub it cannot reach, and ask for the link again.
-      sendJson(res, 401, { error: { code: 'hub_key', message: 'This device needs the B-Side link (with its key) to use this hub.' } });
+      sendJson(res, 401, { error: { code: 'hub_key', message: 'This device needs the B-Sides link (with its key) to use this hub.' } });
       return;
     }
     const method = req.method === 'HEAD' ? 'GET' : (req.method ?? 'GET');
@@ -319,7 +319,7 @@ export class Hub {
   }
 
   private localOnly(request: Request, what: string): void {
-    if (!request.local) throw new Refusal('hub_local_only', `Only the computer B-Side runs on can ${what}.`, 403);
+    if (!request.local) throw new Refusal('hub_local_only', `Only the computer B-Sides runs on can ${what}.`, 403);
   }
 
   private defineRoutes(): void {

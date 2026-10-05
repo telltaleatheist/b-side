@@ -1,5 +1,5 @@
 /**
- * window — the one B-Side window.
+ * window — the one B-Sides window.
  *
  * `--dev` on the command line loads the renderer from `ng serve` on port 4270
  * (Foundry's is 4260); otherwise the app the hub serves — the same page a
@@ -30,7 +30,7 @@ export function openWindow(hubUrl: string): BrowserWindow {
     minHeight: 620,
     // --bg-base in src/styles.scss, so the window does not flash another colour first.
     backgroundColor: '#181715',
-    title: 'B-Side',
+    title: 'B-Sides',
     // macOS takes the Dock icon instead (main.ts); this is the taskbar's on Windows and Linux.
     icon: path.join(ICONS, 'icon.png'),
     show: false,
@@ -43,7 +43,7 @@ export function openWindow(hubUrl: string): BrowserWindow {
   });
 
   // Settings' Output list names your audio devices; Chromium only shows their
-  // names to a page allowed `media`. Allowed for B-Side's own window (the hub
+  // names to a page allowed `media`. Allowed for B-Sides' own window (the hub
   // it loads, or the dev server), and only that one permission is touched.
   const ours = new Set([new URL(hubUrl).origin, DEV_SERVER]);
   mainWindow.webContents.session.setPermissionCheckHandler((_contents, permission, origin) =>

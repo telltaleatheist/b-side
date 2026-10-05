@@ -34,13 +34,13 @@ export type CrucibleUninstallVia = 'windows-host' | 'server-pack';
 
 /**
  * May the door be drawn at all. Owen's ruling, carried from Foundry: the door
- * only for a server B-Side can PROVE is this computer's — Crucible's own
+ * only for a server B-Sides can PROVE is this computer's — Crucible's own
  * installation record here — never for a registry entry as such (an address of
  * 127.0.0.1 is no proof: a tunnel puts somebody else's card there).
  *
- * `server` is the B-Side server whose address and token match the connection
+ * `server` is the B-Sides server whose address and token match the connection
  * Crucible published here, or null. After a real run that stopped the engine
- * its token is dead, and that server is removed from B-Side's list.
+ * its token is dead, and that server is removed from B-Sides' list.
  */
 export interface CrucibleUninstallAvailability {
   readonly available: boolean;
@@ -54,7 +54,7 @@ export interface CrucibleUninstallAvailability {
 }
 
 /**
- * B-Side's refusal names (the same words Foundry and BookForge use for the same
+ * B-Sides' refusal names (the same words Foundry and BookForge use for the same
  * situations). The CLI's own per-step refusals are a different layer: they
  * arrive inside the plan, in the engine's words, and are never translated.
  *
@@ -130,7 +130,7 @@ export interface CrucibleUninstallPlan {
   readonly ok: boolean;
 }
 
-/** The real run: the performed plan, and the B-Side server removed because its token died with it. */
+/** The real run: the performed plan, and the B-Sides server removed because its token died with it. */
 export interface CrucibleUninstallRun {
   readonly plan: CrucibleUninstallPlan;
   readonly unregistered: string | null;

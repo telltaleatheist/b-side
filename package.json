@@ -1,8 +1,8 @@
 {
   "name": "b-side",
-  "productName": "B-Side",
+  "productName": "B-Sides",
   "version": "0.1.0",
-  "description": "B-Side — write the style and the lyrics, make songs with YuE2 on a Crucible server, and listen while more generate.",
+  "description": "B-Sides — write the style and the lyrics, make songs with YuE2 on a Crucible server, and listen while more generate.",
   "private": true,
   "main": "dist/electron/main.js",
   "scripts": {
@@ -56,7 +56,7 @@
   },
   "build": {
     "appId": "com.owenmorgan.bside",
-    "productName": "B-Side",
+    "productName": "B-Sides",
     "directories": {
       "output": "release"
     },
@@ -78,7 +78,7 @@
       "icon": "public/icon-mac.png"
     },
     "dmg": {
-      "artifactName": "B-Side-${version}-${arch}.dmg"
+      "artifactName": "B-Sides-${version}-${arch}.dmg"
     },
     "win": {
       "target": [
@@ -93,11 +93,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "B-Side",
-      "artifactName": "B-Side-Setup-${version}.exe"
+      "shortcutName": "B-Sides",
+      "artifactName": "B-Sides-Setup-${version}.exe"
     },
     "portable": {
-      "artifactName": "B-Side-Portable-${version}.exe"
+      "artifactName": "B-Sides-Portable-${version}.exe"
     },
     "linux": {
       "target": "AppImage",

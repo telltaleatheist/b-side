@@ -24,7 +24,7 @@ import { basename, join, type Disk } from './disk';
 import { Refusal } from './refusal';
 import type { ClientKind, SongFacts, Take, TakeGoneReason } from '../types';
 
-/** The audio B-Side keeps: what Crucible's song model renders. */
+/** The audio B-Sides keeps: what Crucible's song model renders. */
 export const AUDIO_FILE = /\.(flac|wav|mp3)$/i;
 
 /** Marks a take sidecar, and its shape's version. */
@@ -123,7 +123,7 @@ export class TakeStore {
       try {
         const text = await this.disk.readText(join(this.dir, name));
         const sidecar = JSON.parse(text ?? '') as TakeSidecar;
-        if (sidecar.bsideTake !== TAKE_VERSION || sidecar.id !== id) throw new Error('not a B-Side take sidecar');
+        if (sidecar.bsideTake !== TAKE_VERSION || sidecar.id !== id) throw new Error('not a B-Sides take sidecar');
         if (!(await this.disk.exists(this.audioFile(sidecar)))) throw new Error(`its audio ${sidecar.file} is missing`);
         this.takes.set(id, sidecar);
       } catch (err) {
@@ -171,7 +171,7 @@ export class TakeStore {
     return this.serial(async () => {
       const extension = input.extension.toLowerCase();
       if (!AUDIO_FILE.test(`.${extension}`)) {
-        throw new Refusal('song_format', `B-Side keeps flac, wav or mp3 audio, not .${input.extension}.`);
+        throw new Refusal('song_format', `B-Sides keeps flac, wav or mp3 audio, not .${input.extension}.`);
       }
       const base = `${stamp(new Date(input.createdAt))}-${input.params.seed ?? 'noseed'}`;
       let id = base;

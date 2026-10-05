@@ -13,7 +13,7 @@ import { ServersCardComponent } from './servers-card.component';
 /**
  * Settings: the Crucible servers, where the library lives, and sharing the hub
  * with other devices. The library folder and sharing belong to the computer
- * B-Side runs on: other devices see them, and only that computer changes them.
+ * B-Sides runs on: other devices see them, and only that computer changes them.
  */
 @Component({
   selector: 'app-settings-page',
@@ -29,12 +29,12 @@ import { ServersCardComponent } from './servers-card.component';
           @if (hub.onPhone()) {
             <p class="detail">This phone makes songs on a Crucible server by itself (the servers below), and keeps its playlists on the phone.</p>
             <details>
-              <summary class="hint">Use a B-Side computer instead</summary>
+              <summary class="hint">Use a B-Sides computer instead</summary>
               <p class="hint">Its playlists and servers, instead of this phone's. This phone's own playlists stay here for when you switch back.</p>
               <app-hub-picker />
             </details>
           } @else {
-            <p class="detail">Connected to the B-Side on <strong>{{ hub.info()?.hostname ?? '…' }}</strong> at <span class="mono">{{ hub.address()?.url }}</span>.</p>
+            <p class="detail">Connected to the B-Sides on <strong>{{ hub.info()?.hostname ?? '…' }}</strong> at <span class="mono">{{ hub.address()?.url }}</span>.</p>
             @if (hub.kind === 'web') {
               <p class="hint">A browser keeps nothing for long: this tab's playing list clears a few minutes after the tab closes. Save songs to a playlist to keep them.</p>
             }
@@ -53,21 +53,21 @@ import { ServersCardComponent } from './servers-card.component';
         <div class="card">
           <h2 class="card-title">Cloud</h2>
           @if (cloud.address(); as address) {
-            <p class="detail">Albums you save go to the B-Side on <strong>{{ cloud.host() }}</strong>. They stream from it, or download to keep on this phone.</p>
+            <p class="detail">Albums you save go to the B-Sides on <strong>{{ cloud.host() }}</strong>. They stream from it, or download to keep on this phone.</p>
             <p class="hint mono">{{ address.url }} · {{ cloudWords() }}</p>
             <div class="actions">
               <button type="button" class="ghost small" (click)="cloud.refresh()">Check again</button>
               <button type="button" class="ghost small" (click)="cloud.unlink()">Unlink</button>
             </div>
           } @else {
-            <p class="detail">Link a B-Side computer as this phone's cloud: albums you save go there, and stream or download back. On the computer: Settings → Other devices → turn on sharing, then copy a link.</p>
+            <p class="detail">Link a B-Sides computer as this phone's cloud: albums you save go there, and stream or download back. On the computer: Settings → Other devices → turn on sharing, then copy a link.</p>
             <form class="link" (submit)="$event.preventDefault(); linkCloud()">
-              <input type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="B-Side link"
+              <input type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="B-Sides link"
                      placeholder="http://computer:7300/#key=…" [value]="cloudLink()" (input)="cloudLink.set($any($event.target).value)" />
               <button type="submit" class="primary small" [disabled]="cloudLink().trim() === ''">Link</button>
             </form>
             @if (cloudLinkWrong()) {
-              <div class="refusal"><code>link_invalid</code><span>That is not a B-Side link: it looks like http://computer:7300/#key=…</span></div>
+              <div class="refusal"><code>link_invalid</code><span>That is not a B-Sides link: it looks like http://computer:7300/#key=…</span></div>
             }
           }
         </div>
@@ -78,7 +78,7 @@ import { ServersCardComponent } from './servers-card.component';
       @if (!isNative) {
         <div class="card">
           <h2 class="card-title">Output</h2>
-          <p class="detail">Where B-Side plays on this {{ isDesktop ? 'computer' : 'browser' }}. "System default" follows whatever the computer is set to; a device you pick here is used even when the default changes.</p>
+          <p class="detail">Where B-Sides plays on this {{ isDesktop ? 'computer' : 'browser' }}. "System default" follows whatever the computer is set to; a device you pick here is used even when the default changes.</p>
           <label class="field">
             <span class="label">Play through</span>
             <select aria-label="Output device" (change)="player.useOutput($any($event.target).value)">
@@ -135,7 +135,7 @@ import { ServersCardComponent } from './servers-card.component';
               }
             }
           </div>
-          <p class="hint">Changing the folder does not move songs; B-Side lists whatever songs and playlists the new folder holds.</p>
+          <p class="hint">Changing the folder does not move songs; B-Sides lists whatever songs and playlists the new folder holds.</p>
         }
         @for (problem of library.problems(); track problem) {
           <div class="notice">{{ problem }}</div>
@@ -145,17 +145,17 @@ import { ServersCardComponent } from './servers-card.component';
       <div class="card">
         <h2 class="card-title">Other devices</h2>
         @if (settings(); as view) {
-          <p class="detail">Phones and other computers can play and make songs through this B-Side, and play your playlists. They never get your Crucible tokens.</p>
+          <p class="detail">Phones and other computers can play and make songs through this B-Sides, and play your playlists. They never get your Crucible tokens.</p>
           @if (view.local) {
             <label class="toggle">
               <input type="checkbox" [checked]="view.sharing" [disabled]="busy()" (change)="share($any($event.target).checked)" />
               <span>Share on my network (port {{ view.port }})</span>
             </label>
           } @else {
-            <p class="hint">Sharing is {{ view.sharing ? 'on' : 'off' }}. Only the computer B-Side runs on can change it.</p>
+            <p class="hint">Sharing is {{ view.sharing ? 'on' : 'off' }}. Only the computer B-Sides runs on can change it.</p>
           }
           @if (view.sharing && view.local) {
-            <p class="hint">Open one of these links on the other device (in a browser, or paste it into the B-Side phone app). The link carries this B-Side's key: share it only with people you want using it.</p>
+            <p class="hint">Open one of these links on the other device (in a browser, or paste it into the B-Sides phone app). The link carries this B-Sides' key: share it only with people you want using it.</p>
             @for (link of view.links; track link) {
               <div class="link">
                 <span class="mono">{{ link }}</span>
