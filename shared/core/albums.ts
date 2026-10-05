@@ -33,6 +33,8 @@ const TYPICAL_TRACK_S = 150;
 /** Songs run two to five minutes: the plan has a track per shortest song, so the length is always filled. */
 const SHORTEST_TRACK_S = 120;
 const MOST_TRACKS = 45;
+/** A writing session closes after this long with nothing asked (the cover's paint counts as asking). */
+const SESSION_IDLE_S = 180;
 /** Tracks whose lyrics are written per call. */
 const LYRICS_PER_CALL = 4;
 /** Songs on the server at once for one album: one rendering, one waiting. */
@@ -311,54 +313,15 @@ export class AlbumMaker {
     if (meta === null) return;
     try {
       const server = this.hooks.server(meta.server);
-      const client = clientFor(server);
       if (meta.stage === 'planning') {
         // Everything first (Owen, 2026-10-05: "the goal with generating an album is correct"):
         // the plan (names, tags), every sung track's lyrics, then the cover; only then the music.
-        if (meta.plan == null) {
-          meta = { ...meta, step: { kind: 'plan', done: 0, of: 1 } };
-          await this.hooks.update(id, meta);
-        }
-        const writer = meta.writer ?? (await chooseWriter(client));
-        let plan = meta.plan ?? (await writePlan(client, writer, meta.ask, await this.hooks.page(server)));
-        meta = { ...(await this.hooks.meta(id) ?? meta), writer, plan, artist: plan.artist, blurb: plan.blurb };
-        await this.hooks.update(id, meta, plan.title);
-        // An album begun before this order made its first tracks before the plan: they take its first names.
-        const early = meta.openers ?? 0;
-        if (early > 0) await this.hooks.retitle(id, plan.tracks.slice(0, early).map((track) => track.title));
-        if (meta.ask.sung) {
-          const sungAt = plan.tracks.map((_, at) => at).filter((at) => at >= early);
-          const page = await this.hooks.page(server);
-          // One call per track with the lyrics model, each kept as it comes (a restart carries on).
-          for (const [done, at] of sungAt.entries()) {
-            if ((plan.tracks[at] as AlbumTrack).lyrics !== null) continue;
-            meta = { ...(await this.hooks.meta(id) ?? meta), plan, step: { kind: 'lyrics', done, of: sungAt.length } };
-            await this.hooks.update(id, meta);
-            const written = page === null ? null : await lyricsFor(client, page, plan, meta.ask, plan.tracks[at] as AlbumTrack);
-            if (written === null) continue;
-            plan = { ...plan, tracks: plan.tracks.map((t, i) => (i === at ? { ...t, lyrics: written } : t)) };
-            if ((await this.hooks.meta(id)) === null) return;
-          }
-          // The tracks it could not write: the album's writer, a few per call.
-          const missed = sungAt.filter((at) => (plan.tracks[at] as AlbumTrack).lyrics === null);
-          for (let from = 0; from < missed.length; from += LYRICS_PER_CALL) {
-            const batch = missed.slice(from, from + LYRICS_PER_CALL);
-            const lyrics = await writeLyrics(client, writer, plan, meta.ask, batch.map((at) => plan.tracks[at] as AlbumTrack));
-            plan = { ...plan, tracks: plan.tracks.map((t, i) => (batch.includes(i) ? { ...t, lyrics: lyrics.get(t.title.toLowerCase()) ?? t.lyrics } : t)) };
-          }
-          meta = { ...(await this.hooks.meta(id) ?? meta), plan };
-          await this.hooks.update(id, meta);
-          if ((await this.hooks.meta(id)) === null) return;
-        }
-        // The cover, before the music. One that will not paint is said on the page; the album goes on.
-        if (meta.cover === null && meta.coverState !== 'failed' && meta.coverState !== 'no_model') {
-          meta = { ...(await this.hooks.meta(id) ?? meta), step: { kind: 'cover', done: 0, of: 1 } };
-          await this.hooks.update(id, meta);
-          await this.paint(id, server, plan.coverPrompt);
-          if ((await this.hooks.meta(id)) === null) return;
-        }
-        meta = { ...(await this.hooks.meta(id) ?? meta), stage: 'making', step: null };
-        await this.hooks.update(id, meta);
+        // All of it inside one queue session: Crucible clears the card the moment nothing holds
+        // it, so thirteen lyrics calls in a row would load and unload the model thirteen times.
+        // The session holds the server for this run; each model stays loaded while its calls last.
+        meta = await this.write(id, meta, server);
+        if (meta.stage === 'making') await this.topUp(id, meta);
+        return;
       }
       // An album from before the cover moved behind the tracks may stand at `cover`: carry on making.
       if (meta.stage === 'cover') {
@@ -370,6 +333,72 @@ export class AlbumMaker {
       const current = await this.hooks.meta(id);
       if (current !== null) await this.hooks.update(id, { ...current, stage: 'failed', refusal: refusalOf(error) });
     }
+  }
+
+  /** The planning stage, in one queue session: plan, lyrics, cover. Answers the album as it then stands. */
+  private async write(id: string, start: AlbumMeta, server: StoredServer): Promise<AlbumMeta> {
+    let meta = start;
+    const session = await clientFor(server).session({ act: 'generate', idleS: SESSION_IDLE_S });
+    try {
+      // Every call below rides the session (the cover's paint too: the server matches on client name).
+      const client = session;
+      if (meta.plan == null) {
+        meta = { ...meta, step: { kind: 'plan', done: 0, of: 1 } };
+        await this.hooks.update(id, meta);
+      }
+      const writer = meta.writer ?? (await chooseWriter(client));
+      let plan = meta.plan ?? (await writePlan(client, writer, meta.ask, await this.hooks.page(server)));
+      meta = { ...(await this.hooks.meta(id) ?? meta), writer, plan, artist: plan.artist, blurb: plan.blurb };
+      await this.hooks.update(id, meta, plan.title);
+      // An album begun before this order made its first tracks before the plan: they take its first names.
+      const early = meta.openers ?? 0;
+      if (early > 0) await this.hooks.retitle(id, plan.tracks.slice(0, early).map((track) => track.title));
+      if (meta.ask.sung) {
+        const sungAt = plan.tracks.map((_, at) => at).filter((at) => at >= early);
+        const page = await this.hooks.page(server);
+        // One call per track with the lyrics model, each kept as it comes (a restart carries on).
+        for (const [done, at] of sungAt.entries()) {
+          if ((plan.tracks[at] as AlbumTrack).lyrics !== null) continue;
+          if (await this.halted(id)) return meta;
+          meta = { ...(await this.hooks.meta(id) ?? meta), plan, step: { kind: 'lyrics', done, of: sungAt.length } };
+          await this.hooks.update(id, meta);
+          const written = page === null ? null : await lyricsFor(client, page, plan, meta.ask, plan.tracks[at] as AlbumTrack);
+          if (written === null) continue;
+          plan = { ...plan, tracks: plan.tracks.map((t, i) => (i === at ? { ...t, lyrics: written } : t)) };
+          if (await this.halted(id)) return meta;
+        }
+        // The tracks it could not write: the album's writer, a few per call.
+        const missed = sungAt.filter((at) => (plan.tracks[at] as AlbumTrack).lyrics === null);
+        for (let from = 0; from < missed.length; from += LYRICS_PER_CALL) {
+          const batch = missed.slice(from, from + LYRICS_PER_CALL);
+          const lyrics = await writeLyrics(client, writer, plan, meta.ask, batch.map((at) => plan.tracks[at] as AlbumTrack));
+          plan = { ...plan, tracks: plan.tracks.map((t, i) => (batch.includes(i) ? { ...t, lyrics: lyrics.get(t.title.toLowerCase()) ?? t.lyrics } : t)) };
+        }
+        meta = { ...(await this.hooks.meta(id) ?? meta), plan };
+        await this.hooks.update(id, meta);
+        if (await this.halted(id)) return meta;
+      }
+      // The cover, before the music. One that will not paint is said on the page; the album goes on.
+      if (meta.cover === null && meta.coverState !== 'failed' && meta.coverState !== 'no_model') {
+        meta = { ...(await this.hooks.meta(id) ?? meta), step: { kind: 'cover', done: 0, of: 1 } };
+        await this.hooks.update(id, meta);
+        await this.paint(id, server, plan.coverPrompt);
+        if (await this.halted(id)) return meta;
+      }
+      if (await this.halted(id)) return meta;
+      meta = { ...(await this.hooks.meta(id) ?? meta), stage: 'making', step: null };
+      await this.hooks.update(id, meta);
+      return meta;
+    } finally {
+      // Closed before the music: the tracks go through the line like any song.
+      await session.close().catch((err: unknown) => console.error(`[albums] could not close the session for ${id}:`, err));
+    }
+  }
+
+  /** Deleted, or stopped by hand: the writing stops where it is. */
+  private async halted(id: string): Promise<boolean> {
+    const meta = await this.hooks.meta(id);
+    return meta === null || meta.stage !== 'planning';
   }
 
   private async paint(id: string, server: StoredServer, prompt: string): Promise<void> {
