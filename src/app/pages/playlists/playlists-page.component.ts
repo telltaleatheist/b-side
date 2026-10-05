@@ -3,10 +3,11 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
 
-import type { AlbumMeta, AlbumStage, Playlist, RefusalView, Song } from '@shared/types';
+import type { AlbumStage, Playlist, RefusalView, Song } from '@shared/types';
 
 import { CoverComponent } from '../../components/cover/cover.component';
 import { IconComponent } from '../../components/icon/icon.component';
+import { albumProgress, coverNote } from '../../core/album-progress';
 import { CloudService } from '../../core/cloud.service';
 import { ConfirmService } from '../../core/confirm.service';
 import { clockText } from '../../core/format';
@@ -55,8 +56,14 @@ import { PlayerService } from '../../core/player.service';
               }
               <span class="head-sub">{{ album.ask.sung ? 'Sung' : 'Instrumental' }} · {{ songs().length }} {{ songs().length === 1 ? 'track' : 'tracks' }}{{ total() }} of {{ album.ask.minutes }} min@if (album.writer) { · written by {{ album.writer }}}</span>
               @if (busy(album.stage)) {
-                <div class="bar album-bar"><span [style.width.%]="albumShare(album) * 100"></span></div>
+                @let progress = albumProgress(album);
+                <div class="progress-line">
+                  <span class="progress-label">{{ progress.label }}</span>
+                  @if (!progress.waiting) { <span class="mono progress-pct">{{ Math.round(progress.share * 100) }}%</span> }
+                </div>
+                <div class="bar album-bar" [class.indeterminate]="progress.waiting"><span [style.width.%]="progress.waiting ? null : progress.share * 100"></span></div>
               }
+              @if (coverNote(album); as note) { <span class="hint">{{ note }}</span> }
               @if (album.refusal; as refused) {
                 <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
               }
@@ -133,9 +140,7 @@ import { PlayerService } from '../../core/player.service';
             </div>
           }
           @if (playlist.album?.stage === 'planning') {
-            <p class="hint">{{ playlist.album?.ask?.sung && playlist.album?.plan ? 'Writing the lyrics while the first tracks play…' : 'Making the first tracks now; the album\'s name, artist and the rest are written meanwhile.' }}</p>
-          } @else if (playlist.album?.stage === 'making' && !playlist.album?.cover) {
-            <p class="hint">The cover is painted once the next tracks are on their way.</p>
+            <p class="hint">The first two tracks are being made already, so the music starts while the rest is written.</p>
           }
         </div>
       } @else {
@@ -150,6 +155,9 @@ import { PlayerService } from '../../core/player.service';
               <span class="tile-name">{{ playlist.name }}</span>
               @if (playlist.album; as album) {
                 <span class="tile-sub" [class.amber]="busy(album.stage)">{{ album.artist || 'Album' }}{{ busy(album.stage) ? ' · ' + stageWords(album.stage) : '' }}</span>
+                @if (busy(album.stage)) {
+                  <div class="bar tile-bar album-bar" [class.indeterminate]="albumProgress(album).waiting"><span [style.width.%]="albumProgress(album).waiting ? null : albumProgress(album).share * 100"></span></div>
+                }
               } @else {
                 <span class="tile-sub">{{ playlist.songs.length }} {{ playlist.songs.length === 1 ? 'song' : 'songs' }}</span>
               }
@@ -202,6 +210,9 @@ import { PlayerService } from '../../core/player.service';
     .ghost.stop { border-color: var(--audio); color: var(--audio); }
     .head-blurb { font-size: 14px; color: var(--text-secondary); font-style: italic; }
     .amber { color: var(--audio) !important; }
+    .progress-line { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 10px; font-size: 13px; color: var(--text-dim, inherit); }
+    .progress-pct { font-size: 12px; opacity: .8; }
+    .tile-bar { margin-top: 6px; height: 3px; }
     .album-bar > span { background: linear-gradient(90deg, var(--accent), var(--audio)); }
     .item.upcoming { cursor: default; opacity: 0.4; }
     .item.upcoming:hover { background: transparent; }
@@ -304,9 +315,9 @@ export class PlaylistsPageComponent {
     }
   }
 
-  protected albumShare(album: AlbumMeta): number {
-    return Math.min(1, album.madeS / (album.ask.minutes * 60));
-  }
+  protected readonly albumProgress = albumProgress;
+  protected readonly coverNote = coverNote;
+  protected readonly Math = Math;
 
   protected async stopAlbum(playlist: Playlist): Promise<void> {
     const outcome = await this.hub.call<unknown>('POST', `/api/albums/${encodeURIComponent(playlist.id)}/stop`);

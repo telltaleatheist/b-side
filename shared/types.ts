@@ -360,6 +360,17 @@ export interface AlbumMeta {
   readonly writer: string | null;
   /** Once saved to a B-Side computer (the phone's cloud): which, and when. Absent while it lives only here. */
   readonly cloud?: { readonly host: string; readonly at: string } | null;
+  /** What the maker is doing before the tracks (planning, writing lyrics), for the progress line; null once making. */
+  readonly step?: AlbumStep | null;
+  /** The cover: being painted, or why there is none. Absent before the painting starts. */
+  readonly coverState?: 'painting' | 'failed' | 'no_model' | null;
+}
+
+/** One step of an album before its tracks: a line to show and, when it counts, how far through. */
+export interface AlbumStep {
+  readonly kind: 'openers' | 'plan' | 'lyrics';
+  readonly done: number;
+  readonly of: number;
 }
 
 /** Make → Album: what the person picks. */

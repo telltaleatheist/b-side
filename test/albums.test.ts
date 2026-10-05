@@ -16,3 +16,24 @@ test('an instrumental track says so; a sung one drops "instrumental"', () => {
   expect(trackTags('city pop, warm synths', 'slap bass', false)).toBe('city pop, warm synths, slap bass, instrumental');
   expect(trackTags('city pop, instrumental, warm synths', 'raspy male vocal', true)).toBe('city pop, warm synths, raspy male vocal');
 });
+
+import { albumProgress } from '../src/app/core/album-progress';
+import type { AlbumMeta } from '../shared/types';
+
+function album(change: Partial<AlbumMeta>): AlbumMeta {
+  return {
+    artist: '', blurb: '', cover: null, plan: null, stage: 'planning', sent: 0, madeS: 0, refusal: null,
+    server: 'mac', writer: null, ask: { description: 'x', tags: [], minutes: 30, sung: true }, ...change,
+  };
+}
+
+test('the progress line says what the maker is doing, and the bar only goes forward', () => {
+  const planning = albumProgress(album({}));
+  expect(planning.waiting).toBe(true);
+  const lyrics = albumProgress(album({ step: { kind: 'lyrics', done: 3, of: 13 } }));
+  expect(lyrics.label).toBe('Writing lyrics: 4 of 13…');
+  const making = albumProgress(album({ stage: 'making', madeS: 900, coverState: 'painting' }));
+  expect(making.label).toBe('Making the music: 15 of 30 min · painting the album art…');
+  expect(making.share).toBeGreaterThan(lyrics.share);
+  expect(albumProgress(album({ stage: 'done', madeS: 1900 })).share).toBe(1);
+});

@@ -69,10 +69,17 @@ import { StudioService } from '../../core/studio.service';
                     [value]="studio.description()" (input)="studio.description.set($any($event.target).value)"></textarea>
           <div class="describe-foot">
             <button type="submit" class="ghost small" [disabled]="studio.describing() || studio.description().trim() === ''">
-              {{ studio.describing() ? 'Writing tags…' : 'Fill in the tags' }}
+              {{ studio.describing() ? 'Working…' : 'Fill in the tags' }}
             </button>
             <span class="hint">{{ studio.tagModel }} on the server picks the tags{{ studio.instrumental() ? '' : ' and writes the lyrics' }}; it swaps the song model out for a minute.</span>
           </div>
+          @if (studio.describing()) {
+            <div class="progress-line">
+              <span>{{ studio.instrumental() ? 'Generating tags…' : 'Generating tags and lyrics…' }}</span>
+              <span class="mono">{{ studio.describeElapsed() }}s</span>
+            </div>
+            <div class="bar indeterminate"><span></span></div>
+          }
           @if (studio.described(); as said) {
             @if (studio.lyricsKept()) { <p class="hint">It wrote lyrics too, but your own are in the Lyrics box, so they stayed.</p> }
             @for (clash of said.clashes; track clash) { <div class="notice">{{ clash }}</div> }
@@ -110,7 +117,7 @@ import { StudioService } from '../../core/studio.service';
                 <button type="button" class="chip" [class.on]="albumSung()" (click)="albumSung.set(true)">Sung</button>
               </div>
             </div>
-            <p class="opt-note hint">The biggest chat model on {{ hub.activeServer()?.name }} writes the name, the artist, every track{{ albumSung() ? ' and its lyrics' : '' }}; its image model paints the cover. The first track is ready in a few minutes; the rest fill in while you listen.</p>
+            <p class="opt-note hint">The biggest chat model on {{ hub.activeServer()?.name }} writes the name, the artist and every track{{ albumSung() ? '; ' + studio.tagModel + ' writes the lyrics, a song per two minutes so ' + albumLength() + ' minutes is always filled' : '' }}; its image model paints the cover. The first track is ready in a few minutes; the rest fill in while you listen.</p>
           </div>
           @if (spaceFull()) {
             <div class="room-card">
@@ -227,6 +234,7 @@ import { StudioService } from '../../core/studio.service';
     textarea { resize: vertical; font-family: var(--font-body); line-height: 1.45; }
     .describe { font-size: 18px; padding: 14px; border-radius: var(--radius-lg); min-height: 78px; }
     .describe-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .progress-line { display: flex; justify-content: space-between; gap: 12px; margin: 10px 0 6px; font-size: 13px; }
     #lyrics { min-height: 160px; border-radius: var(--radius-lg); padding: 12px 14px; }
     .fold { border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: #171412; }
     .fold summary { display: flex; align-items: center; gap: 10px; padding: 14px; cursor: pointer; list-style: none; }

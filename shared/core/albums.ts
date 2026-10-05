@@ -5,10 +5,14 @@
  *   plan     the server's best chat model writes the album in ONE call: title,
  *            artist, a line about it, the cover prompt, and a track list (each
  *            track a name and its own turn on the album's tags).
- *   lyrics   a sung album: the same model writes each track's lyrics, a few
- *            tracks per call, all before the first song (on a one-card server
- *            every chat swaps the song model out, so the writing is done in one
- *            stretch, never between songs).
+ *   lyrics   a sung album: B-Side's own lyrics model (TAG_MODEL, the 4B fine-tuned
+ *            on describe answers) writes each sung track's words, one call per
+ *            track, all before the first sung song (on a one-card server every
+ *            chat swaps the song model out, so the writing is done in one stretch,
+ *            never between songs). The plan has a track for every two minutes of
+ *            the length (songs run two to five), so there are always words enough;
+ *            tracks play in order until the length is filled and the rest go unmade.
+ *            A track the lyrics model cannot write falls back to the album's writer.
  *   cover    the server's image model paints the cover.
  *   tracks   rendered in order, two at a time, until the album passes its
  *            length; each one is filed straight into the album under its name.
@@ -23,11 +27,14 @@ import type { CrucibleClient, ModelInfo } from '@crucible/client';
 import { clientFor } from './crucible';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
+import { describe } from './describe';
 import type { AlbumAsk, AlbumMeta, AlbumPlan, AlbumTrack, SongPage } from '../types';
 
-/** A song is about this long; a plan has enough tracks to pass its length with room to spare. */
+/** A song is about this long: how many are counted as on their way. */
 const TYPICAL_TRACK_S = 150;
-const MOST_TRACKS = 40;
+/** Songs run two to five minutes: the plan has a track per shortest song, so the length is always filled. */
+const SHORTEST_TRACK_S = 120;
+const MOST_TRACKS = 45;
 /** Tracks whose lyrics are written per call. */
 const LYRICS_PER_CALL = 4;
 /** Songs on the server at once for one album: one rendering, one waiting. */
@@ -72,7 +79,7 @@ export async function chooseCoverModel(client: CrucibleClient): Promise<string |
 }
 
 function trackCount(minutes: number): number {
-  return Math.min(MOST_TRACKS, Math.ceil((minutes * 60) / TYPICAL_TRACK_S) + 3);
+  return Math.min(MOST_TRACKS, Math.ceil((minutes * 60) / SHORTEST_TRACK_S));
 }
 
 const PLAN_SCHEMA = {
@@ -229,6 +236,23 @@ export async function writeLyrics(client: CrucibleClient, writer: string, plan: 
   return found;
 }
 
+/**
+ * One sung track's lyrics from B-Side's own lyrics model: the same describe call
+ * the Make page uses, asked for this track (the album, its title, its sound).
+ * Null when it wrote none, so the album's writer can take the track instead.
+ */
+export async function lyricsFor(client: CrucibleClient, page: SongPage, plan: AlbumPlan, ask: AlbumAsk, track: AlbumTrack): Promise<string | null> {
+  const about = (ask.description.trim() || plan.blurb).slice(0, 240);
+  const request = `A song called "${track.title}" from the album "${plan.title}" by ${plan.artist}. ${about} Sound: ${track.tags}`.slice(0, 580);
+  try {
+    const written = await describe(client, page, request, false);
+    return written.lyrics;
+  } catch (error) {
+    console.error(`[albums] the lyrics model did not write "${track.title}":`, error);
+    return null;
+  }
+}
+
 /** What the album maker needs from the hub around it. */
 export interface AlbumHooks {
   /** The album's details as stored, or null when the album was deleted. */
@@ -314,7 +338,11 @@ export class AlbumMaker {
               ...(meta.ask.cfg != null ? { cfg: meta.ask.cfg } : {}),
             });
           }
-          meta = { ...meta, openers: OPENERS, sent: OPENERS };
+          meta = { ...meta, openers: OPENERS, sent: OPENERS, step: { kind: 'openers', done: OPENERS, of: OPENERS } };
+          await this.hooks.update(id, meta);
+        }
+        if (meta.plan == null) {
+          meta = { ...meta, step: { kind: 'plan', done: 0, of: 1 } };
           await this.hooks.update(id, meta);
         }
         const writer = meta.writer ?? (await chooseWriter(client));
@@ -324,20 +352,30 @@ export class AlbumMaker {
         // The openers were made before they had names: they take the plan's first.
         await this.hooks.retitle(id, plan.tracks.slice(0, OPENERS).map((track) => track.title));
         if (meta.ask.sung) {
-          for (let at = OPENERS; at < plan.tracks.length; at += LYRICS_PER_CALL) {
-            const batch = plan.tracks.slice(at, at + LYRICS_PER_CALL);
-            if (batch.every((t) => t.lyrics !== null)) continue;
-            const lyrics = await writeLyrics(client, writer, plan, meta.ask, batch);
-            plan = {
-              ...plan,
-              tracks: plan.tracks.map((t, i) => (i >= at && i < at + LYRICS_PER_CALL ? { ...t, lyrics: lyrics.get(t.title.toLowerCase()) ?? t.lyrics } : t)),
-            };
-            meta = { ...(await this.hooks.meta(id) ?? meta), plan };
+          const sungAt = plan.tracks.map((_, at) => at).filter((at) => at >= OPENERS);
+          const page = await this.hooks.page(server);
+          // One call per track with the lyrics model, each kept as it comes (a restart carries on).
+          for (const [done, at] of sungAt.entries()) {
+            if ((plan.tracks[at] as AlbumTrack).lyrics !== null) continue;
+            meta = { ...(await this.hooks.meta(id) ?? meta), plan, step: { kind: 'lyrics', done, of: sungAt.length } };
             await this.hooks.update(id, meta);
+            const written = page === null ? null : await lyricsFor(client, page, plan, meta.ask, plan.tracks[at] as AlbumTrack);
+            if (written === null) continue;
+            plan = { ...plan, tracks: plan.tracks.map((t, i) => (i === at ? { ...t, lyrics: written } : t)) };
             if ((await this.hooks.meta(id)) === null) return;
           }
+          // The tracks it could not write: the album's writer, a few per call.
+          const missed = sungAt.filter((at) => (plan.tracks[at] as AlbumTrack).lyrics === null);
+          for (let from = 0; from < missed.length; from += LYRICS_PER_CALL) {
+            const batch = missed.slice(from, from + LYRICS_PER_CALL);
+            const lyrics = await writeLyrics(client, writer, plan, meta.ask, batch.map((at) => plan.tracks[at] as AlbumTrack));
+            plan = { ...plan, tracks: plan.tracks.map((t, i) => (batch.includes(i) ? { ...t, lyrics: lyrics.get(t.title.toLowerCase()) ?? t.lyrics } : t)) };
+          }
+          meta = { ...(await this.hooks.meta(id) ?? meta), plan };
+          await this.hooks.update(id, meta);
+          if ((await this.hooks.meta(id)) === null) return;
         }
-        meta = { ...(await this.hooks.meta(id) ?? meta), stage: 'making' };
+        meta = { ...(await this.hooks.meta(id) ?? meta), stage: 'making', step: null };
         await this.hooks.update(id, meta);
       }
       // An album from before the cover moved behind the tracks may stand at `cover`: carry on making.
@@ -348,6 +386,7 @@ export class AlbumMaker {
       if (meta.stage === 'making') {
         await this.topUp(id, meta);
         // The cover is painted behind the tracks already sent: it never holds up the music.
+        // A `painting` left from before a restart is stale: this process paints it again.
         if (meta.cover === null && meta.plan !== null) void this.paintLater(id, server, meta.plan.coverPrompt);
       }
     } catch (error) {
@@ -357,15 +396,23 @@ export class AlbumMaker {
   }
 
   private async paintLater(id: string, server: StoredServer, prompt: string): Promise<void> {
+    const mark = async (change: Partial<AlbumMeta>): Promise<void> => {
+      const meta = await this.hooks.meta(id);
+      if (meta !== null) await this.hooks.update(id, { ...meta, ...change });
+    };
     try {
       const model = await chooseCoverModel(clientFor(server));
-      if (model === null) return;
+      if (model === null) {
+        await mark({ coverState: 'no_model' });
+        return;
+      }
+      await mark({ coverState: 'painting' });
       const cover = await this.hooks.paint(id, server, model, `${prompt}. Square album cover art, no text, no letters, no words.`);
-      const meta = await this.hooks.meta(id);
-      if (meta !== null) await this.hooks.update(id, { ...meta, cover });
+      await mark({ cover, coverState: null });
     } catch (error) {
       // A cover that will not paint leaves the drawn one; the music matters more.
       console.error(`[albums] the cover for ${id} did not paint:`, error);
+      await mark({ coverState: 'failed' });
     }
   }
 

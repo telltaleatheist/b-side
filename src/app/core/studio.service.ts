@@ -44,6 +44,8 @@ export class StudioService {
   readonly describeRefusal = signal<RefusalView | null>(null);
   /** The model wrote words, but the Lyrics box held the person's own: theirs stayed. */
   readonly lyricsKept = signal(false);
+  /** Seconds the describe call has been running (shown beside its progress bar). */
+  readonly describeElapsed = signal(0);
   /** The words the model last wrote into the box (replaced freely; anything else is the person's). */
   private lastWritten = '';
 
@@ -107,7 +109,12 @@ export class StudioService {
     this.describing.set(true);
     this.describeRefusal.set(null);
     this.described.set(null);
+    // Seconds since it was asked, for the progress line: the model can take a while to load.
+    const started = Date.now();
+    this.describeElapsed.set(0);
+    const ticker = setInterval(() => this.describeElapsed.set(Math.floor((Date.now() - started) / 1000)), 1000);
     const outcome = await this.hub.call<DescribeResult>('POST', '/api/describe', { text: this.description(), instrumental: this.instrumental() });
+    clearInterval(ticker);
     this.describing.set(false);
     if (!outcome.ok) {
       this.describeRefusal.set(outcome.refusal);
