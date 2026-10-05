@@ -10,8 +10,11 @@
 /** The one model B-Side makes songs with. */
 export const SONG_MODEL = 'yue2-3b';
 
-/** The chat model that turns a description into style tags (electron/describe.ts). Small on purpose. */
-export const TAG_MODEL = 'qwen3.5-4b';
+/**
+ * The chat model that turns a description into style tags and lyrics (shared/core/describe.ts):
+ * qwen3.5-4b fine-tuned on B-Side's own describe answers (training/lyrics), served by Crucible 1.0.108+.
+ */
+export const TAG_MODEL = 'qwen3.5-4b-bside';
 
 /** A refusal or failure, in the server's own words where it gave some. */
 export interface RefusalView {
