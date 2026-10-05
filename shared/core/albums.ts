@@ -118,7 +118,7 @@ function planPrompt(ask: AlbumAsk, count: number, page: SongPage | null): string
     'title: a creative album title, 1-5 words, not generic.',
     'artist: an invented band or artist name that fits the sound, not a real artist.',
     'blurb: one sentence about the record, like a liner note.',
-    'coverPrompt: a vivid description of the album cover art for an image model: subject, colours, style, mood. No words, letters or text in the image.',
+    'coverPrompt: a vivid description of the album cover art for an image model: subject, colours, style, mood. The art must carry NO writing of any kind, in any language or script: so describe no signs, neon signs, shop fronts, posters, billboards, books, newspapers, screens, labels, banners, graffiti, tattoos, logos or anything else that would show letters, numbers or symbols. Never name the album or artist in it.',
     ask.tags.length > 0
       ? `core: repeat exactly these tags, which every track keeps unchanged: ${ask.tags.join(', ')}`
       : 'core: the album\'s sound as 6-12 comma-separated style tags (genre, mood, instruments, tempo), kept on every track.',
@@ -238,6 +238,18 @@ export async function lyricsFor(client: CrucibleClient, page: SongPage, plan: Al
     console.error(`[albums] the lyrics model did not write "${track.title}":`, error);
     return null;
   }
+}
+
+/**
+ * Album art carries no writing at all (Owen, 2026-10-05, after a cover came back with a sign in
+ * Chinese letters). Said twice, because an image model paints a sign the writer mentions: the
+ * writer is told to describe nothing that carries writing (planPrompt), and the painter's prompt
+ * ends by forbidding it. (A negative prompt would need guidance above 1.0: twice the paint time.)
+ */
+/** The painter's prompt for a cover: the writer's description, then the rule. */
+export function coverPrompt(description: string): string {
+  const said = description.trim().replace(/[.\s]+$/, '');
+  return `${said}. Square album cover art. Absolutely no text, letters, numbers, characters or writing of any kind, in any language or script, anywhere in the image: no signs, labels, posters, logos or captions.`;
 }
 
 /** What the album maker needs from the hub around it. */
@@ -413,7 +425,7 @@ export class AlbumMaker {
         return;
       }
       await mark({ coverState: 'painting' });
-      const cover = await this.hooks.paint(id, server, model, `${prompt}. Square album cover art, no text, no letters, no words.`);
+      const cover = await this.hooks.paint(id, server, model, coverPrompt(prompt));
       await mark({ cover, coverState: null });
     } catch (error) {
       // A cover that will not paint leaves the drawn one; the music matters more.
