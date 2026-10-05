@@ -1,0 +1,233 @@
+{
+  "about": "The genres the B-Side lyrics dataset is spread across (training the tag model to write tags + short lyrics). `songs` is how many examples each genre gets; together 3,000. YuE's own vocabulary (the song page's GENRE suggestions) is marked yue; the rest are genres people ask B-Side for. `sung: false` genres are mostly instrumental requests, so the model also learns when to write no lyrics.",
+  "genres": [
+    {
+      "name": "pop",
+      "songs": 150,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "piano pop",
+      "songs": 80,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "indie pop",
+      "songs": 100,
+      "yue": false,
+      "sung": true
+    },
+    {
+      "name": "synth-pop / 80s",
+      "songs": 90,
+      "yue": false,
+      "sung": true
+    },
+    {
+      "name": "city pop",
+      "songs": 70,
+      "yue": false,
+      "sung": true
+    },
+    {
+      "name": "dream pop / shoegaze",
+      "songs": 60,
+      "yue": false,
+      "sung": true
+    },
+    {
+      "name": "rock",
+      "songs": 120,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "hard rock",
+      "songs": 80,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "punk rock",
+      "songs": 100,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "pop punk / emo",
+      "songs": 80,
+      "yue": false,
+      "sung": true
+    },
+    {
+      "name": "grunge / alternative",
+      "songs": 80,
+      "yue": false,
+      "sung": true
+    },
+    {
+      "name": "garage rock",
+      "songs": 60,
+      "yue": false,
+      "sung": true
+    },
+    {
+      "name": "heavy metal",
+      "songs": 80,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "groove metal",
+      "songs": 50,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "indie / folk rock",
+      "songs": 90,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "folk / singer-songwriter",
+      "songs": 110,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "country",
+      "songs": 130,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "americana / alt-country",
+      "songs": 70,
+      "yue": false,
+      "sung": true
+    },
+    {
+      "name": "bluegrass",
+      "songs": 50,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "blues",
+      "songs": 100,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "jazz (vocal)",
+      "songs": 80,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "soul / motown",
+      "songs": 110,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "R&B",
+      "songs": 110,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "funk / disco",
+      "songs": 90,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "gospel",
+      "songs": 50,
+      "yue": false,
+      "sung": true
+    },
+    {
+      "name": "hip hop / boom bap",
+      "songs": 120,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "trap",
+      "songs": 60,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "reggae",
+      "songs": 70,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "latin pop",
+      "songs": 60,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "acoustic / power ballad",
+      "songs": 100,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "musical theatre",
+      "songs": 40,
+      "yue": false,
+      "sung": true
+    },
+    {
+      "name": "EDM / house (vocal)",
+      "songs": 70,
+      "yue": true,
+      "sung": true
+    },
+    {
+      "name": "lo-fi / chillhop",
+      "songs": 60,
+      "yue": true,
+      "sung": false
+    },
+    {
+      "name": "synthwave",
+      "songs": 50,
+      "yue": true,
+      "sung": false
+    },
+    {
+      "name": "orchestral / cinematic",
+      "songs": 50,
+      "yue": true,
+      "sung": false
+    },
+    {
+      "name": "trip-hop / downtempo",
+      "songs": 50,
+      "yue": false,
+      "sung": false
+    },
+    {
+      "name": "video game / chiptune",
+      "songs": 40,
+      "yue": false,
+      "sung": false
+    },
+    {
+      "name": "ambient / jazz instrumental",
+      "songs": 40,
+      "yue": false,
+      "sung": false
+    }
+  ]
+}
