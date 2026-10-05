@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { clashesIn, composeTags, readFields, tagPrompt, type TagFields } from '../shared/core/describe';
+import { clashesIn, composeTags, layLyrics, readFields, tagPrompt, type TagFields } from '../shared/core/describe';
 import type { SongPage } from '../shared/types';
 
 const page: SongPage = {
@@ -34,6 +34,7 @@ const fields: TagFields = {
   sound: ['vintage sound'],
   bpm: 84.4,
   instrumental: false,
+  lyrics: '[verse]\nSteam on the window\n[chorus]\nStay a little longer',
 };
 
 test('tags come out in YuE2\'s order, each once, commas never splitting a phrase', () => {
@@ -64,4 +65,21 @@ test('the prompt offers the server\'s phrases as examples, without the language 
   expect(prompt).toContain('- Genre: lo-fi, jazz');
   expect(prompt).not.toContain('- Language:');
   expect(prompt).not.toContain('- Instrumental:');
+});
+
+test('a sung answer carries its lyrics; one without the field is refused', () => {
+  expect(readFields(JSON.stringify(fields)).lyrics).toContain('[chorus]');
+  const { lyrics: _dropped, ...noLyrics } = fields;
+  expect(() => readFields(JSON.stringify(noLyrics))).toThrow('missing a field');
+});
+
+test('the prompt asks for lyrics only when the song is sung', () => {
+  expect(tagPrompt(page)).toContain('[verse], [chorus]');
+  expect(tagPrompt(page, true)).toContain('wants it instrumental');
+  expect(tagPrompt(page, true)).not.toContain('[verse], [chorus]');
+});
+
+test('lyrics with double spaces for line breaks come out one line per line, sections apart', () => {
+  expect(layLyrics('[verse]  The kitchen lights are low,  The vinyl spins.  [Chorus]  Dancing with you,  my love.'))
+    .toBe('[verse]\nThe kitchen lights are low,\nThe vinyl spins.\n\n[chorus]\nDancing with you,\nmy love.');
 });

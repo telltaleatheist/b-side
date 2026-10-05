@@ -71,9 +71,10 @@ import { StudioService } from '../../core/studio.service';
             <button type="submit" class="ghost small" [disabled]="studio.describing() || studio.description().trim() === ''">
               {{ studio.describing() ? 'Writing tags…' : 'Fill in the tags' }}
             </button>
-            <span class="hint">{{ studio.tagModel }} on the server picks the tags; it swaps the song model out for a minute.</span>
+            <span class="hint">{{ studio.tagModel }} on the server picks the tags{{ studio.instrumental() ? '' : ' and writes the lyrics' }}; it swaps the song model out for a minute.</span>
           </div>
           @if (studio.described(); as said) {
+            @if (studio.lyricsKept()) { <p class="hint">It wrote lyrics too, but your own are in the Lyrics box, so they stayed.</p> }
             @for (clash of said.clashes; track clash) { <div class="notice">{{ clash }}</div> }
           }
           @if (studio.describeRefusal(); as refused) {

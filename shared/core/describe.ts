@@ -34,7 +34,7 @@ const PHRASE_MAX = 48;
 const SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['language', 'genre', 'mood', 'vocal', 'instruments', 'sound', 'bpm', 'instrumental'],
+  required: ['language', 'genre', 'mood', 'vocal', 'instruments', 'sound', 'bpm', 'instrumental', 'lyrics'],
   properties: {
     language: { type: 'string', enum: ['English', 'Chinese'] },
     genre: { type: 'array', minItems: 1, maxItems: 3, items: { type: 'string', maxLength: PHRASE_MAX } },
@@ -44,6 +44,7 @@ const SCHEMA = {
     sound: { type: 'array', minItems: 0, maxItems: 3, items: { type: 'string', maxLength: PHRASE_MAX } },
     bpm: { type: 'integer', minimum: 50, maximum: 200 },
     instrumental: { type: 'boolean' },
+    lyrics: { type: 'string', maxLength: 2400 },
   },
 } as const;
 
@@ -56,10 +57,12 @@ export interface TagFields {
   readonly sound: readonly string[];
   readonly bpm: number;
   readonly instrumental: boolean;
+  /** The song's words when it is sung (Owen, 2026-10-05: "have the chat generate lyrics ... if the user doesn't want instrumental"); '' when instrumental. */
+  readonly lyrics: string;
 }
 
 /** The instructions, with the server's vocabulary as the examples to prefer. */
-export function tagPrompt(page: SongPage): string {
+export function tagPrompt(page: SongPage, wantsInstrumental = false): string {
   const groups = page.suggestions
     .filter((group) => group.group.toLowerCase() !== 'instrumental' && group.group.toLowerCase() !== 'language')
     .map((group) => `- ${group.group}: ${group.tags.join(', ')}`)
@@ -79,6 +82,9 @@ export function tagPrompt(page: SongPage): string {
     '- language: English unless the description asks for Chinese.',
     '- bpm: the tempo that suits the description.',
     '- Never pick two things that contradict each other (two tempos, two vocal genders, slow and fast).',
+    wantsInstrumental
+      ? '- The person wants it instrumental: instrumental is true, vocal is empty, lyrics is "".'
+      : '- lyrics: when instrumental is false, write short, GOOD song words in the voice of the genre you chose (soul sounds like soul, punk like punk): [verse], [chorus], [verse], [chorus], each section tag on its own line, four lines per section, lines of similar length (6-9 syllables). The chorus is the hook: simple, singable, repeated word for word. Concrete images from what the person described, light rhyme, no cliches, no filler. Every line must make sense read aloud; cut any line that does not. Use a newline between lines. When instrumental is true, lyrics is "".',
     '',
     'An example of describing a reference by its sound. "the music from a 90s DOS racing game" is not',
     'orchestral: games of that era played tracker modules and FM synth chips. So: genre "techno",',
@@ -103,6 +109,7 @@ export function readFields(content: string): TagFields {
   if (
     typeof fields.language !== 'string' || !list(fields.genre) || !list(fields.mood) || !list(fields.vocal)
     || !list(fields.instruments) || !list(fields.sound) || typeof fields.bpm !== 'number' || typeof fields.instrumental !== 'boolean'
+    || typeof fields.lyrics !== 'string'
   ) {
     throw new Refusal('describe_unreadable', `${TAG_MODEL}'s answer is missing a field: ${content.slice(0, 160)}`);
   }
@@ -129,6 +136,31 @@ export function composeTags(fields: TagFields): string[] {
   return tags;
 }
 
+/**
+ * Lay lyrics out one line per line, each section tag on its own line and a blank
+ * line before every section after the first. Small models put double spaces (or
+ * nothing) where the line breaks belong; YuE reads the breaks.
+ */
+export function layLyrics(raw: string): string {
+  const lines = raw
+    .replace(/\r/g, '')
+    .replace(/ {2,}/g, '\n')
+    .replace(/\s*(\[(?:verse|chorus|bridge|outro|intro)[^\]]*\])\s*/gi, '\n$1\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+  const out: string[] = [];
+  for (const line of lines) {
+    if (/^\[[^\]]+\]$/.test(line)) {
+      if (out.length > 0) out.push('');
+      out.push(line.toLowerCase());
+    } else {
+      out.push(line);
+    }
+  }
+  return out.join('\n');
+}
+
 /** Every clash in `tags`, by the server's conflict map, each said once. */
 export function clashesIn(tags: readonly string[], page: SongPage): string[] {
   const found: string[] = [];
@@ -140,7 +172,7 @@ export function clashesIn(tags: readonly string[], page: SongPage): string[] {
 }
 
 /** Ask the tag model for `description`'s tags. */
-export async function describe(client: CrucibleClient, page: SongPage, description: string): Promise<DescribeResult> {
+export async function describe(client: CrucibleClient, page: SongPage, description: string, wantsInstrumental = false): Promise<DescribeResult> {
   const text = typeof description === 'string' ? description.trim() : '';
   if (text === '') throw new Refusal('describe_empty', 'Describe the music first, e.g. "smooth lo-fi with jazz sax".');
   if (text.length > MAX_DESCRIPTION) {
@@ -152,12 +184,13 @@ export async function describe(client: CrucibleClient, page: SongPage, descripti
     const answer = await client.chat({
       model: TAG_MODEL,
       thinking: false,
-      temperature: 0.4,
-      maxTokens: 400,
+      temperature: 0.5,
+      // The tags take ~150 tokens; a song's words up to ~700 more.
+      maxTokens: wantsInstrumental ? 400 : 1100,
       act: 'generate',
       responseFormat: { type: 'json_schema', json_schema: { name: 'song_tags', schema: SCHEMA, strict: true } },
       messages: [
-        { role: 'system', content: tagPrompt(page) },
+        { role: 'system', content: tagPrompt(page, wantsInstrumental) },
         { role: 'user', content: text },
       ],
     });
@@ -174,9 +207,11 @@ export async function describe(client: CrucibleClient, page: SongPage, descripti
   }
   const fields = readFields(content);
   const tags = composeTags(fields);
+  const instrumental = wantsInstrumental || fields.instrumental;
   return {
     tags,
-    instrumental: fields.instrumental,
+    instrumental,
+    lyrics: instrumental ? null : layLyrics(fields.lyrics) || null,
     clashes: clashesIn(tags, page),
     model: TAG_MODEL,
     seconds: (Date.now() - started) / 1000,

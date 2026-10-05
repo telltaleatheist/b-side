@@ -236,6 +236,8 @@ export interface JobView {
 export interface DescribeResult {
   readonly tags: readonly string[];
   readonly instrumental: boolean;
+  /** The song's words, written with the tags when it is sung; null when instrumental. */
+  readonly lyrics: string | null;
   /** Clashes the tags hold, by the server's conflict map, each with why: shown, never dropped. */
   readonly clashes: readonly string[];
   readonly model: string;

@@ -42,6 +42,10 @@ export class StudioService {
   readonly describing = signal(false);
   readonly described = signal<DescribeResult | null>(null);
   readonly describeRefusal = signal<RefusalView | null>(null);
+  /** The model wrote words, but the Lyrics box held the person's own: theirs stayed. */
+  readonly lyricsKept = signal(false);
+  /** The words the model last wrote into the box (replaced freely; anything else is the person's). */
+  private lastWritten = '';
 
   /** The refusal from the last Generate press, shown by the button. */
   readonly generateRefusal = signal<RefusalView | null>(null);
@@ -103,7 +107,7 @@ export class StudioService {
     this.describing.set(true);
     this.describeRefusal.set(null);
     this.described.set(null);
-    const outcome = await this.hub.call<DescribeResult>('POST', '/api/describe', { text: this.description() });
+    const outcome = await this.hub.call<DescribeResult>('POST', '/api/describe', { text: this.description(), instrumental: this.instrumental() });
     this.describing.set(false);
     if (!outcome.ok) {
       this.describeRefusal.set(outcome.refusal);
@@ -111,6 +115,18 @@ export class StudioService {
     }
     this.tags.set([...outcome.value.tags]);
     if (this.page()?.instrumental !== false) this.instrumental.set(outcome.value.instrumental);
+    // The words it wrote fill the Lyrics box, unless the person wrote their own there.
+    const written = outcome.value.lyrics;
+    const box = this.lyrics().trim();
+    this.lyricsKept.set(false);
+    if (written !== null) {
+      if (box === '' || box === this.lastWritten) {
+        this.lyrics.set(written);
+        this.lastWritten = written;
+      } else {
+        this.lyricsKept.set(true);
+      }
+    }
     this.described.set(outcome.value);
   }
 

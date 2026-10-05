@@ -448,7 +448,8 @@ export class HubCore {
     this.route('GET', '/api/presets', () => listPresets(this.registry.active()));
     this.route('POST', '/api/describe', async (request) => {
       const server = this.registry.active();
-      return describe(clientFor(server), await songPage(server), text((await request.body())['text'], 'text'));
+      const body = await request.body();
+      return describe(clientFor(server), await songPage(server), text(body['text'], 'text'), body['instrumental'] === true);
     });
     this.route('PUT', '/api/presets/:name', async (request) =>
       savePreset(this.registry.active(), request.params['name'] as string, (await request.body()) as unknown as SongForm));
