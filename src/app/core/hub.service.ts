@@ -30,6 +30,9 @@ export const desktop: DesktopBridge | null = typeof window !== 'undefined' && wi
 /** Whether this is the iOS app (Capacitor serves the app from `capacitor://localhost`). */
 export const isNative = typeof location !== 'undefined' && location.protocol === 'capacitor:';
 
+/** The album cover shown until an album's own is painted (public/, served with the app). */
+export const STOCK_COVER = 'stock-cover.jpg';
+
 export type HubState =
   /** Opening the event stream. */
   | 'connecting'
@@ -194,10 +197,11 @@ export class HubService {
     return `${address.url}/api/${kind}/${encodeURIComponent(id)}/audio?key=${encodeURIComponent(address.key)}`;
   }
 
-  /** An album's painted cover, or null for the drawn one. */
+  /** An album's painted cover; the stock cover while it waits for one; null (the drawn art) for a playlist. */
   coverUrl(playlist: Playlist): string | null {
-    const cover = playlist.album?.cover ?? null;
-    if (cover === null) return null;
+    if (playlist.album === undefined) return null;
+    const cover = playlist.album.cover;
+    if (cover === null) return STOCK_COVER;
     if (this.onPhone()) return this.openedPhone?.fileUrl(`${PHONE_LIBRARY}/${cover}`) ?? null;
     const address = this.address();
     if (address === null) return null;

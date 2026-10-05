@@ -3,7 +3,7 @@ import { computed, Injectable, inject, signal } from '@angular/core';
 import { HUB_KEY_HEADER, type LibraryView, type Playlist, type RefusalView, type Song } from '@shared/types';
 
 import { PHONE_LIBRARY } from '../phone/phone-paths';
-import { HubService, isNative, type HubAddress } from './hub.service';
+import { HubService, isNative, STOCK_COVER, type HubAddress } from './hub.service';
 
 const STORED_CLOUD = 'bside.cloud';
 
@@ -104,8 +104,10 @@ export class CloudService {
 
   coverUrl(playlist: Playlist): string | null {
     const address = this.address();
-    const cover = playlist.album?.cover ?? null;
-    if (address === null || cover === null) return null;
+    if (playlist.album === undefined) return null;
+    const cover = playlist.album.cover;
+    if (cover === null) return STOCK_COVER;
+    if (address === null) return null;
     return `${address.url}/api/albums/${encodeURIComponent(playlist.id)}/cover?key=${encodeURIComponent(address.key)}&v=${encodeURIComponent(cover)}`;
   }
 
