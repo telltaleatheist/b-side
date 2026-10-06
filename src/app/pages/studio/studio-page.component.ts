@@ -1,3 +1,4 @@
+import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 
@@ -32,7 +33,7 @@ import { StudioService } from '../../core/studio.service';
 @Component({
   selector: 'app-studio-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, CrucibleSetupComponent, PresetBarComponent, TagInputComponent, IconComponent, CoverComponent],
+  imports: [DecimalPipe, RouterLink, CrucibleSetupComponent, PresetBarComponent, TagInputComponent, IconComponent, CoverComponent],
   template: `
     <div class="page">
       <h1 class="page-title">Make</h1>
@@ -81,6 +82,7 @@ import { StudioService } from '../../core/studio.service';
             <div class="bar indeterminate"><span></span></div>
           }
           @if (studio.described(); as said) {
+            <p class="hint filled">Filled in {{ said.tags.length }} tags{{ said.lyrics && mode() !== 'album' ? ' and the lyrics' : '' }} in {{ said.seconds | number: '1.0-0' }}s{{ mode() === 'album' ? '; the album uses them as its sound' : '' }}. They are below; change any you like.</p>
             @if (studio.lyricsKept()) { <p class="hint">It wrote lyrics too, but your own are in the Lyrics box, so they stayed.</p> }
             @for (clash of said.clashes; track clash) { <div class="notice">{{ clash }}</div> }
           }
@@ -91,7 +93,8 @@ import { StudioService } from '../../core/studio.service';
 
         <app-preset-bar />
 
-        <details class="fold" [open]="studio.tags().length === 0">
+        <!-- Open while empty, and right after the tag model fills it, so the fill is seen (it folded shut before). -->
+        <details class="fold" [open]="studio.tags().length === 0 || studio.described() !== null">
           <summary>
             <span class="fold-name">Tags</span>
             <span class="fold-sum">{{ studio.tags().length ? studio.tags().join(' · ') : 'none picked yet' }}</span>
