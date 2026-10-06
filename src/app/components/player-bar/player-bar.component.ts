@@ -24,6 +24,8 @@ import { IconComponent } from '../icon/icon.component';
     </div>
     <div class="middle">
       <div class="buttons">
+        <button type="button" class="icon-btn toggle" aria-label="Shuffle" [class.on]="player.shuffle()" [attr.aria-pressed]="player.shuffle()"
+                [title]="player.shuffle() ? 'Shuffle is on' : 'Shuffle'" (click)="player.toggleShuffle()"><app-icon name="shuffle" [size]="18" /></button>
         <button type="button" class="icon-btn" aria-label="Previous" title="Previous (restarts the song after 3 s)"
                 [disabled]="!player.hasPrevious()" (click)="player.previous()"><app-icon name="prev" [size]="20" /></button>
         <button type="button" class="play" [attr.aria-label]="player.paused() ? 'Play' : 'Pause'"
@@ -31,6 +33,8 @@ import { IconComponent } from '../icon/icon.component';
           <app-icon [name]="player.paused() ? 'play' : 'pause'" [size]="22" />
         </button>
         <button type="button" class="icon-btn" aria-label="Next" [disabled]="!player.hasNext()" (click)="player.next()"><app-icon name="next" [size]="20" /></button>
+        <button type="button" class="icon-btn toggle" [class.on]="player.repeat() !== 'off'" [attr.aria-label]="repeatLabel()" [title]="repeatLabel()"
+                (click)="player.cycleRepeat()"><app-icon [name]="player.repeat() === 'one' ? 'repeat-one' : 'repeat'" [size]="18" /></button>
       </div>
       <div class="line">
         <span class="mono time">{{ clock(scrubbing() ?? player.time()) }}</span>
@@ -73,12 +77,20 @@ import { IconComponent } from '../icon/icon.component';
     .time { font-size: 11px; color: var(--text-tertiary); min-width: 34px; text-align: center; }
     .source { justify-self: end; font-size: 11px; color: var(--text-tertiary); text-align: right; }
     .problem { color: var(--warn); }
+    .toggle { color: var(--text-tertiary); position: relative; }
+    .toggle.on { color: var(--accent); }
+    .toggle.on::after { content: ''; position: absolute; bottom: 3px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--accent); }
   `],
 })
 export class PlayerBarComponent {
   protected readonly player = inject(PlayerService);
   /** The scrubber's position while it is being dragged; null otherwise. */
   protected readonly scrubbing = signal<number | null>(null);
+
+  protected repeatLabel(): string {
+    const mode = this.player.repeat();
+    return mode === 'off' ? 'Repeat' : mode === 'all' ? 'Repeating the queue' : 'Repeating this song';
+  }
 
   protected clock(seconds: number): string {
     return clockText(seconds);

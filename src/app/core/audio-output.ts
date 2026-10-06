@@ -38,6 +38,8 @@ export interface AudioOutput {
   previous(): void;
   next(): void;
   stop(): void;
+  /** Repeat the whole queue or the one song at its end: the output does it, as it moves on by itself. */
+  setRepeat(mode: 'off' | 'all' | 'one'): void;
 }
 
 const RESTART_AFTER_S = 3;
@@ -50,6 +52,7 @@ export class HtmlAudioOutput implements AudioOutput {
   private readonly audio = document.createElement('audio');
   private items: readonly QueueItem[] = [];
   private current: QueueItem | null = null;
+  private repeat: 'off' | 'all' | 'one' = 'off';
 
   constructor(private readonly listener: OutputListener) {
     this.audio.preload = 'auto';
@@ -112,6 +115,10 @@ export class HtmlAudioOutput implements AudioOutput {
     this.current = null;
   }
 
+  setRepeat(mode: 'off' | 'all' | 'one'): void {
+    this.repeat = mode;
+  }
+
   /**
    * Play through one output device ('' = the system default, following
    * whatever the computer is set to). Answers why it could not, or null.
@@ -133,7 +140,12 @@ export class HtmlAudioOutput implements AudioOutput {
   }
 
   private step(direction: 1 | -1, ended: boolean): void {
-    const next = this.items[this.index() + direction];
+    if (ended && this.repeat === 'one' && this.current !== null) {
+      this.audio.currentTime = 0;
+      this.play();
+      return;
+    }
+    const next = this.items[this.index() + direction] ?? (direction === 1 && this.repeat !== 'off' ? this.items[0] : undefined);
     if (next !== undefined) this.load(next);
     else if (ended) this.listener.finished();
   }
@@ -170,6 +182,7 @@ interface NativeQueuePlugin {
   next(): Promise<void>;
   previous(): Promise<void>;
   stop(): Promise<void>;
+  setRepeat(options: { mode: 'off' | 'all' | 'one' }): Promise<void>;
   addListener(event: 'track', listener: (data: { key: string }) => void): Promise<PluginListenerHandle>;
   addListener(event: 'state', listener: (data: { playing: boolean }) => void): Promise<PluginListenerHandle>;
   addListener(event: 'time', listener: (data: { time: number; duration: number }) => void): Promise<PluginListenerHandle>;
@@ -224,6 +237,10 @@ export class NativeAudioOutput implements AudioOutput {
 
   stop(): void {
     this.call(NativeQueue.stop());
+  }
+
+  setRepeat(mode: 'off' | 'all' | 'one'): void {
+    this.call(NativeQueue.setRepeat({ mode }));
   }
 
   private call(pending: Promise<void>): void {

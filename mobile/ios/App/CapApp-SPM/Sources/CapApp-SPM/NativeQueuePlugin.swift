@@ -32,6 +32,7 @@ public class NativeQueuePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "next", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "previous", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setRepeat", returnType: CAPPluginReturnPromise),
     ]
 
     private struct Item {
@@ -44,6 +45,9 @@ public class NativeQueuePlugin: CAPPlugin, CAPBridgedPlugin {
 
     private var queue: [Item] = []
     private var currentKey: String?
+    /// "off", "all" (the queue starts over after its last song) or "one" (the song plays again).
+    /// Done here, not in JS, because with the screen locked only native code is awake at a song's end.
+    private var repeatMode = "off"
     private var player: AVPlayer?
     private var timeObserver: Any?
     private var statusObs: NSKeyValueObservation?
@@ -148,6 +152,11 @@ public class NativeQueuePlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    @objc func setRepeat(_ call: CAPPluginCall) {
+        let mode = call.getString("mode") ?? "off"
+        DispatchQueue.main.async { self.repeatMode = mode; call.resolve() }
+    }
+
     // MARK: - the queue
 
     private func index() -> Int? {
@@ -159,7 +168,13 @@ public class NativeQueuePlugin: CAPPlugin, CAPBridgedPlugin {
     /// playing list JS starts the next song the moment it lands.
     private func step(_ by: Int, ended: Bool) {
         guard let at = index() else { return }
-        let target = at + by
+        if ended && repeatMode == "one" {
+            seekTo(0)
+            doPlay()
+            return
+        }
+        var target = at + by
+        if target >= queue.count && by > 0 && repeatMode != "off" && !queue.isEmpty { target = 0 }
         if target >= 0, target < queue.count {
             load(queue[target], play: true)
         } else if ended {

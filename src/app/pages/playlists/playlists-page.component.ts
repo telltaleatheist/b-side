@@ -72,6 +72,10 @@ import { PlayerService } from '../../core/player.service';
             }
             <div class="head-actions">
               <button type="button" class="primary" [disabled]="songs().length === 0" (click)="isCloud() ? player.playCloud(playlist.id) : player.playPlaylist(playlist.id)"><app-icon name="play" [size]="18" />Play</button>
+              <button type="button" class="icon-btn outlined" aria-label="Play next" title="Play next: right after the song playing" [disabled]="songs().length === 0"
+                      (click)="queue(playlist, true)"><app-icon name="play-next" [size]="18" /></button>
+              <button type="button" class="icon-btn outlined" aria-label="Add to queue" title="Add to queue: at the end" [disabled]="songs().length === 0"
+                      (click)="queue(playlist, false)"><app-icon name="queue-add" [size]="18" /></button>
               @if (!isCloud() && cloud.linked() && playlist.album && !busy(playlist.album.stage)) {
                 <button type="button" class="ghost" [disabled]="cloud.saving() !== null" (click)="saveToCloud(playlist)">
                   <app-icon name="cloud" [size]="18" />{{ cloud.saving()?.playlist === playlist.id ? 'Saving ' + cloud.saving()!.done + ' of ' + cloud.saving()!.of + '…' : 'Save to cloud' }}
@@ -113,8 +117,10 @@ import { PlayerService } from '../../core/player.service';
                 <div class="sub">{{ song.params.tags ?? '' }}@if (alsoIn(song, playlist); as others) { · also in {{ others }} }</div>
               </div>
               <span class="mono time">{{ clock(song.durationS) }}</span>
-              @if (!isCloud()) {
               <div class="actions">
+                <button type="button" class="icon-btn" aria-label="Play next" title="Play next" (click)="queue(playlist, true, song)"><app-icon name="play-next" [size]="18" /></button>
+                <button type="button" class="icon-btn" aria-label="Add to queue" title="Add to queue" (click)="queue(playlist, false, song)"><app-icon name="queue-add" [size]="18" /></button>
+              @if (!isCloud()) {
                 <button type="button" class="icon-btn" aria-label="Move up" title="Move up" [disabled]="at === 0" (click)="move(playlist, at, -1)"><app-icon name="down" [size]="18" class="flip-v" /></button>
                 <button type="button" class="icon-btn" aria-label="Move down" title="Move down" [disabled]="at === songs().length - 1" (click)="move(playlist, at, 1)"><app-icon name="down" [size]="18" /></button>
                 <button type="button" class="icon-btn" aria-label="Rename" title="Rename" (click)="renaming.set(song.id)"><app-icon name="edit" [size]="16" /></button>
@@ -123,8 +129,8 @@ import { PlayerService } from '../../core/player.service';
                   <button type="button" class="icon-btn" aria-label="Show in folder" title="Show in folder" (click)="reveal(song)"><app-icon name="library" [size]="18" /></button>
                 }
                 <button type="button" class="icon-btn" aria-label="Take it out of this playlist" title="Take it out of this playlist" (click)="removeSong(playlist, song)"><app-icon name="close" [size]="18" /></button>
-              </div>
               }
+              </div>
             </div>
           } @empty {
             @if (!playlist.album) { <p class="hint">Nothing in it yet. Save a song from the playing list into it.</p> }
@@ -336,6 +342,13 @@ export class PlaylistsPageComponent {
     if (this.isCloud()) return null;
     const others = this.library.holding(song.id).filter((playlist) => playlist.id !== here.id).map((playlist) => playlist.name);
     return others.length === 0 ? null : others.join(', ');
+  }
+
+  /** Play next (`next`) or Add to queue: the whole playlist, or one song of it. */
+  protected queue(playlist: Playlist, next: boolean, song?: Song): void {
+    const items = this.player.itemsOf(playlist.id, this.isCloud(), song === undefined ? undefined : [song]);
+    if (next) this.player.playNext(items, playlist.name);
+    else this.player.addToQueue(items, playlist.name);
   }
 
   protected play(playlist: Playlist, song: Song, event: MouseEvent): void {

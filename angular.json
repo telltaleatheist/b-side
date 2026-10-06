@@ -46,7 +46,7 @@
                 "fonts": true
               },
               "budgets": [
-                { "type": "initial", "maximumWarning": "500kB", "maximumError": "2MB" },
+                { "type": "initial", "maximumWarning": "600kB", "maximumError": "2MB" },
                 { "type": "anyComponentStyle", "maximumWarning": "24kB", "maximumError": "48kB" }
               ],
               "outputHashing": "all"

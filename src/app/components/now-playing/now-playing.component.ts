@@ -1,8 +1,9 @@
+import { CdkDrag, CdkDragHandle, CdkDragPlaceholder, CdkDropList, type CdkDragDrop } from '@angular/cdk/drag-drop';
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 
 import { clockText } from '../../core/format';
 import { LibraryService } from '../../core/library.service';
-import { PlayerService, type PlayItem } from '../../core/player.service';
+import { PlayerService, type PlayItem, type QueueEntry } from '../../core/player.service';
 import { UiService } from '../../core/ui.service';
 import { CoverComponent } from '../cover/cover.component';
 import { IconComponent } from '../icon/icon.component';
@@ -19,7 +20,7 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
 @Component({
   selector: 'app-now-playing',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CoverComponent, IconComponent, SaveMenuComponent],
+  imports: [CoverComponent, IconComponent, SaveMenuComponent, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPlaceholder],
   host: { '[class.sheet]': "mode() === 'sheet'", '[class.panel]': "mode() === 'panel'", '(keydown.escape)': 'close()' },
   template: `
     @if (mode() === 'sheet') {
@@ -87,11 +88,13 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
       </div>
 
       <div class="controls">
+        <button type="button" class="icon-btn toggle" aria-label="Shuffle" [class.on]="player.shuffle()" [attr.aria-pressed]="player.shuffle()" (click)="player.toggleShuffle()"><app-icon name="shuffle" [size]="22" /></button>
         <button type="button" class="icon-btn big" aria-label="Previous" [disabled]="!player.hasPrevious()" (click)="player.previous()"><app-icon name="prev" [size]="30" /></button>
         <button type="button" class="play" [attr.aria-label]="player.paused() ? 'Play' : 'Pause'" (click)="player.toggle()">
           <app-icon [name]="player.paused() ? 'play' : 'pause'" [size]="34" />
         </button>
         <button type="button" class="icon-btn big" aria-label="Next" [disabled]="!player.hasNext()" (click)="player.next()"><app-icon name="next" [size]="30" /></button>
+        <button type="button" class="icon-btn toggle" [class.on]="player.repeat() !== 'off'" [attr.aria-label]="'Repeat: ' + player.repeat()" (click)="player.cycleRepeat()"><app-icon [name]="player.repeat() === 'one' ? 'repeat-one' : 'repeat'" [size]="22" /></button>
       </div>
       }
       @if (player.waiting()) { <p class="hint center">Waiting for the next song to finish…</p> }
@@ -103,13 +106,31 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
 
     @if (player.upNext().length > 0 && !(panel() && showingLyrics() && player.current())) {
       <div class="next">
-        <span class="kicker amber">Up next</span>
-        @for (item of shownNext(); track item.key) {
-          <button type="button" class="next-row" (click)="player.play(item)">
-            <app-cover class="mini-art" [key]="coverKey(item)" [src]="item.art" />
-            <span class="next-title">{{ item.title }}</span>
-            <span class="mono next-time">{{ clock(item.durationS) }}</span>
-          </button>
+        <div class="next-head">
+          <span class="kicker amber">Up next</span>
+          <span class="mono count">{{ player.upNext().length }}</span>
+          <button type="button" class="clear" (click)="player.clearUpNext()">Clear</button>
+        </div>
+        <div class="next-list" cdkDropList [cdkDropListData]="shownNext()" (cdkDropListDropped)="dropped($event)">
+          @for (entry of shownNext(); track entry.qid) {
+            <div class="next-row" cdkDrag cdkDragLockAxis="y" [cdkDragData]="entry">
+              <span class="grip" cdkDragHandle aria-label="Drag to move" title="Drag to move"><app-icon name="grip" [size]="16" /></span>
+              <button type="button" class="next-play" [title]="'Play ' + entry.item.title" (click)="player.playEntry(entry)">
+                <app-cover class="mini-art" [key]="coverKey(entry.item)" [src]="entry.item.art" />
+                <span class="next-names">
+                  <span class="next-title">{{ entry.item.title }}</span>
+                  @if (!entry.fromSource) { <span class="next-from">from {{ entry.from }}</span> }
+                </span>
+                <span class="mono next-time">{{ clock(entry.item.durationS) }}</span>
+              </button>
+              <button type="button" class="icon-btn remove" [attr.aria-label]="'Remove ' + entry.item.title + ' from the queue'" title="Remove from the queue"
+                      (click)="player.remove(entry.qid)"><app-icon name="close" [size]="14" /></button>
+              <div class="drop-slot" *cdkDragPlaceholder></div>
+            </div>
+          }
+        </div>
+        @if (player.upNext().length > shownNext().length) {
+          <span class="hint more">and {{ player.upNext().length - shownNext().length }} more</span>
         }
       </div>
     }
@@ -151,11 +172,34 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
     .center { text-align: center; }
     .next { display: flex; flex-direction: column; gap: 4px; margin-top: auto; padding-top: 8px; }
     .kicker.amber { color: var(--audio); padding-bottom: 4px; }
+    .next-head { display: flex; align-items: baseline; gap: 8px; padding-bottom: 4px; }
+    .next-head .kicker.amber { padding-bottom: 0; }
+    .count { font-size: 11px; color: var(--text-tertiary); }
+    .clear { margin-left: auto; padding: 2px 6px; border: none; background: transparent; color: var(--text-tertiary); font-size: 12px; }
+    .clear:hover { color: var(--text-primary); }
+    .next-list { display: flex; flex-direction: column; gap: 2px; }
     .next-row {
-      display: flex; align-items: center; gap: 10px; padding: 6px; border: none; border-radius: var(--radius-md);
-      background: transparent; text-align: left; color: var(--text-primary);
+      display: flex; align-items: center; gap: 4px; padding: 2px 4px 2px 0; border-radius: var(--radius-md);
+      color: var(--text-primary); background: transparent;
     }
     .next-row:hover { background: var(--bg-hover); }
+    .grip { display: inline-flex; padding: 6px 2px 6px 4px; color: var(--text-muted); cursor: grab; touch-action: none; }
+    .next-row:hover .grip { color: var(--text-tertiary); }
+    .next-play {
+      flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 4px; border: none;
+      background: transparent; text-align: left; color: inherit;
+    }
+    .next-names { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .next-from { font-size: 11px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .remove { width: 28px; height: 28px; opacity: 0; color: var(--text-tertiary); }
+    .next-row:hover .remove, .remove:focus-visible { opacity: 1; }
+    :host(.sheet) .remove { opacity: 1; }
+    .more { padding: 4px 8px; }
+    .drop-slot { height: 48px; border-radius: var(--radius-md); background: var(--bg-elevated); border: 1px dashed var(--border-subtle); }
+    .cdk-drag-preview { display: flex; align-items: center; gap: 4px; border-radius: var(--radius-md); background: var(--bg-elevated); box-shadow: 0 12px 30px rgba(0,0,0,.5); color: var(--text-primary); }
+    .cdk-drag-animating, .next-list.cdk-drop-list-dragging .next-row:not(.cdk-drag-placeholder) { transition: transform 180ms cubic-bezier(0, 0, 0.2, 1); }
+    .toggle { color: var(--text-tertiary); }
+    .toggle.on { color: var(--accent); }
     .mini-art { width: 36px; --cover-radius: 4px; }
     .next-title { flex: 1; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .next-time { font-size: 11px; color: var(--text-tertiary); }
@@ -196,7 +240,11 @@ export class NowPlayingComponent {
     return item?.kind === 'take' ? (this.library.takes().find((take) => take.id === item.id) ?? null) : null;
   });
   protected readonly remaining = computed(() => Math.max(0, this.player.duration() - this.player.time()));
-  protected readonly shownNext = computed(() => this.player.upNext().slice(0, this.mode() === 'sheet' ? 3 : 50));
+  protected readonly shownNext = computed<QueueEntry[]>(() => this.player.upNext().slice(0, this.mode() === 'sheet' ? 20 : 100));
+
+  protected dropped(event: CdkDragDrop<QueueEntry[]>): void {
+    if (event.previousIndex !== event.currentIndex) this.player.moveUpNext(event.previousIndex, event.currentIndex);
+  }
 
   /** The lyrics as lines, each section tag (`[verse]`) a line of its own, marked. */
   protected lyricLines(lyrics: string): { readonly text: string; readonly section: boolean }[] {

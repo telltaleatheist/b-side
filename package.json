@@ -27,6 +27,7 @@
   },
   "_crucibleClientNote": "The Crucible SDK (@crucible/client) and its installer library (@crucible/bootstrap) are vendored as immutable npm-pack tarballs from the GitHub release (there is no registry publish). Compatibility with a server is the API version on X-Crucible-Api, not this number. To update: node tools/adopt-crucible-release.mjs <version> (BookForge's script, copied per crucible docs/INTEGRATING-AN-APP.md §2.2; name the version, since --newest reads the newest tag rather than the promoted release; --check shows both).",
   "dependencies": {
+    "@angular/cdk": "^21.2.14",
     "@angular/common": "^21.0.0",
     "@angular/compiler": "^21.0.0",
     "@angular/core": "^21.0.0",
