@@ -2,7 +2,7 @@
   "name": "b-side-mobile",
   "version": "0.1.0",
   "private": true,
-  "description": "B-Side for iPhone: the same app, talking to a B-Side hub on a computer, with a native queue player and offline playlists",
+  "description": "B-Sides for iPhone: the same app, talking to a B-Sides hub on a computer, with a native queue player and offline playlists",
   "scripts": {
     "build:web": "cd .. && npx ng build --configuration mobile",
     "sync": "npm run build:web && npx cap sync ios && node scripts/register-native-plugins.mjs",

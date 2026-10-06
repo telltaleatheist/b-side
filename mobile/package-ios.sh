@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Install B-Side onto a plugged-in iPhone.
+# Install B-Sides onto a plugged-in iPhone.
 #
 # telltaleatheist@gmail.com is now on the PAID Apple Developer Program, so signed
 # builds are good for ~1 YEAR (not the old 7-day free-team window). Re-run this
@@ -74,6 +74,6 @@ xcrun devicectl device install app --device "$DEVICE_UDID" "$APP_PATH"
 
 echo "==> Launching"
 xcrun devicectl device process launch --device "$DEVICE_UDID" "$BUNDLE_ID" || \
-  echo "(If launch was denied, just tap the B-Side icon on the phone.)"
+  echo "(If launch was denied, just tap the B-Sides icon on the phone.)"
 
 echo "Done. This build is good for ~1 year (paid Apple Developer Program)."
