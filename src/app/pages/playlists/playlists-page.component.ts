@@ -54,7 +54,7 @@ import { PlayerService } from '../../core/player.service';
               @if (album.plan?.core || album.ask.tags.length) {
                 <span class="head-sound"><span class="kicker">Sound</span> {{ album.plan?.core || album.ask.tags.join(', ') }}</span>
               }
-              <span class="head-sub">{{ album.ask.sung ? 'Sung' : 'Instrumental' }} · {{ songs().length }} {{ songs().length === 1 ? 'track' : 'tracks' }}{{ total() }} of {{ album.ask.minutes }} min@if (album.writer) { · written by {{ album.writer }}}</span>
+              <span class="head-sub">{{ album.ask.sung ? 'Sung' : 'Instrumental' }} · {{ songs().length }} {{ songs().length === 1 ? 'track' : 'tracks' }}@if (album.stage === 'done') { · <strong class="runtime">runs {{ runtime() }}</strong> (asked for {{ album.ask.minutes }} min)} @else { · {{ runtime() }} of {{ album.ask.minutes }} min}@if (album.writer) { · written by {{ album.writer }}}</span>
               @if (busy(album.stage)) {
                 @let progress = albumProgress(album);
                 <div class="progress-line">
@@ -80,6 +80,9 @@ import { PlayerService } from '../../core/player.service';
                 <button type="button" class="ghost" [disabled]="cloud.saving() !== null" (click)="saveToCloud(playlist)">
                   <app-icon name="cloud" [size]="18" />{{ cloud.saving()?.playlist === playlist.id ? 'Saving ' + cloud.saving()!.done + ' of ' + cloud.saving()!.of + '…' : 'Save to cloud' }}
                 </button>
+              }
+              @if (!isCloud() && canContinue()) {
+                <button type="button" class="ghost" (click)="continueAlbum(playlist)"><app-icon name="play-next" [size]="18" />{{ playlist.album?.stage === 'done' ? 'Make the missing tracks' : 'Continue making it' }}</button>
               }
               @if (!isCloud() && playlist.album && busy(playlist.album.stage)) {
                 <button type="button" class="ghost stop" (click)="stopAlbum(playlist)"><app-icon name="close" [size]="16" />Stop making it</button>
@@ -142,7 +145,7 @@ import { PlayerService } from '../../core/player.service';
                 <div class="title">{{ row.title }}</div>
                 <div class="sub">{{ row.tags }}</div>
               </div>
-              <span class="mono time">{{ row.making ? 'making' : 'waiting' }}</span>
+              <span class="mono time">{{ row.state }}</span>
             </div>
           }
           @if (playlist.album?.stage === 'planning') {
@@ -202,6 +205,7 @@ import { PlayerService } from '../../core/player.service';
     </div>
   `,
   styles: [`
+    .runtime { color: var(--text-primary); font-weight: 700; }
     .page { max-width: 1100px; margin: 0 auto; padding: 18px 20px 28px; display: flex; flex-direction: column; gap: 20px; }
     .back { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: 13px; }
     .flip { transform: scaleX(-1); }
@@ -299,12 +303,35 @@ export class PlaylistsPageComponent {
   /** An album's planned tracks not made yet: the ones on the server, then the ones waiting. */
   protected readonly upcoming = computed(() => {
     const album = this.selected()?.album;
-    if (album?.plan == null || !this.busy(album.stage)) return [];
+    if (album?.plan == null) return [];
+    const busy = this.busy(album.stage);
     const made = new Set(this.songs().map((song) => song.title));
+    const redo = new Set(album.redo ?? []);
     return album.plan.tracks
-      .map((track, index) => ({ index, title: track.title, tags: track.tags, making: index < album.sent }))
-      .filter((row) => !made.has(row.title));
+      .map((track, index) => {
+        const making = busy && index < album.sent && !redo.has(index);
+        const state = making ? 'making' : busy ? 'waiting' : 'not made';
+        return { index, title: track.title, tags: track.tags, making, state, lost: index < album.sent };
+      })
+      // Stopped or done: only the tracks it set out to make and has no song for (one past the length was never meant).
+      .filter((row) => !made.has(row.title) && (busy || row.lost || album.stage === 'stopped' || album.stage === 'failed'));
   });
+
+  /** The album's real length: its songs added up. */
+  protected readonly runtime = computed(() => clockText(this.songs().reduce((sum, song) => sum + (song.durationS ?? 0), 0)));
+
+  /** An album that did not finish (stopped, failed, or done with tracks missing) can carry on. */
+  protected readonly canContinue = computed(() => {
+    const album = this.selected()?.album;
+    if (album == null || this.busy(album.stage)) return false;
+    if (album.plan === null) return album.stage !== 'done';
+    return this.upcoming().length > 0;
+  });
+
+  protected async continueAlbum(playlist: Playlist): Promise<void> {
+    const outcome = await this.hub.call<unknown>('POST', `/api/albums/${encodeURIComponent(playlist.id)}/resume`);
+    this.refusal.set(outcome.ok ? null : outcome.refusal);
+  }
 
   protected busy(stage: AlbumStage): boolean {
     return stage === 'planning' || stage === 'cover' || stage === 'making';

@@ -237,6 +237,18 @@ export class HubCore {
         }
         if (titles.length > 0) await this.libraryChanged();
       },
+      made: async (id) => {
+        const view = await this.libraryView();
+        const playlist = view.playlists.find((p) => p.id === id);
+        const songs = new Map(view.songs.map((song) => [song.id, song]));
+        return (playlist?.songs ?? []).flatMap((songId) => {
+          const song = songs.get(songId);
+          return song === undefined ? [] : [{ title: song.title, durationS: song.durationS }];
+        });
+      },
+      flyingTracks: (id) => this.jobs.list(albumClient(id))
+        .filter((job) => !ENDED_PHASES.includes(job.phase) && job.album?.id === id)
+        .map((job) => job.album?.track as number),
       cancelInFlight: async (id) => {
         for (const job of this.jobs.list(albumClient(id)).filter((j) => !ENDED_PHASES.includes(j.phase))) {
           await this.jobs.cancel(job.key).catch((err: unknown) => console.error(`[albums] could not cancel ${job.key}:`, err));
@@ -501,6 +513,10 @@ export class HubCore {
       this.albums.start(album.id);
       await this.libraryChanged();
       return { id: album.id };
+    });
+    this.route('POST', '/api/albums/:id/resume', async (request) => {
+      await this.albums.resume(request.params['id'] as string);
+      return this.libraryChanged();
     });
     this.route('POST', '/api/albums/:id/stop', async (request) => {
       await this.albums.stop(request.params['id'] as string);

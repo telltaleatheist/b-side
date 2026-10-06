@@ -271,6 +271,10 @@ export interface AlbumHooks {
   retitle(id: string, titles: readonly string[]): Promise<void>;
   /** Cancel this album's tracks still on the server. */
   cancelInFlight(id: string): Promise<void>;
+  /** The album's songs as filed: each one's title (its plan track's) and length. */
+  made(id: string): Promise<readonly { readonly title: string; readonly durationS: number | null }[]>;
+  /** Which of the album's tracks (plan places) are on the server now. */
+  flyingTracks(id: string): readonly number[];
 }
 
 /**
@@ -320,6 +324,48 @@ export class AlbumMaker {
     await Promise.all([...this.sessions.values()].map((session) => session.close().catch(() => undefined)));
   }
 
+  /**
+   * Carry on with an album that did not finish (Owen, 2026-10-06): stopped by
+   * hand or by a problem, or done with tracks missing (lost while the app was
+   * closed, or failed). It picks up where it stands: writing whatever is not
+   * written yet, then making each planned track that has no song.
+   */
+  async resume(id: string): Promise<void> {
+    if (this.running.has(id)) return;
+    const meta = await this.hooks.meta(id);
+    if (meta === null) return;
+    this.failures.set(id, 0);
+    const unwritten = meta.plan === null
+      || (meta.ask.sung && meta.plan.tracks.some((track) => track.lyrics === null))
+      || (meta.cover === null && meta.coverState !== 'failed' && meta.coverState !== 'no_model');
+    const next = await this.recover(id, { ...meta, refusal: null, step: null });
+    await this.hooks.update(id, { ...next, stage: unwritten ? 'planning' : 'making' });
+    this.start(id);
+  }
+
+  /**
+   * The album as its songs say it stands: the length made counted from them,
+   * and every track sent before but with no song and not on the server now put
+   * up to be sent again.
+   */
+  private async recover(id: string, meta: AlbumMeta): Promise<AlbumMeta> {
+    if (meta.plan === null) return meta;
+    const songs = await this.hooks.made(id);
+    const made = new Map<string, number>();
+    for (const song of songs) made.set(song.title.toLowerCase(), (made.get(song.title.toLowerCase()) ?? 0) + 1);
+    const flying = new Set(this.hooks.flyingTracks(id));
+    const redo: number[] = [];
+    for (const [at, track] of meta.plan.tracks.entries()) {
+      if (at >= meta.sent) break;
+      const key = track.title.toLowerCase();
+      const count = made.get(key) ?? 0;
+      if (count > 0) made.set(key, count - 1);
+      else if (!flying.has(at)) redo.push(at);
+    }
+    const madeS = songs.reduce((sum, song) => sum + (song.durationS ?? 0), 0);
+    return { ...meta, madeS, redo };
+  }
+
   /** Stop making it: no more tracks, and the ones on the server are cancelled. What is made stays. */
   async stop(id: string): Promise<void> {
     const meta = await this.hooks.meta(id);
@@ -347,7 +393,12 @@ export class AlbumMaker {
         meta = { ...meta, stage: 'making' };
         await this.hooks.update(id, meta);
       }
-      if (meta.stage === 'making') await this.topUp(id, meta);
+      if (meta.stage === 'making') {
+        // Tracks that were on the server when the app closed and are gone now: made again.
+        meta = await this.recover(id, meta);
+        await this.hooks.update(id, meta);
+        await this.topUp(id, meta);
+      }
     } catch (error) {
       const current = await this.hooks.meta(id);
       if (current !== null) await this.hooks.update(id, { ...current, stage: 'failed', refusal: refusalOf(error) });
@@ -474,23 +525,25 @@ export class AlbumMaker {
     if (meta.stage !== 'making' || meta.plan === null) return;
     const target = meta.ask.minutes * 60;
     let sent = meta.sent;
+    const redo = [...(meta.redo ?? [])];
     let flying = this.hooks.inFlight(id);
     const server = this.hooks.server(meta.server);
-    while (flying < AHEAD && sent < meta.plan.tracks.length && meta.madeS + flying * TYPICAL_TRACK_S < target) {
-      const track = meta.plan.tracks[sent] as AlbumTrack;
+    // A track to make again goes first; it was part of the album before the length was reached.
+    while (flying < AHEAD && (redo.length > 0 || (sent < meta.plan.tracks.length && meta.madeS + flying * TYPICAL_TRACK_S < target))) {
+      const at = redo.length > 0 ? (redo.shift() as number) : sent++;
+      const track = meta.plan.tracks[at] as AlbumTrack;
       const sung = meta.ask.sung && track.lyrics !== null;
-      this.hooks.render(id, sent, server, {
+      this.hooks.render(id, at, server, {
         tags: track.tags,
         instrumental: !sung,
         ...(sung ? { lyrics: track.lyrics as string } : {}),
         ...(meta.ask.cfg != null ? { cfg: meta.ask.cfg } : {}),
       });
-      sent += 1;
       flying += 1;
     }
-    const finished = flying === 0 && (meta.madeS >= target || sent >= meta.plan.tracks.length);
-    if (sent !== meta.sent || finished) {
-      await this.hooks.update(id, { ...meta, sent, stage: finished ? 'done' : meta.stage });
+    const finished = flying === 0 && redo.length === 0 && (meta.madeS >= target || sent >= meta.plan.tracks.length);
+    if (sent !== meta.sent || redo.length !== (meta.redo ?? []).length || finished) {
+      await this.hooks.update(id, { ...meta, sent, redo, stage: finished ? 'done' : meta.stage });
     }
   }
 }

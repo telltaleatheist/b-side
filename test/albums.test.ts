@@ -40,3 +40,49 @@ test('the progress line says what the maker is doing, and the bar only goes forw
   expect(making.share).toBeGreaterThan(cover.share);
   expect(albumProgress(album({ stage: 'done', madeS: 1900 })).share).toBe(1);
 });
+
+import { AlbumMaker, type AlbumHooks } from '../shared/core/albums';
+import type { AlbumMeta } from '../shared/types';
+
+/** An album with four planned tracks, cover painted, as a fake hub holds it. */
+function fakeAlbum(meta: Partial<AlbumMeta>, songs: { title: string; durationS: number }[], flying: number[] = []) {
+  const tracks = ['One', 'Two', 'Three', 'Four'].map((title) => ({ title, tags: 'folk', lyrics: null }));
+  let stored: AlbumMeta = {
+    artist: 'A', blurb: '', cover: 'c.png', ask: { description: '', tags: [], minutes: 10, sung: false },
+    plan: { title: 'T', artist: 'A', blurb: '', coverPrompt: '', tracks }, stage: 'stopped', sent: 3, madeS: 0,
+    refusal: null, server: 'pc', writer: 'w', ...meta,
+  };
+  const rendered: number[] = [];
+  const hooks: AlbumHooks = {
+    meta: async () => stored,
+    update: async (_id, next) => { stored = next; },
+    server: () => ({ name: 'pc', url: 'http://pc:7100', token: 't' }) as never,
+    page: async () => null,
+    paint: async () => 'c.png',
+    render: (_id, track) => { rendered.push(track); },
+    inFlight: () => flying.length + rendered.length,
+    retitle: async () => undefined,
+    cancelInFlight: async () => undefined,
+    made: async () => songs,
+    flyingTracks: () => flying,
+  };
+  return { maker: new AlbumMaker(hooks), rendered, meta: () => stored };
+}
+
+test('Continue: a stopped album makes again the tracks it lost, first, then carries on', async () => {
+  // Tracks 0-2 were sent; only One landed (Two failed, Three was lost when the app closed).
+  const album = fakeAlbum({}, [{ title: 'One', durationS: 150 }]);
+  await album.maker.resume('a');
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(album.rendered).toEqual([1, 2]);
+  expect(album.meta().stage).toBe('making');
+  expect(album.meta().madeS).toBe(150);
+  expect(album.meta().redo).toEqual([]);
+});
+
+test('Continue never sends again a track still on the server', async () => {
+  const album = fakeAlbum({}, [{ title: 'One', durationS: 150 }], [2]);
+  await album.maker.resume('a');
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(album.rendered).toEqual([1]);
+});

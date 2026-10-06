@@ -349,6 +349,8 @@ export interface AlbumMeta {
   readonly stage: AlbumStage;
   /** How many of the plan's tracks have been sent to the server (the next one to send is this index). */
   readonly sent: number;
+  /** Tracks before `sent` to send again (lost while the app was closed, or failed): sent before the next new one. */
+  readonly redo?: readonly number[];
   /** How many tracks were sent before the plan existed (the openers); absent until they are. */
   readonly openers?: number;
   /** Seconds of music made so far. */
