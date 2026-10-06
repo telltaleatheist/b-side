@@ -351,6 +351,11 @@ export interface AlbumMeta {
   readonly sent: number;
   /** Tracks before `sent` to send again (lost while the app was closed, or failed): sent before the next new one. */
   readonly redo?: readonly number[];
+  /**
+   * Whether anything is being done for it right now: writing, or tracks on the server. Filled in
+   * when the library is sent, never stored. False while the stage says making: it was interrupted.
+   */
+  readonly working?: boolean;
   /** How many tracks were sent before the plan existed (the openers); absent until they are. */
   readonly openers?: number;
   /** Seconds of music made so far. */

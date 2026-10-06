@@ -296,6 +296,11 @@ export class AlbumMaker {
     void this.advance(id).finally(() => this.running.delete(id));
   }
 
+  /** Whether this album's writing is running now (its plan, lyrics or cover). */
+  writing(id: string): boolean {
+    return this.running.has(id);
+  }
+
   /** A track landed in the album: count its length and send the next. */
   async landed(id: string, seconds: number | null): Promise<void> {
     this.failures.set(id, 0);
@@ -303,7 +308,9 @@ export class AlbumMaker {
     if (meta === null) return;
     const next: AlbumMeta = { ...meta, madeS: meta.madeS + (seconds ?? 0) };
     await this.hooks.update(id, next);
-    await this.topUp(id, next);
+    // The track landing is still its job's to finish (it is being filed): not one in flight. Counted,
+    // the last track left the album at `making` for good, with nothing on the server (2026-10-06).
+    await this.topUp(id, next, 1);
   }
 
   /** A track failed: skip it, and stop the album when several fail in a row. */
@@ -521,12 +528,12 @@ export class AlbumMaker {
   }
 
   /** Keep two tracks on the server until the album passes its length or runs out of plan. */
-  private async topUp(id: string, meta: AlbumMeta): Promise<void> {
+  private async topUp(id: string, meta: AlbumMeta, landing = 0): Promise<void> {
     if (meta.stage !== 'making' || meta.plan === null) return;
     const target = meta.ask.minutes * 60;
     let sent = meta.sent;
     const redo = [...(meta.redo ?? [])];
-    let flying = this.hooks.inFlight(id);
+    let flying = Math.max(0, this.hooks.inFlight(id) - landing);
     const server = this.hooks.server(meta.server);
     // A track to make again goes first; it was part of the album before the length was reached.
     while (flying < AHEAD && (redo.length > 0 || (sent < meta.plan.tracks.length && meta.madeS + flying * TYPICAL_TRACK_S < target))) {

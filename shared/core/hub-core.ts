@@ -208,7 +208,7 @@ export class HubCore {
           return take;
         },
         ended: (job) => {
-          if (job.album && job.phase !== 'cancelled') void this.albums.failed(job.album.id, job.refusal);
+          if (job.album && job.phase !== 'cancelled') void this.albums.failed(job.album.id, job.refusal).then(() => this.libraryChanged());
         },
       },
       options.disk,
@@ -364,8 +364,19 @@ export class HubCore {
     return { title: song.title, file: this.library.audioPath(song.file) };
   }
 
-  libraryView(): Promise<LibraryView> {
-    return this.library.list();
+  /** The library, each album being made saying whether anything is being done for it right now. */
+  async libraryView(): Promise<LibraryView> {
+    const view = await this.library.list();
+    return {
+      ...view,
+      playlists: view.playlists.map((playlist) => {
+        const album = playlist.album;
+        if (album == null || !['planning', 'cover', 'making'].includes(album.stage)) return playlist;
+        const working = this.albums.writing(playlist.id)
+          || this.jobs.list(albumClient(playlist.id)).some((job) => !ENDED_PHASES.includes(job.phase));
+        return { ...playlist, album: { ...album, working } };
+      }),
+    };
   }
 
   async libraryChanged(): Promise<LibraryView> {

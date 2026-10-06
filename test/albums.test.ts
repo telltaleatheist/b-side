@@ -86,3 +86,11 @@ test('Continue never sends again a track still on the server', async () => {
   await new Promise((resolve) => setTimeout(resolve, 10));
   expect(album.rendered).toEqual([1]);
 });
+
+test('the last track landing finishes the album: its own job is not one still in flight', async () => {
+  // 450 s made of 600, and a 160 s track lands; its own job is still listed while it is filed.
+  const album = fakeAlbum({ stage: 'making', sent: 3, madeS: 450, ask: { description: '', tags: [], minutes: 10, sung: false } }, [], [2]);
+  await album.maker.landed('a', 160);
+  expect(album.meta().stage).toBe('done');
+  expect(album.rendered).toEqual([]);
+});

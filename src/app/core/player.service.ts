@@ -146,8 +146,9 @@ export class PlayerService {
   private readonly albumFilling = computed(() => {
     const source = this.source();
     if (source.kind !== 'playlist') return false;
-    const stage = this.library.playlist(source.id)?.album?.stage;
-    return stage === 'planning' || stage === 'cover' || stage === 'making';
+    const album = this.library.playlist(source.id)?.album;
+    const stage = album?.stage;
+    return (stage === 'planning' || stage === 'cover' || stage === 'making') && album?.working !== false;
   });
   /** An album this device just asked for: it starts playing the moment its first track lands. */
   private readonly autoplay = signal<string | null>(null);

@@ -3,7 +3,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
 
-import type { AlbumStage, Playlist, RefusalView, Song } from '@shared/types';
+import type { AlbumMeta, AlbumStage, Playlist, RefusalView, Song } from '@shared/types';
 
 import { CoverComponent } from '../../components/cover/cover.component';
 import { IconComponent } from '../../components/icon/icon.component';
@@ -36,7 +36,7 @@ import { PlayerService } from '../../core/player.service';
             @if (isCloud()) {
               <span class="kicker">{{ playlist.album ? 'Album' : 'Playlist' }} · in the cloud on {{ cloud.host() }}</span>
             } @else if (playlist.album; as album) {
-              <span class="kicker" [class.amber]="busy(album.stage)">Album · {{ stageWords(album.stage) }}</span>
+              <span class="kicker" [class.amber]="busy(album.stage) && !interrupted(album)">Album · {{ interrupted(album) ? 'interrupted' : stageWords(album.stage) }}</span>
             } @else {
               <span class="kicker">Playlist</span>
             }
@@ -55,7 +55,7 @@ import { PlayerService } from '../../core/player.service';
                 <span class="head-sound"><span class="kicker">Sound</span> {{ album.plan?.core || album.ask.tags.join(', ') }}</span>
               }
               <span class="head-sub">{{ album.ask.sung ? 'Sung' : 'Instrumental' }} · {{ songs().length }} {{ songs().length === 1 ? 'track' : 'tracks' }}@if (album.stage === 'done') { · <strong class="runtime">runs {{ runtime() }}</strong> (asked for {{ album.ask.minutes }} min)} @else { · {{ runtime() }} of {{ album.ask.minutes }} min}@if (album.writer) { · written by {{ album.writer }}}</span>
-              @if (busy(album.stage)) {
+              @if (busy(album.stage) && !interrupted(album)) {
                 @let progress = albumProgress(album);
                 <div class="progress-line">
                   <span class="progress-label">{{ progress.label }}</span>
@@ -84,7 +84,7 @@ import { PlayerService } from '../../core/player.service';
               @if (!isCloud() && canContinue()) {
                 <button type="button" class="ghost" (click)="continueAlbum(playlist)"><app-icon name="play-next" [size]="18" />{{ playlist.album?.stage === 'done' ? 'Make the missing tracks' : 'Continue making it' }}</button>
               }
-              @if (!isCloud() && playlist.album && busy(playlist.album.stage)) {
+              @if (!isCloud() && playlist.album && busy(playlist.album.stage) && !interrupted(playlist.album)) {
                 <button type="button" class="ghost stop" (click)="stopAlbum(playlist)"><app-icon name="close" [size]="16" />Stop making it</button>
               }
               @if (!isCloud()) {
@@ -163,8 +163,8 @@ import { PlayerService } from '../../core/player.service';
               <app-cover class="tile-art" [key]="playlist.id" [src]="hub.coverUrl(playlist)" />
               <span class="tile-name">{{ playlist.name }}</span>
               @if (playlist.album; as album) {
-                <span class="tile-sub" [class.amber]="busy(album.stage)">{{ album.artist || 'Album' }}{{ busy(album.stage) ? ' · ' + stageWords(album.stage) : '' }}</span>
-                @if (busy(album.stage)) {
+                <span class="tile-sub" [class.amber]="busy(album.stage) && !interrupted(album)">{{ album.artist || 'Album' }}{{ interrupted(album) ? ' · interrupted' : busy(album.stage) ? ' · ' + stageWords(album.stage) : '' }}</span>
+                @if (busy(album.stage) && !interrupted(album)) {
                   <div class="bar tile-bar album-bar" [class.indeterminate]="albumProgress(album).waiting"><span [style.width.%]="albumProgress(album).waiting ? null : albumProgress(album).share * 100"></span></div>
                 }
               } @else {
@@ -304,7 +304,8 @@ export class PlaylistsPageComponent {
   protected readonly upcoming = computed(() => {
     const album = this.selected()?.album;
     if (album?.plan == null) return [];
-    const busy = this.busy(album.stage);
+    // Interrupted (the stage says making, but nothing is): its rows are not being made.
+    const busy = this.busy(album.stage) && !this.interrupted(album);
     const made = new Set(this.songs().map((song) => song.title));
     const redo = new Set(album.redo ?? []);
     return album.plan.tracks
@@ -314,7 +315,9 @@ export class PlaylistsPageComponent {
         return { index, title: track.title, tags: track.tags, making, state, lost: index < album.sent };
       })
       // Stopped or done: only the tracks it set out to make and has no song for (one past the length was never meant).
-      .filter((row) => !made.has(row.title) && (busy || row.lost || album.stage === 'stopped' || album.stage === 'failed'));
+      // Making: every track left. Otherwise only the ones it set out to make and has no song for, and
+      // the rest of the plan only while the album is short of its length (past it, they were never needed).
+      .filter((row) => !made.has(row.title) && (busy || row.lost || album.madeS < album.ask.minutes * 60));
   });
 
   /** The album's real length: its songs added up. */
@@ -323,7 +326,7 @@ export class PlaylistsPageComponent {
   /** An album that did not finish (stopped, failed, or done with tracks missing) can carry on. */
   protected readonly canContinue = computed(() => {
     const album = this.selected()?.album;
-    if (album == null || this.busy(album.stage)) return false;
+    if (album == null || (this.busy(album.stage) && !this.interrupted(album))) return false;
     if (album.plan === null) return album.stage !== 'done';
     return this.upcoming().length > 0;
   });
@@ -331,6 +334,14 @@ export class PlaylistsPageComponent {
   protected async continueAlbum(playlist: Playlist): Promise<void> {
     const outcome = await this.hub.call<unknown>('POST', `/api/albums/${encodeURIComponent(playlist.id)}/resume`);
     this.refusal.set(outcome.ok ? null : outcome.refusal);
+  }
+
+  /**
+   * Its stage says it is being made, but nothing is (no writing, no track on
+   * the server): it was interrupted, and Continue takes over from Stop.
+   */
+  protected interrupted(album: AlbumMeta): boolean {
+    return this.busy(album.stage) && album.working === false;
   }
 
   protected busy(stage: AlbumStage): boolean {
