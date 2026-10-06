@@ -142,6 +142,9 @@ export function matchRoute<R extends { method: string; pattern: RegExp; names: r
   return null;
 }
 
+/** The painted cover's width and height, in pixels. */
+const COVER_SIZE = 256;
+
 export class HubCore {
   readonly registry: ServerRegistry;
   readonly takes: TakeStore;
@@ -307,7 +310,10 @@ export class HubCore {
 
   /** Paint an album's cover on the server and file it beside the album. */
   private async paintCover(id: string, server: StoredServer, client: CrucibleClient, model: string, prompt: string): Promise<string> {
-    const jobId = await client.image({ model, prompt, width: 1024, height: 1024 });
+    // Small on purpose (Owen, 2026-10-06: "250x250 or something would be fine"): a cover is shown
+    // as a tile, and 256 square is a sixteenth of the server's default 1024, so it paints that much
+    // sooner. 256 is the smallest size the server takes (a multiple of 32 on the PC).
+    const jobId = await client.image({ model, prompt, width: COVER_SIZE, height: COVER_SIZE });
     for (;;) {
       let ended = false;
       for await (const event of client.events(jobId)) {
