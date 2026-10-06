@@ -362,6 +362,8 @@ export interface AlbumMeta {
   readonly cloud?: { readonly host: string; readonly at: string } | null;
   /** What the maker is doing before the tracks (planning, writing lyrics), for the progress line; null once making. */
   readonly step?: AlbumStep | null;
+  /** The id of the Crucible queue session writing it, while one is open (closed on the next start if a crash left it). */
+  readonly session?: string | null;
   /** The cover: being painted, or why there is none. Absent before the painting starts. */
   readonly coverState?: 'painting' | 'failed' | 'no_model' | null;
 }

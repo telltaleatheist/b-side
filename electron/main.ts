@@ -100,6 +100,17 @@ if (!single) {
     if (process.platform !== 'darwin') app.quit();
   });
 
+  // An album being written holds its Crucible server in a queue session: closed before quitting (at
+  // most two seconds), so the server is free now rather than when the session idles out. A crash
+  // skips this; the album closes its old session when it carries on at the next start.
+  let sessionsClosed = false;
+  app.on('before-quit', (event) => {
+    if (sessionsClosed) return;
+    event.preventDefault();
+    sessionsClosed = true;
+    const deadline = new Promise<void>((resolve) => setTimeout(resolve, 2000));
+    void Promise.race([hub.closeSessions(), deadline]).finally(() => app.quit());
+  });
   app.on('will-quit', () => {
     void hub.stop();
   });

@@ -18,8 +18,10 @@
  * Changes go out through the door's `EventSink`: to one client (its jobs and
  * takes) or to all (the library, the server list).
  */
+import type { CrucibleClient } from '@crucible/client';
+
 import { AlbumMaker } from './albums';
-import { clientFor, deletePreset, listPresets, probe, savePreset, songPage } from './crucible';
+import { clientFor, deletePreset, listPresets, probe, savePreset, setClientName, songPage } from './crucible';
 import { describe } from './describe';
 import { join, type Disk } from './disk';
 import { JobRunner, type AudioFetcher } from './jobs';
@@ -154,6 +156,7 @@ export class HubCore {
   constructor(private readonly options: HubCoreOptions) {
     this.sink = options.sink;
     this.registry = new ServerRegistry(options.vault);
+    setClientName(options.clientName);
     this.pairing = new PairingSessions(options.clientName, async (pairing) => {
       const name = await this.registry.addPaired(pairing);
       this.serversChanged();
@@ -217,7 +220,7 @@ export class HubCore {
       },
       server: (name) => this.registry.get(name),
       page: (server) => songPage(server).catch(() => null),
-      paint: (id, server, model, prompt) => this.paintCover(id, server, model, prompt),
+      paint: (id, server, client, model, prompt) => this.paintCover(id, server, client, model, prompt),
       render: (id, track, server, params) => {
         this.jobs.generate(server, { id: albumClient(id), kind: 'desktop' }, { params, count: 1 }, this.preferences.songFormat, { id, track });
       },
@@ -303,8 +306,7 @@ export class HubCore {
   }
 
   /** Paint an album's cover on the server and file it beside the album. */
-  private async paintCover(id: string, server: StoredServer, model: string, prompt: string): Promise<string> {
-    const client = clientFor(server);
+  private async paintCover(id: string, server: StoredServer, client: CrucibleClient, model: string, prompt: string): Promise<string> {
     const jobId = await client.image({ model, prompt, width: 1024, height: 1024 });
     for (;;) {
       let ended = false;
@@ -321,6 +323,11 @@ export class HubCore {
       }
       if (ended) throw new Refusal('cover_failed', 'The server could not paint the cover.');
     }
+  }
+
+  /** Close the album writing sessions open now (the app is quitting). */
+  async closeSessions(): Promise<void> {
+    await this.albums.closeSessions();
   }
 
   async openLibrary(dir: string): Promise<void> {

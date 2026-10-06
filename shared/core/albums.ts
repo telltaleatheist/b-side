@@ -20,9 +20,9 @@
  * is written to the playlist, so an album being made when the hub stops carries
  * on when it starts again.
  */
-import type { CrucibleClient, ModelInfo } from '@crucible/client';
+import type { CrucibleClient, CrucibleSession, ModelInfo } from '@crucible/client';
 
-import { clientFor } from './crucible';
+import { clientFor, clientName } from './crucible';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { describe } from './describe';
@@ -262,7 +262,7 @@ export interface AlbumHooks {
   /** The song page, for the writer's vocabulary (null when it cannot be read). */
   page(server: StoredServer): Promise<SongPage | null>;
   /** Paint the cover and file it beside the album; answers its file name. */
-  paint(id: string, server: StoredServer, model: string, prompt: string): Promise<string>;
+  paint(id: string, server: StoredServer, client: CrucibleClient, model: string, prompt: string): Promise<string>;
   /** Send one track to the server, tagged with its album and place. */
   render(id: string, track: number, server: StoredServer, params: { tags: string; lyrics?: string; instrumental: boolean; cfg?: number }): void;
   /** How many of this album's tracks are on the server and not ended. */
@@ -279,6 +279,8 @@ export interface AlbumHooks {
  */
 export class AlbumMaker {
   private readonly running = new Set<string>();
+  /** The writing sessions open now, by album: closed on quit. */
+  private readonly sessions = new Map<string, CrucibleSession>();
   private readonly failures = new Map<string, number>();
 
   constructor(private readonly hooks: AlbumHooks) {}
@@ -311,6 +313,11 @@ export class AlbumMaker {
       return;
     }
     await this.topUp(id, meta);
+  }
+
+  /** Close every writing session open now (the app is quitting): the server is free at once, not after the idle time. */
+  async closeSessions(): Promise<void> {
+    await Promise.all([...this.sessions.values()].map((session) => session.close().catch(() => undefined)));
   }
 
   /** Stop making it: no more tracks, and the ones on the server are cancelled. What is made stays. */
@@ -350,9 +357,22 @@ export class AlbumMaker {
   /** The planning stage, in one queue session: plan, lyrics, cover. Answers the album as it then stands. */
   private async write(id: string, start: AlbumMeta, server: StoredServer): Promise<AlbumMeta> {
     let meta = start;
-    const session = await clientFor(server).session({ act: 'generate', idleS: SESSION_IDLE_S });
+    // A session this album opened before a crash or quit still holds the server until it idles out:
+    // closed first, so it does not hold up the new one (guide §7.5, the sweep).
+    if (meta.session != null) {
+      await clientFor(server).closeSession(meta.session).catch(() => undefined);
+      meta = { ...meta, session: null };
+      await this.hooks.update(id, meta);
+    }
+    // Its own client name: Crucible counts every request from the session's name as one of its
+    // items, and removes the ones still waiting when it closes. Under the install's own name, a song
+    // made meanwhile would join the album's session and be dropped with it.
+    const session = await clientFor(server, `${clientName()}/album`).session({ act: 'generate', idleS: SESSION_IDLE_S });
+    this.sessions.set(id, session);
+    meta = { ...(await this.hooks.meta(id) ?? meta), session: session.id };
+    await this.hooks.update(id, meta);
     try {
-      // Every call below rides the session (the cover's paint too: the server matches on client name).
+      // Every call below rides the session, the cover's paint too.
       const client = session;
       if (meta.plan == null) {
         meta = { ...meta, step: { kind: 'plan', done: 0, of: 1 } };
@@ -394,7 +414,7 @@ export class AlbumMaker {
       if (meta.cover === null && meta.coverState !== 'failed' && meta.coverState !== 'no_model') {
         meta = { ...(await this.hooks.meta(id) ?? meta), step: { kind: 'cover', done: 0, of: 1 } };
         await this.hooks.update(id, meta);
-        await this.paint(id, server, plan.coverPrompt);
+        await this.paint(id, server, session, plan.coverPrompt);
         if (await this.halted(id)) return meta;
       }
       if (await this.halted(id)) return meta;
@@ -403,7 +423,10 @@ export class AlbumMaker {
       return meta;
     } finally {
       // Closed before the music: the tracks go through the line like any song.
+      this.sessions.delete(id);
       await session.close().catch((err: unknown) => console.error(`[albums] could not close the session for ${id}:`, err));
+      const now = await this.hooks.meta(id);
+      if (now !== null && now.session === session.id) await this.hooks.update(id, { ...now, session: null });
     }
   }
 
@@ -413,19 +436,19 @@ export class AlbumMaker {
     return meta === null || meta.stage !== 'planning';
   }
 
-  private async paint(id: string, server: StoredServer, prompt: string): Promise<void> {
+  private async paint(id: string, server: StoredServer, client: CrucibleClient, prompt: string): Promise<void> {
     const mark = async (change: Partial<AlbumMeta>): Promise<void> => {
       const meta = await this.hooks.meta(id);
       if (meta !== null) await this.hooks.update(id, { ...meta, ...change });
     };
     try {
-      const model = await chooseCoverModel(clientFor(server));
+      const model = await chooseCoverModel(client);
       if (model === null) {
         await mark({ coverState: 'no_model' });
         return;
       }
       await mark({ coverState: 'painting' });
-      const cover = await this.hooks.paint(id, server, model, coverPrompt(prompt));
+      const cover = await this.hooks.paint(id, server, client, model, coverPrompt(prompt));
       await mark({ cover, coverState: null });
     } catch (error) {
       // A cover that will not paint leaves the drawn one; the music matters more.

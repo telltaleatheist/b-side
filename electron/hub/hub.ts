@@ -31,7 +31,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { CLIENT_NAME, clientFor } from '../../shared/core/crucible';
+import { APP_CLIENT, clientFor } from '../../shared/core/crucible';
 import { HubCore, matchRoute, routeOf, type CoreRequest } from '../../shared/core/hub-core';
 import type { ImportedAlbum } from '../../shared/core/library';
 import type { ServerRegistry } from '../../shared/core/servers';
@@ -111,7 +111,7 @@ export class Hub {
       vault: fileVault(path.join(options.userData, 'servers.json')),
       dataDir: options.userData,
       takeLimits: { perClient: TAKES_PER_CLIENT, bytes: TAKE_CACHE_BYTES },
-      clientName: CLIENT_NAME,
+      clientName: `${APP_CLIENT}@${os.hostname().replace(/\.local$/i, '')}`,
       info,
       sink: {
         send: (client, event) => this.clients.send(client, event),
@@ -169,6 +169,11 @@ export class Hub {
 
   async stop(): Promise<void> {
     await this.close();
+  }
+
+  /** Close the album writing sessions open now, so a quit frees the Crucible server at once. */
+  async closeSessions(): Promise<void> {
+    await this.core.closeSessions();
   }
 
   // ── listening ───────────────────────────────────────────────────────────────

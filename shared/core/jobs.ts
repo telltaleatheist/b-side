@@ -34,6 +34,7 @@ import {
   type CrucibleClient,
   type DoneData,
   type InstallingDetails,
+  type JobRequest,
   type JobStatus,
 } from '@crucible/client';
 
@@ -71,7 +72,26 @@ interface Job {
   taskId: string | null;
   /** Cancelled or dismissed before the server had it: nothing more is sent for it. */
   gone: boolean;
+  /** Sent again once already after the server removed it through no fault of the song's. */
+  resent?: boolean;
 }
+
+/**
+ * A song job, as the playground's `audio` helper builds it, plus `client_ref` (the helper does not
+ * send one): `b-sides:<key>` names the song in Crucible's queue and in a restart's sweep (guide §6.3).
+ */
+export function songJob(params: SongParams, format: SongFormat, key: string): JobRequest {
+  const wire: Record<string, unknown> = { format };
+  if (params.tags !== undefined) wire['tags'] = params.tags;
+  if (params.lyrics !== undefined) wire['lyrics'] = params.lyrics;
+  if (params.instrumental !== undefined) wire['instrumental'] = params.instrumental;
+  if (params.cfg !== undefined) wire['cfg'] = params.cfg;
+  if (params.seed !== undefined) wire['seed'] = params.seed;
+  return { type: 'audio', model: SONG_MODEL, params: wire, inputs: {}, clientRef: `b-sides:${key}` };
+}
+
+/** Removed by the server for a reason that is not the song's: a session closing, a restart. Sent again once. */
+const RESEND_REASONS: readonly string[] = ['session_closed', 'server_restart'];
 
 /**
  * Fetch a finished job's artifact into `file` and answer its size. A server that
@@ -337,7 +357,7 @@ export class JobRunner {
     for (let round = 0; jobId === null; round += 1) {
       if (job.gone) return;
       try {
-        jobId = await client.audio({ model: SONG_MODEL, ...job.view.params, format: job.format });
+        jobId = await client.submit(songJob(job.view.params, job.format, job.view.key));
       } catch (error) {
         if (job.gone) return;
         if (!isInstalling(error) || round >= INSTALL_ROUNDS) {
@@ -472,6 +492,17 @@ export class JobRunner {
               this.finish(job, 'cancelled');
               return;
             case 'removed':
+              // Lost to something else (QUEUE.md: a session closing, a server restart): sent again,
+              // once, rather than gone from the playing list. Any other removal is the end of it.
+              if (!job.resent && RESEND_REASONS.includes(event.data.reason)) {
+                job.resent = true;
+                job.view.jobId = null;
+                job.view.phase = 'submitting';
+                job.view.message = 'The server dropped it from its line; sending it again';
+                this.publish(job);
+                void this.submit(job);
+                return;
+              }
               job.view.message = event.data.message;
               this.finish(job, 'removed', { code: `removed_${event.data.reason}`, message: event.data.message });
               return;

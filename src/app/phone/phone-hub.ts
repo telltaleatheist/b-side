@@ -1,6 +1,6 @@
 import { CrucibleUnreachable } from '@crucible/client';
 
-import { CLIENT_NAME } from '@shared/core/crucible';
+import { APP_CLIENT, clientName } from '@shared/core/crucible';
 import { HubCore, matchRoute, type CoreClient } from '@shared/core/hub-core';
 import { Refusal, refusalOf } from '@shared/core/refusal';
 import { TAKE_CACHE_BYTES, TAKES_PER_CLIENT, type HubEvent, type Outcome } from '@shared/types';
@@ -40,7 +40,8 @@ export class PhoneHub {
       vault: keychainVault(VAULT_KEY),
       dataDir: PHONE_DATA,
       takeLimits: { perClient: TAKES_PER_CLIENT, bytes: TAKE_CACHE_BYTES },
-      clientName: CLIENT_NAME,
+      // This phone's own name in Crucible's queue: the app's, and the install's lasting client id.
+      clientName: `${APP_CLIENT}@${client.id}`,
       limitsAlbumSpace: true,
       info: { app: 'b-side', version, hostname: 'this phone' },
       sink: {
@@ -56,7 +57,7 @@ export class PhoneHub {
           const done = await NativeDisk.download({
             url,
             path: file,
-            headers: { Authorization: `Bearer ${server.token}`, 'X-Crucible-Api': '1', 'X-Crucible-Client': CLIENT_NAME },
+            headers: { Authorization: `Bearer ${server.token}`, 'X-Crucible-Api': '1', 'X-Crucible-Client': clientName() },
           });
           return done.bytes;
         } catch (error) {

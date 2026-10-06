@@ -13,15 +13,45 @@ import { Refusal } from './refusal';
 import type { StoredServer } from './servers';
 import { SONG_MODEL, type NumberField, type Preset, type ServerProbe, type SongForm, type SongPage } from '../types';
 
-export const CLIENT_NAME = 'b-sides';
+/** The app's name; each install adds its own (`b-sides@<host>`), set by the hub that runs it. */
+export const APP_CLIENT = 'b-sides';
+let installName = APP_CLIENT;
 
-export function clientFor(server: StoredServer): CrucibleClient {
-  return new CrucibleClient({ url: server.url, token: server.token, clientName: CLIENT_NAME });
+/**
+ * Crucible counts every request from one client name as one client: in its queue, and as items of
+ * that name's open queue session. So each install says who it is (QUEUE.md "Give each install its
+ * own client name"): a desktop and a phone never join, or hold up, each other's work.
+ */
+export function setClientName(name: string): void {
+  installName = name;
 }
 
-/** `GET /v1/info`: who answered, for the settings screen's connection test. */
+export function clientName(): string {
+  return installName;
+}
+
+/** A client for this server under this install's name, or `as` for a run that must stay apart (an album's session). */
+export function clientFor(server: StoredServer, as: string = installName): CrucibleClient {
+  return new CrucibleClient({ url: server.url, token: server.token, clientName: as });
+}
+
+/** A probe's clock (guide §5.3, §11): a sleeping or unplugged server must not hang Test or the install check. */
+const PING_MS = 4000;
+const INFO_MS = 8000;
+
+/** `GET /v1/ping` then `GET /v1/info`, each on a clock: who answered, for the connection test. */
 export async function probe(server: StoredServer): Promise<ServerProbe> {
-  const info = await clientFor(server).info();
+  const client = clientFor(server);
+  let info: Awaited<ReturnType<CrucibleClient['info']>>;
+  try {
+    await client.ping({ timeoutMs: PING_MS });
+    info = await client.info({ timeoutMs: INFO_MS });
+  } catch (error) {
+    if (error instanceof Error && (error.name === 'TimeoutError' || (error.cause instanceof Error && error.cause.name === 'TimeoutError'))) {
+      throw new Refusal('server_timeout', `${server.url} did not answer within a few seconds: asleep, off, or not on this network.`);
+    }
+    throw error;
+  }
   return {
     name: info.server.name,
     version: info.server.version,
