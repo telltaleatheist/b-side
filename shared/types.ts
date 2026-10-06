@@ -420,8 +420,10 @@ export interface HubSettingsView {
   readonly defaultLibraryDir: string;
   /** Whether the hub listens beyond this computer. */
   readonly sharing: boolean;
+  /** Whether devices on the network need the key; off, the address alone connects (as Ollama). */
+  readonly requireKey: boolean;
   readonly port: number;
-  /** Links that open the hub, key included: one per network address (only when sharing). */
+  /** Links that open the hub, one per network address (only when sharing); with the key when it is required. */
   readonly links: readonly string[];
   /** Whether the caller is this computer (only it may change sharing or the key). */
   readonly local: boolean;

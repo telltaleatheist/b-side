@@ -60,14 +60,14 @@ import { ServersCardComponent } from './servers-card.component';
               <button type="button" class="ghost small" (click)="cloud.unlink()">Unlink</button>
             </div>
           } @else {
-            <p class="detail">Link a B-Sides computer as this phone's cloud: albums you save go there, and stream or download back. On the computer: Settings → Other devices → turn on sharing, then copy a link.</p>
+            <p class="detail">Link a B-Sides computer as this phone's cloud: albums you save go there, and stream or download back. On the computer: Settings → Other devices → turn on sharing; type the address it shows.</p>
             <form class="link" (submit)="$event.preventDefault(); linkCloud()">
-              <input type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="B-Sides link"
-                     placeholder="http://computer:7300/#key=…" [value]="cloudLink()" (input)="cloudLink.set($any($event.target).value)" />
+              <input type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Computer's address"
+                     placeholder="192.168.1.20" [value]="cloudLink()" (input)="cloudLink.set($any($event.target).value)" />
               <button type="submit" class="primary small" [disabled]="cloudLink().trim() === ''">Link</button>
             </form>
             @if (cloudLinkWrong()) {
-              <div class="refusal"><code>link_invalid</code><span>That is not a B-Sides link: it looks like http://computer:7300/#key=…</span></div>
+              <div class="refusal"><code>link_invalid</code><span>That is not an address: type one like 192.168.1.20 or owens-mac-studio.local</span></div>
             }
           }
         </div>
@@ -155,7 +155,11 @@ import { ServersCardComponent } from './servers-card.component';
             <p class="hint">Sharing is {{ view.sharing ? 'on' : 'off' }}. Only the computer B-Sides runs on can change it.</p>
           }
           @if (view.sharing && view.local) {
-            <p class="hint">Open one of these links on the other device (in a browser, or paste it into the B-Sides phone app). The link carries this B-Sides' key: share it only with people you want using it.</p>
+            @if (view.requireKey) {
+              <p class="hint">Open one of these links on the other device (in a browser, or paste it into the B-Sides phone app). The link carries this B-Sides' key: share it only with people you want using it.</p>
+            } @else {
+              <p class="hint">Type this computer's address into the B-Sides phone app, or open it in a browser. No key: anything that can reach this computer on port {{ view.port }} can use B-Sides, so share only on networks you trust.</p>
+            }
             @for (link of view.links; track link) {
               <div class="link">
                 <span class="mono">{{ link }}</span>
@@ -164,9 +168,15 @@ import { ServersCardComponent } from './servers-card.component';
             } @empty {
               <p class="hint">This computer has no network address right now.</p>
             }
-            <div class="actions">
-              <button type="button" class="ghost small" (click)="replaceKey()">New key (signs out every other device)</button>
-            </div>
+            <label class="toggle">
+              <input type="checkbox" [checked]="view.requireKey" [disabled]="busy()" (change)="requireKey($any($event.target).checked)" />
+              <span>Require a key (devices then need the link, not just the address)</span>
+            </label>
+            @if (view.requireKey) {
+              <div class="actions">
+                <button type="button" class="ghost small" (click)="replaceKey()">New key (signs out every other device)</button>
+              </div>
+            }
           }
         } @else {
           <p class="hint">Reading the hub's settings…</p>
@@ -287,6 +297,14 @@ export class SettingsPageComponent {
   protected async share(sharing: boolean): Promise<void> {
     this.busy.set(true);
     const outcome = await this.hub.call<HubSettingsView>('PUT', '/api/settings/sharing', { sharing });
+    this.busy.set(false);
+    this.refusal.set(outcome.ok ? null : outcome.refusal);
+    if (outcome.ok) this.settings.set(outcome.value);
+  }
+
+  protected async requireKey(requireKey: boolean): Promise<void> {
+    this.busy.set(true);
+    const outcome = await this.hub.call<HubSettingsView>('PUT', '/api/settings/require-key', { requireKey });
     this.busy.set(false);
     this.refusal.set(outcome.ok ? null : outcome.refusal);
     if (outcome.ok) this.settings.set(outcome.value);

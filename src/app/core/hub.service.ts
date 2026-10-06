@@ -2,6 +2,7 @@ import { computed, Injectable, signal } from '@angular/core';
 
 import type { DesktopBridge } from '@shared/api';
 import {
+  DEFAULT_HUB_PORT,
   HUB_KEY_HEADER,
   type ClientKind,
   type HubEvent,
@@ -480,16 +481,25 @@ export class HubService {
   }
 }
 
-/** Read a hub link (`http://host:port/#key=...`) into an address. Null when it is not one. */
+/**
+ * Read a hub address into an address: a bare IP or name (`192.168.1.20`,
+ * `owens-mac-studio.local`), with or without a port and `http://`, as Ollama
+ * takes one; or a full link with its key (`http://host:7300/#key=...`), for a
+ * B-Sides that requires the key. No port means B-Sides' own. Null when it is not one.
+ */
 export function parseHubLink(link: string): HubAddress | null {
+  const text = link.trim();
+  if (text === '') return null;
   let url: URL;
   try {
-    url = new URL(link.trim());
+    url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `http://${text}`);
   } catch {
     return null;
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  if (url.hostname === '') return null;
   const key = /(?:^#|&)key=([^&]+)/.exec(url.hash)?.[1];
-  if (key === undefined) return null;
-  return { url: `${url.protocol}//${url.host}`, key: decodeURIComponent(key) };
+  // No port on plain http means B-Sides' own; https without one is a proxy on 443, kept as it is.
+  const port = url.port !== '' ? `:${url.port}` : url.protocol === 'http:' ? `:${DEFAULT_HUB_PORT}` : '';
+  return { url: `${url.protocol}//${url.hostname}${port}`, key: key === undefined ? '' : decodeURIComponent(key) };
 }

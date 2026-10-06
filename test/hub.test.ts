@@ -87,17 +87,24 @@ test('the web app is served without a key; index.html for any page that is not a
   expect((await fetch(`${base}/../../secret`)).status).toBe(200); // normalised by URL parsing: it is just index.html
 });
 
-test('every /api request needs the key, and says so by code', async () => {
-  const response = await fetch(`${base}/api/settings`);
-  expect(response.status).toBe(401);
-  expect(((await response.json()) as { error: { code: string } }).error.code).toBe('hub_key');
-  const wrong = await fetch(`${base}/api/settings`, { headers: { 'X-BSide-Key': `${key}x` } });
-  expect(wrong.status).toBe(401);
+test('no key by default (as Ollama); once required, every /api request needs it and says so by code', async () => {
+  expect((await fetch(`${base}/api/settings`)).status).toBe(200);
+  expect((await api('/api/settings/require-key', { method: 'PUT', body: JSON.stringify({ requireKey: true }) })).status).toBe(200);
+  try {
+    const response = await fetch(`${base}/api/settings`);
+    expect(response.status).toBe(401);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe('hub_key');
+    const wrong = await fetch(`${base}/api/settings`, { headers: { 'X-BSide-Key': `${key}x` } });
+    expect(wrong.status).toBe(401);
+    expect((await api('/api/settings')).status).toBe(200);
+  } finally {
+    await api('/api/settings/require-key', { method: 'PUT', body: JSON.stringify({ requireKey: false }) });
+  }
 });
 
 test('settings: this computer is local, not shared, and has no links until sharing is on', async () => {
   const settings = (await (await api('/api/settings')).json()) as Record<string, unknown>;
-  expect(settings).toMatchObject({ sharing: false, local: true, links: [] });
+  expect(settings).toMatchObject({ sharing: false, requireKey: false, local: true, links: [] });
 });
 
 test('a client\'s snapshot holds its own takes only', async () => {

@@ -3,6 +3,8 @@
  *
  *   libraryDir  where saved songs and playlists live; absent means `<Music>/B-Sides`
  *   sharing     whether the hub listens beyond this computer (default: no)
+ *   requireKey  whether a device on the network needs the key (default: no, as Ollama:
+ *               sharing on, the address is enough; Owen, 2026-10-06)
  *   hubPort     the hub's port (default DEFAULT_HUB_PORT); edit the file to change it
  *   hubKey      the key every hub request carries; made on first run, replaced
  *               from Settings (which signs every other device out)
@@ -22,6 +24,7 @@ export interface StoredSettings {
   readonly libraryDir: string;
   readonly defaultLibraryDir: string;
   readonly sharing: boolean;
+  readonly requireKey: boolean;
   readonly port: number;
   readonly key: string;
 }
@@ -78,6 +81,7 @@ export class AppSettings {
       libraryDir: typeof stored === 'string' && stored !== '' ? stored : this.defaultLibraryDir,
       defaultLibraryDir: this.defaultLibraryDir,
       sharing: document['sharing'] === true,
+      requireKey: document['requireKey'] === true,
       port: typeof port === 'number' ? port : DEFAULT_HUB_PORT,
       key,
     };
@@ -95,6 +99,13 @@ export class AppSettings {
   async setSharing(sharing: boolean): Promise<StoredSettings> {
     const document = this.read();
     document['sharing'] = sharing;
+    await this.write(document);
+    return this.view();
+  }
+
+  async setRequireKey(requireKey: boolean): Promise<StoredSettings> {
+    const document = this.read();
+    document['requireKey'] = requireKey;
     await this.write(document);
     return this.view();
   }

@@ -14,12 +14,12 @@
  * desktop's door onto it: HTTP, the event stream, audio files with ranges, and
  * the settings only the desktop has (the library folder, sharing, the key).
  *
- * Safety, as Bookshelf does it: every `/api` request carries the hub key
+ * Safety: the hub listens on 127.0.0.1 only until Settings turns on sharing.
+ * Shared, a device needs only the address, as with Ollama (Owen, 2026-10-06),
+ * unless Settings requires the key: then every `/api` request carries it
  * (`X-BSide-Key`, or `?key=` where an `<audio>` src or EventSource cannot set a
- * header); CORS is open because the iOS app calls from `capacitor://localhost`
- * and the key is the boundary. The hub listens on 127.0.0.1 only until Settings
- * turns on sharing; turning sharing on or off and replacing the key are taken
- * only from this computer.
+ * header). CORS is open because the iOS app calls from `capacitor://localhost`.
+ * Sharing, the key and the library folder are changed only from this computer.
  *
  * Events go out on one SSE stream per client (`GET /api/events`): first a
  * snapshot of everything that client shows, then each change. A client that
@@ -218,7 +218,7 @@ export class Hub {
       for (const addresses of Object.values(os.networkInterfaces())) {
         for (const address of addresses ?? []) {
           if (address.family === 'IPv4' && !address.internal) {
-            links.push(`http://${address.address}:${view.port}/#key=${view.key}`);
+            links.push(`http://${address.address}:${view.port}${view.requireKey ? `/#key=${view.key}` : ''}`);
           }
         }
       }
@@ -227,6 +227,7 @@ export class Hub {
       libraryDir: view.libraryDir,
       defaultLibraryDir: view.defaultLibraryDir,
       sharing: view.sharing,
+      requireKey: view.requireKey,
       port: view.port,
       links,
       local,
@@ -263,8 +264,11 @@ export class Hub {
       res.end();
       return;
     }
+    // The key is asked for only when Settings requires it. Off (the default), the address is enough,
+    // as Ollama: a device that can reach the hub can use it. Sharing still decides who can reach it.
     const given = String(req.headers[HUB_KEY_HEADER.toLowerCase()] ?? url.searchParams.get('key') ?? '');
-    if (!sameKey(given, this.settings.view().key)) {
+    const settings = this.settings.view();
+    if (settings.requireKey && !sameKey(given, settings.key)) {
       // `code` lets a client tell "wrong key" from a hub it cannot reach, and ask for the link again.
       sendJson(res, 401, { error: { code: 'hub_key', message: 'This device needs the B-Sides link (with its key) to use this hub.' } });
       return;
@@ -380,6 +384,12 @@ export class Hub {
         });
       }, 100);
       return SENT;
+    });
+    this.route('PUT', '/api/settings/require-key', async (request) => {
+      this.localOnly(request, 'choose whether devices need the key');
+      const requireKey = (await request.body())['requireKey'];
+      if (typeof requireKey !== 'boolean') throw new Refusal('body_invalid', 'requireKey must be true or false.');
+      return this.settingsView(await this.settings.setRequireKey(requireKey), true);
     });
     this.route('POST', '/api/settings/key', async (request) => {
       this.localOnly(request, 'replace the hub key');
