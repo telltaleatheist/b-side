@@ -44,7 +44,7 @@ interface Room {
   template: `
     <div class="shell">
       <aside class="sidebar">
-        <span class="wordmark">B-SIDE</span>
+        <span class="wordmark">B-SIDES</span>
         <nav class="side-rooms" aria-label="Sections">
           @for (room of rooms; track room.path) {
             <a [routerLink]="room.path" routerLinkActive="on" [routerLinkActiveOptions]="{ exact: room.exact }">
@@ -72,7 +72,7 @@ interface Room {
       </aside>
 
       <header class="phone-top">
-        <span class="wordmark">B-SIDE</span>
+        <span class="wordmark">B-SIDES</span>
         <ng-container *ngTemplateOutlet="status" />
       </header>
 

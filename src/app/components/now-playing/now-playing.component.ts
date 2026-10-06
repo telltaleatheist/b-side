@@ -9,11 +9,12 @@ import { IconComponent } from '../icon/icon.component';
 import { SaveMenuComponent } from '../save-menu/save-menu.component';
 
 /**
- * What is playing: the big cover, the title, the scrubber, the controls and
- * what comes next. Two shapes of one thing:
+ * What is playing and what comes next. Two shapes of one thing:
  *   - `sheet`: the phone's full screen, opened from the mini player, closed by
- *     the chevron (or Escape);
- *   - `panel`: the desktop's right-hand column, always there.
+ *     the chevron (or Escape), with the scrubber and the controls;
+ *   - `panel`: the desktop's right-hand column, always there. No controls (the
+ *     player bar below has them, Owen 2026-10-06): the song, then Up next. A
+ *     click on the song shows its lyrics, with Back to the list.
  */
 @Component({
   selector: 'app-now-playing',
@@ -35,11 +36,37 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
     }
 
     @if (player.current(); as item) {
-      <app-cover class="art" [key]="coverKey(item)" [src]="item.art" />
+      @if (panel() && showingLyrics()) {
+        <button type="button" class="back" (click)="showingLyrics.set(false)"><app-icon name="back" [size]="18" />Up next</button>
+        <div class="lyrics-head">
+          <app-cover class="mini-art" [key]="coverKey(item)" [src]="item.art" />
+          <div class="names">
+            <span class="next-title strong">{{ item.title }}</span>
+            <span class="sub">{{ item.tags ?? player.sourceName() }}</span>
+          </div>
+        </div>
+        @if (item.lyrics) {
+          <div class="lyrics">
+            @for (line of lyricLines(item.lyrics); track $index) {
+              @if (line.section) { <span class="kicker section">{{ line.text }}</span> } @else { <span class="line">{{ line.text }}</span> }
+            }
+          </div>
+        } @else {
+          <p class="hint">No lyrics: this one is instrumental.</p>
+        }
+      } @else {
+      @if (panel()) {
+        <button type="button" class="song-btn" title="Show the lyrics" (click)="showingLyrics.set(true)">
+          <app-cover class="art" [key]="coverKey(item)" [src]="item.art" />
+        </button>
+      } @else {
+        <app-cover class="art" [key]="coverKey(item)" [src]="item.art" />
+      }
       <div class="titles">
-        <div class="names">
+        <div class="names" [class.clickable]="panel()" (click)="panel() && showingLyrics.set(true)">
           <span class="title">{{ item.title }}</span>
           <span class="sub">{{ item.tags ?? player.sourceName() }}</span>
+          @if (panel()) { <span class="lyrics-link">{{ item.lyrics ? 'Lyrics' : 'Instrumental' }}</span> }
         </div>
         @if (take(); as take) {
           <button type="button" class="icon-btn outlined" aria-label="Save to a playlist" (click)="saving.set(!saving())"><app-icon name="plus" /></button>
@@ -50,6 +77,7 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
       }
       @if (player.problem(); as problem) { <div class="notice">{{ problem }}</div> }
 
+      @if (!panel()) {
       <div class="scrub">
         <input type="range" min="0" step="0.1" aria-label="Position in the song"
                [max]="player.duration()" [value]="scrubbing() ?? player.time()"
@@ -65,13 +93,15 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
         </button>
         <button type="button" class="icon-btn big" aria-label="Next" [disabled]="!player.hasNext()" (click)="player.next()"><app-icon name="next" [size]="30" /></button>
       </div>
+      }
       @if (player.waiting()) { <p class="hint center">Waiting for the next song to finish…</p> }
+      }
     } @else {
       <div class="art empty"><app-icon name="listen" [size]="48" /></div>
       <p class="hint center">Nothing playing yet. Make a song, or play a playlist.</p>
     }
 
-    @if (player.upNext().length > 0) {
+    @if (player.upNext().length > 0 && !(panel() && showingLyrics() && player.current())) {
       <div class="next">
         <span class="kicker amber">Up next</span>
         @for (item of shownNext(); track item.key) {
@@ -129,6 +159,22 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
     .mini-art { width: 36px; --cover-radius: 4px; }
     .next-title { flex: 1; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .next-time { font-size: 11px; color: var(--text-tertiary); }
+    :host(.panel) .next { margin-top: 0; }
+    .song-btn { padding: 0; border: none; background: transparent; cursor: pointer; display: block; width: 100%; }
+    .clickable { cursor: pointer; }
+    .clickable:hover .title { text-decoration: underline; text-underline-offset: 4px; }
+    .lyrics-link { font-size: 12px; color: var(--text-tertiary); }
+    .back {
+      align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px 6px 6px;
+      border: none; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); font-size: 13px;
+    }
+    .back:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .lyrics-head { display: flex; align-items: center; gap: 10px; }
+    .lyrics-head .mini-art { width: 48px; }
+    .strong { font-weight: 700; }
+    .lyrics { display: flex; flex-direction: column; gap: 4px; font-size: 15px; line-height: 1.45; }
+    .lyrics .section { color: var(--audio); padding-top: 14px; text-transform: uppercase; }
+    .lyrics .section:first-child { padding-top: 0; }
   `],
 })
 export class NowPlayingComponent {
@@ -140,6 +186,9 @@ export class NowPlayingComponent {
 
   protected readonly scrubbing = signal<number | null>(null);
   protected readonly saving = signal(false);
+  /** The panel shows the playing song's lyrics instead of Up next. */
+  protected readonly showingLyrics = signal(false);
+  protected readonly panel = computed(() => this.mode() === 'panel');
 
   /** The take being played, when the current song is one (only a take can be saved from here). */
   protected readonly take = computed(() => {
@@ -147,7 +196,20 @@ export class NowPlayingComponent {
     return item?.kind === 'take' ? (this.library.takes().find((take) => take.id === item.id) ?? null) : null;
   });
   protected readonly remaining = computed(() => Math.max(0, this.player.duration() - this.player.time()));
-  protected readonly shownNext = computed(() => this.player.upNext().slice(0, this.mode() === 'sheet' ? 3 : 8));
+  protected readonly shownNext = computed(() => this.player.upNext().slice(0, this.mode() === 'sheet' ? 3 : 50));
+
+  /** The lyrics as lines, each section tag (`[verse]`) a line of its own, marked. */
+  protected lyricLines(lyrics: string): { readonly text: string; readonly section: boolean }[] {
+    return lyrics
+      .replace(/\s*(\[[^\]]+\])\s*/g, '\n$1\n')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line !== '')
+      .map((line) => {
+        const tag = /^\[([^\]]+)\]$/.exec(line);
+        return tag ? { text: tag[1] as string, section: true } : { text: line, section: false };
+      });
+  }
 
   protected coverKey(item: PlayItem): string {
     return `${item.id}${item.tags ?? ''}`;

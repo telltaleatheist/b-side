@@ -4,7 +4,7 @@ export type IconName =
   | 'listen' | 'make' | 'library' | 'settings'
   | 'play' | 'pause' | 'next' | 'prev' | 'shuffle' | 'queue'
   | 'plus' | 'more' | 'down' | 'close' | 'trash' | 'save' | 'bookmark'
-  | 'cloud' | 'download' | 'phone' | 'infinite' | 'chevron' | 'edit';
+  | 'cloud' | 'download' | 'phone' | 'infinite' | 'chevron' | 'back' | 'edit';
 
 /** Night Deck's icons: stroke drawings on a 24 grid, in the text colour. Decorative unless the button names itself. */
 @Component({
@@ -28,6 +28,7 @@ export type IconName =
         @case ('more') { <circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/> }
         @case ('down') { <path d="M6 9l6 6 6-6"/> }
         @case ('chevron') { <path d="M9 6l6 6-6 6"/> }
+        @case ('back') { <path d="M15 6l-6 6 6 6"/> }
         @case ('edit') { <path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/> }
         @case ('close') { <path d="M6 6l12 12M18 6L6 18"/> }
         @case ('trash') { <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/> }

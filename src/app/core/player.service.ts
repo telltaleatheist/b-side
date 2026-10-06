@@ -29,14 +29,16 @@ export interface PlayItem {
   readonly durationS: number | null;
   /** The album's painted cover, for a song played from an album; null draws the song's own. */
   readonly art: string | null;
+  /** The words it was sung with, in section tags; null for an instrumental. */
+  readonly lyrics: string | null;
 }
 
 function itemOfTake(take: Take): PlayItem {
-  return { key: `take:${take.id}`, kind: 'take', id: take.id, title: take.title, tags: take.params.tags, durationS: take.durationS, art: null };
+  return { key: `take:${take.id}`, kind: 'take', id: take.id, title: take.title, tags: take.params.tags, durationS: take.durationS, art: null, lyrics: take.params.instrumental ? null : take.params.lyrics || null };
 }
 
 function itemOfSong(song: Song, art: string | null): PlayItem {
-  return { key: `song:${song.id}`, kind: 'song', id: song.id, title: song.title, tags: song.params.tags, durationS: song.durationS, art };
+  return { key: `song:${song.id}`, kind: 'song', id: song.id, title: song.title, tags: song.params.tags, durationS: song.durationS, art, lyrics: song.params.instrumental ? null : song.params.lyrics || null };
 }
 
 /**
