@@ -12,6 +12,7 @@ import * as path from 'node:path';
 
 import { app, BrowserWindow, dialog, Menu, type MenuItemConstructorOptions } from 'electron';
 
+import { adoptOldFolder } from './adopt-old-folder';
 import { Hub } from './hub/hub';
 import { registerIpc } from './ipc';
 import { ICONS, isDev, openWindow } from './window';
@@ -38,29 +39,30 @@ function buildMenu(): void {
 
 /**
  * The app was called B-Side until 2026-10-05; its folders were named after it. On the first start
- * as B-Sides, the old settings folder (servers, tokens, the take cache) and the default library
- * folder take the new name, so nothing is left behind. A rename on the same disk, done once: when
- * the new folder already exists, nothing is touched.
+ * as B-Sides the old settings folder (servers, tokens, the hub key, the take cache) is renamed, or
+ * merged into a B-Sides folder that is already there (adopt-old-folder.ts), and the default library
+ * folder takes the new name when it is free. Run with the single-instance lock held.
  */
 function adoptOldFolders(): void {
-  const moves = [
-    [path.join(app.getPath('appData'), 'B-Side'), app.getPath('userData')],
-    [path.join(app.getPath('music'), 'B-Side'), path.join(app.getPath('music'), 'B-Sides')],
-  ] as const;
-  for (const [from, to] of moves) {
-    try {
-      if (fs.existsSync(from) && !fs.existsSync(to)) fs.renameSync(from, to);
-    } catch (err) {
-      console.error(`[main] could not rename ${from} to ${to}; using it where it is:`, err);
-    }
+  try {
+    const done = adoptOldFolder(path.join(app.getPath('appData'), 'B-Side'), app.getPath('userData'));
+    if (done !== 'none') console.log(`[main] the old B-Side settings folder was ${done}`);
+  } catch (err) {
+    console.error('[main] could not adopt the old B-Side settings folder:', err);
+  }
+  const [from, to] = [path.join(app.getPath('music'), 'B-Side'), path.join(app.getPath('music'), 'B-Sides')];
+  try {
+    if (fs.existsSync(from) && !fs.existsSync(to)) fs.renameSync(from, to);
+  } catch (err) {
+    console.error(`[main] could not rename ${from} to ${to}; using it where it is:`, err);
   }
 }
 
-adoptOldFolders();
 const single = app.requestSingleInstanceLock();
 if (!single) {
   app.quit();
 } else {
+  adoptOldFolders();
   app.on('second-instance', () => {
     const window = BrowserWindow.getAllWindows()[0];
     if (window !== undefined) {
