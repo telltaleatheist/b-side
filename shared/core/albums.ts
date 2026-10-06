@@ -371,8 +371,17 @@ export class AlbumMaker {
     this.sessions.set(id, session);
     meta = { ...(await this.hooks.meta(id) ?? meta), session: session.id };
     await this.hooks.update(id, meta);
+    let open = true;
+    const release = async (): Promise<void> => {
+      if (!open) return;
+      open = false;
+      this.sessions.delete(id);
+      await session.close().catch((err: unknown) => console.error(`[albums] could not close the session for ${id}:`, err));
+      const now = await this.hooks.meta(id);
+      if (now !== null && now.session === session.id) await this.hooks.update(id, { ...now, session: null });
+    };
     try {
-      // Every call below rides the session, the cover's paint too.
+      // The plan and the lyrics ride the session, so the text model stays loaded between calls.
       const client = session;
       if (meta.plan == null) {
         meta = { ...meta, step: { kind: 'plan', done: 0, of: 1 } };
@@ -414,7 +423,13 @@ export class AlbumMaker {
       if (meta.cover === null && meta.coverState !== 'failed' && meta.coverState !== 'no_model') {
         meta = { ...(await this.hooks.meta(id) ?? meta), step: { kind: 'cover', done: 0, of: 1 } };
         await this.hooks.update(id, meta);
-        await this.paint(id, server, session, plan.coverPrompt);
+        // The session closes first. Held open, it keeps the text model on the card, and the image
+        // model cannot load beside it: on the PC on 2026-10-06 the cover sat queued 18 minutes,
+        // refused as `accelerator_busy` (the text model's memory past its estimate counted as
+        // another process's, which Crucible never evicts), with the GPU idle. Closed, the card is
+        // empty and the cover is a plain job under the album's name.
+        await release();
+        await this.paint(id, server, clientFor(server, `${clientName()}/album`), plan.coverPrompt);
         if (await this.halted(id)) return meta;
       }
       if (await this.halted(id)) return meta;
@@ -422,11 +437,8 @@ export class AlbumMaker {
       await this.hooks.update(id, meta);
       return meta;
     } finally {
-      // Closed before the music: the tracks go through the line like any song.
-      this.sessions.delete(id);
-      await session.close().catch((err: unknown) => console.error(`[albums] could not close the session for ${id}:`, err));
-      const now = await this.hooks.meta(id);
-      if (now !== null && now.session === session.id) await this.hooks.update(id, { ...now, session: null });
+      // Closed before the cover and the music at the latest: the tracks go through the line like any song.
+      await release();
     }
   }
 
