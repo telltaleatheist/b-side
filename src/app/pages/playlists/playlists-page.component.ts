@@ -3,7 +3,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
 
-import type { AlbumMeta, AlbumStage, Playlist, RefusalView, Song } from '@shared/types';
+import { SINGLES_NAME, type AlbumMeta, type AlbumStage, type Playlist, type RefusalView, type Song } from '@shared/types';
 
 import { CoverComponent } from '../../components/cover/cover.component';
 import { IconComponent } from '../../components/icon/icon.component';
@@ -14,6 +14,8 @@ import { clockText } from '../../core/format';
 import { desktop, HubService } from '../../core/hub.service';
 import { LibraryService } from '../../core/library.service';
 import { OfflineService } from '../../core/offline.service';
+import { jobCancellable, jobEnded, jobShare, jobStatus, jobTitle } from '../../core/job-status';
+import { JobsService } from '../../core/jobs.service';
 import { PlayerService } from '../../core/player.service';
 
 /**
@@ -118,6 +120,15 @@ import { PlayerService } from '../../core/player.service';
                   <div class="title">{{ song.title }}</div>
                 }
                 <div class="sub">{{ song.params.tags ?? '' }}@if (alsoIn(song, playlist); as others) { · also in {{ others }} }</div>
+                @if (moving() === song.id) {
+                  <div class="move-menu">
+                    <span class="kicker">Move to</span>
+                    @for (target of moveTargets(playlist); track target.id) {
+                      <button type="button" class="ghost small" (click)="moveSong(playlist, song, target)">{{ target.name }}</button>
+                    }
+                    <button type="button" class="ghost small" (click)="moving.set(null)">Cancel</button>
+                  </div>
+                }
               </div>
               <span class="mono time">{{ clock(song.durationS) }}</span>
               <div class="actions">
@@ -127,6 +138,9 @@ import { PlayerService } from '../../core/player.service';
                 <button type="button" class="icon-btn" aria-label="Move up" title="Move up" [disabled]="at === 0" (click)="move(playlist, at, -1)"><app-icon name="down" [size]="18" class="flip-v" /></button>
                 <button type="button" class="icon-btn" aria-label="Move down" title="Move down" [disabled]="at === songs().length - 1" (click)="move(playlist, at, 1)"><app-icon name="down" [size]="18" /></button>
                 <button type="button" class="icon-btn" aria-label="Rename" title="Rename" (click)="renaming.set(song.id)"><app-icon name="edit" [size]="16" /></button>
+                @if (!playlist.album && moveTargets(playlist).length > 0) {
+                  <button type="button" class="icon-btn" aria-label="Move to another playlist" title="Move to another playlist" (click)="moving.set(moving() === song.id ? null : song.id)"><app-icon name="library" [size]="17" /></button>
+                }
                 @if (isDesktop) {
                   <button type="button" class="icon-btn" aria-label="Save a copy" title="Save a copy…" (click)="saveCopy(song)"><app-icon name="save" [size]="18" /></button>
                   <button type="button" class="icon-btn" aria-label="Show in folder" title="Show in folder" (click)="reveal(song)"><app-icon name="library" [size]="18" /></button>
@@ -136,7 +150,30 @@ import { PlayerService } from '../../core/player.service';
               </div>
             </div>
           } @empty {
-            @if (!playlist.album) { <p class="hint">Nothing in it yet. Save a song from the playing list into it.</p> }
+            @if (!playlist.album && making().length === 0) { <p class="hint">Nothing in it yet. Songs you make land in {{ singlesName }}; move one here from there.</p> }
+          }
+          @for (job of making(); track job.key; let at = $index) {
+            <div class="item upcoming song-making" [class.making]="!jobEnded(job)">
+              <span class="num mono">{{ (songs().length + at + 1 < 10 ? '0' : '') + (songs().length + at + 1) }}</span>
+              <div class="main">
+                <div class="title">{{ jobTitle(job) }}</div>
+                <div class="sub">{{ job.params.tags ?? '' }}</div>
+                @if (!jobEnded(job)) {
+                  <div class="bar making-bar" [class.indeterminate]="jobShare(job) === null"><span [style.width.%]="(jobShare(job) ?? 0) * 100"></span></div>
+                }
+                <div class="meta" [class.amber]="!jobEnded(job)">{{ jobStatus(job, jobs.now()) }}</div>
+                @if (job.refusal; as refused) {
+                  <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+                }
+              </div>
+              <div class="actions shown">
+                @if (jobCancellable(job)) {
+                  <button type="button" class="icon-btn" aria-label="Cancel" title="Cancel" (click)="jobs.cancel(job.key)"><app-icon name="close" [size]="18" /></button>
+                } @else if (jobEnded(job)) {
+                  <button type="button" class="icon-btn" aria-label="Dismiss" title="Dismiss" (click)="jobs.dismiss(job.key)"><app-icon name="trash" [size]="16" /></button>
+                }
+              </div>
+            </div>
           }
           @for (row of upcoming(); track row.index) {
             <div class="item upcoming" [class.making]="row.making">
@@ -205,6 +242,12 @@ import { PlayerService } from '../../core/player.service';
     </div>
   `,
   styles: [`
+    .move-menu { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: 6px; }
+    .actions.shown { opacity: 1; }
+    .song-making .meta { font-size: 12px; color: var(--text-tertiary); }
+    .song-making .meta.amber { color: var(--audio); }
+    .making-bar { margin-top: 6px; }
+    .making-bar > span { background: var(--audio); }
     .runtime { color: var(--text-primary); font-weight: 700; }
     .page { max-width: 1100px; margin: 0 auto; padding: 18px 20px 28px; display: flex; flex-direction: column; gap: 20px; }
     .back { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-decoration: none; font-size: 13px; }
@@ -266,6 +309,7 @@ import { PlayerService } from '../../core/player.service';
 })
 export class PlaylistsPageComponent {
   protected readonly library = inject(LibraryService);
+  protected readonly jobs = inject(JobsService);
   protected readonly player = inject(PlayerService);
   protected readonly offline = inject(OfflineService);
   private readonly confirm = inject(ConfirmService);
@@ -362,6 +406,30 @@ export class PlaylistsPageComponent {
   protected readonly albumProgress = albumProgress;
   protected readonly coverNote = coverNote;
   protected readonly Math = Math;
+
+  /** This device's songs being made into the playlist on show (New Songs), after its songs. */
+  protected readonly making = computed(() => {
+    const id = this.selected()?.id;
+    return id === undefined ? [] : this.jobs.jobs().filter((job) => job.playlist === id);
+  });
+  protected readonly moving = signal<string | null>(null);
+  protected readonly singlesName = SINGLES_NAME;
+  protected readonly jobEnded = jobEnded;
+  protected readonly jobTitle = jobTitle;
+  protected readonly jobShare = jobShare;
+  protected readonly jobStatus = jobStatus;
+  protected readonly jobCancellable = jobCancellable;
+
+  /** Where a song can move: every other playlist that is not an album. */
+  protected moveTargets(from: Playlist): Playlist[] {
+    return this.library.playlists().filter((playlist) => playlist.id !== from.id && playlist.album == null);
+  }
+
+  protected async moveSong(from: Playlist, song: Song, to: Playlist): Promise<void> {
+    this.moving.set(null);
+    const added = await this.library.addSong(to.id, song.id);
+    this.refusal.set(added ?? (await this.library.removeSong(from.id, song.id)));
+  }
 
   protected async stopAlbum(playlist: Playlist): Promise<void> {
     const outcome = await this.hub.call<unknown>('POST', `/api/albums/${encodeURIComponent(playlist.id)}/stop`);

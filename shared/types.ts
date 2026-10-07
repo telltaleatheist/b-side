@@ -155,9 +155,17 @@ export const SONG_FORMATS: readonly SongFormat[] = ['mp3', 'flac'];
 /** A hub's own choices, kept beside its takes (each hub has its own: the desktop's, the phone's). */
 export interface HubPreferences {
   readonly songFormat: SongFormat;
+  /** The playlist every song made on its own is filed into ("New Songs"); made when first needed. */
+  readonly singlesPlaylist?: string | null;
   /** The phone's own hub: how much its albums may take before a new one waits (GB). */
   readonly albumSpaceGb: number;
 }
+
+/**
+ * The playlist every song made on its own is filed into, as an album's tracks
+ * are filed into the album (Owen, 2026-10-07). One already named so is adopted.
+ */
+export const SINGLES_NAME = 'New Songs';
 
 /** The choices for the phone's album space, in GB. */
 export const ALBUM_SPACE_GB: readonly number[] = [1, 2, 4, 8];
@@ -233,6 +241,10 @@ export interface JobView {
   readonly ended: number | null;
   /** An album's track: which album, and its place in the plan. Null for a song asked for on its own. */
   readonly album: { readonly id: string; readonly track: number } | null;
+  /** The playlist a song asked for on its own is filed into when it lands (New Songs). */
+  readonly playlist?: string | null;
+  /** Once filed into `playlist`: the song it became. */
+  readonly songId?: string | null;
 }
 
 /** What "describe the music" answers: tags for the chips, and whether it asked for no vocals. */

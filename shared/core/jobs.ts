@@ -116,8 +116,8 @@ export interface JobHooks {
   publish(job: JobView): void;
   /** A job ended without a song (failed, refused, removed, cancelled): an album skips the track. */
   ended?(job: JobView): void;
-  /** Keep a finished song as a take in its client's playing list; answers the take. */
-  land(landed: Landed): Promise<Take>;
+  /** Keep a finished song: as a take, and filed into its playlist when it has one (answers the song then). */
+  land(landed: Landed): Promise<{ readonly take: Take; readonly songId: string | null }>;
   /** Find a server again by name (to resume a pending job after a restart). */
   server(name: string): StoredServer;
 }
@@ -171,6 +171,7 @@ export class JobRunner {
     request: GenerateRequest,
     format: SongFormat,
     album: { readonly id: string; readonly track: number } | null = null,
+    playlist: string | null = null,
   ): JobView[] {
     const seeds = batchSeeds(typeof request.params.seed === 'number' ? request.params.seed : null, request.count);
     const client = clientFor(server);
@@ -207,6 +208,8 @@ export class JobRunner {
           since: Date.now(),
           ended: null,
           album,
+          playlist,
+          songId: null,
         },
       };
       this.jobs.set(job.view.key, job);
@@ -583,7 +586,7 @@ export class JobRunner {
         }
       };
       const extension = result.artifact.slice(result.artifact.lastIndexOf('.') + 1);
-      const take = await this.hooks.land({
+      const { take, songId } = await this.hooks.land({
         job: { ...job.view },
         server: job.server,
         fill,
@@ -593,6 +596,7 @@ export class JobRunner {
         effective: (done.extra as Record<string, unknown>)['audio'],
       });
       job.view.takeId = take.id;
+      job.view.songId = songId;
       job.view.message = null;
       this.finish(job, 'done');
     } catch (error) {

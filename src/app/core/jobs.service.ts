@@ -24,11 +24,12 @@ export class JobsService {
     }, 1000);
   }
 
-  async generate(request: GenerateRequest): Promise<RefusalView | null> {
+  /** Ask for songs; answers the jobs made (each says the playlist it lands in), or why not. */
+  async generate(request: GenerateRequest): Promise<JobView[] | RefusalView> {
     const outcome = await this.hub.call<JobView[]>('POST', '/api/jobs', request);
     if (!outcome.ok) return outcome.refusal;
     for (const job of outcome.value) this.hub.upsertJob(job);
-    return null;
+    return outcome.value;
   }
 
   async cancel(key: string): Promise<RefusalView | null> {

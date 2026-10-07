@@ -127,6 +127,7 @@ export class HubService {
   readonly activeServer = computed(() => this.servers().find((server) => server.active) ?? null);
 
   private readonly takeListeners: ((take: Take) => void)[] = [];
+  private readonly filedListeners: ((job: JobView) => void)[] = [];
   private stream: AbortController | null = null;
   /** The phone's own hub, once opened; and how to stop hearing it. */
   private phone: Promise<PhoneHub> | null = null;
@@ -150,6 +151,11 @@ export class HubService {
   /** Hear each take that just landed in this device's playing list. */
   onTake(listener: (take: Take) => void): void {
     this.takeListeners.push(listener);
+  }
+
+  /** A song this device asked for landed and was filed into its playlist (New Songs): the job, with its songId. */
+  onSongFiled(listener: (job: JobView) => void): void {
+    this.filedListeners.push(listener);
   }
 
   /** Choose (or re-key) the hub: the phone's hub picker, or a tab given its link again. */
@@ -200,7 +206,8 @@ export class HubService {
 
   /** An album's painted cover; the stock cover while it waits for one; null (the drawn art) for a playlist. */
   coverUrl(playlist: Playlist): string | null {
-    if (playlist.album === undefined) return null;
+    // A playlist (New Songs included) wears the standard cover, as an album does until its own is painted.
+    if (playlist.album == null) return STOCK_COVER;
     const cover = playlist.album.cover;
     if (cover === null) return STOCK_COVER;
     if (this.onPhone()) return this.openedPhone?.fileUrl(`${PHONE_LIBRARY}/${cover}`) ?? null;
@@ -368,7 +375,9 @@ export class HubService {
   /** Apply a job change (from the stream, or the answer to a generate). */
   upsertJob(job: JobView): void {
     if (job.phase === 'done') {
+      const known = this.jobs().some((other) => other.key === job.key);
       this.jobs.update((jobs) => jobs.filter((other) => other.key !== job.key));
+      if (known && job.songId) for (const listener of this.filedListeners) listener(job);
       return;
     }
     this.jobs.update((jobs) => {

@@ -36,6 +36,7 @@ import {
   ALBUM_SPACE_GB,
   ENDED_PHASES,
   albumBytes,
+  SINGLES_NAME,
   SONG_FORMATS,
   SONG_MODEL,
   type AlbumAsk,
@@ -48,6 +49,7 @@ import {
   type LibraryView,
   type ServerInput,
   type ServerView,
+  type Song,
   type SongForm,
 } from '../types';
 
@@ -105,6 +107,7 @@ function albumClient(id: string): string {
 
 /** MP3 unless the person chose lossless: about an eighth the size, the same sound on a phone. */
 const DEFAULT_PREFERENCES: HubPreferences = { songFormat: 'mp3', albumSpaceGb: 2 };
+
 
 export function text(value: unknown, what: string): string {
   if (typeof value !== 'string') throw new Refusal('body_invalid', `${what} must be text.`);
@@ -202,10 +205,16 @@ export class HubCore {
           if (album !== null) {
             // An album's track goes straight into the album; it never sits in a playing list.
             await this.fileAlbumTrack(album.id, take.id);
-            return take;
+            return { take, songId: null };
+          }
+          const into = landed.job.playlist ?? null;
+          if (into != null) {
+            // A song made on its own goes into New Songs; it never sits in a playing list either.
+            const songId = await this.fileTake(into, take.id);
+            if (songId !== null) return { take, songId };
           }
           this.sink.send(take.client, { type: 'take', take });
-          return take;
+          return { take, songId: null };
         },
         ended: (job) => {
           if (job.album && job.phase !== 'cancelled') void this.albums.failed(job.album.id, job.refusal).then(() => this.libraryChanged());
@@ -291,6 +300,51 @@ export class HubCore {
     const album = await this.library.album(id);
     if (album?.cover == null) throw new Refusal('no_cover', 'That album has no painted cover.', 404);
     return this.library.coverPath(album.cover);
+  }
+
+  /**
+   * File a landed song into a playlist (New Songs) and answer its id; null when
+   * that playlist is gone (deleted while the song was made): it stays a take.
+   */
+  private async fileTake(playlistId: string, takeId: string): Promise<string | null> {
+    const take = this.takes.get(takeId);
+    let song: Song;
+    try {
+      song = await this.library.saveTo(playlistId, null, {
+        title: take.title,
+        model: take.model,
+        params: take.params,
+        server: take.server,
+        jobId: take.jobId,
+        createdAt: take.createdAt,
+        durationS: take.durationS,
+        batch: take.batch,
+        audioFrom: this.takes.audioPath(takeId),
+        bytes: take.bytes,
+        effective: this.takes.effective(takeId),
+      });
+    } catch (error) {
+      if (error instanceof Refusal && error.code === 'playlist_missing') return null;
+      throw error;
+    }
+    await this.takes.remove(takeId, take.client);
+    await this.libraryChanged();
+    return song.id;
+  }
+
+  /** New Songs' id: the one kept, else a playlist already named so, else a new one. */
+  private async singlesPlaylist(): Promise<string> {
+    const view = await this.library.list();
+    const kept = this.preferences.singlesPlaylist ?? null;
+    if (kept !== null && view.playlists.some((playlist) => playlist.id === kept)) return kept;
+    const named = view.playlists.find((playlist) => playlist.album == null && playlist.name.trim().toLowerCase() === SINGLES_NAME.toLowerCase());
+    const id = named?.id ?? (await this.library.createPlaylist(SINGLES_NAME)).id;
+    if (named === undefined) await this.libraryChanged();
+    const next: HubPreferences = { ...this.preferences, singlesPlaylist: id };
+    await this.options.disk.mkdir(this.options.dataDir);
+    await this.options.disk.writeText(this.preferencesFile, `${JSON.stringify(next, null, 2)}\n`);
+    this.preferences = next;
+    return id;
   }
 
   /** File a landed album track into its album, and send the next. */
@@ -421,6 +475,7 @@ export class HubCore {
       this.preferences = {
         songFormat: SONG_FORMATS.includes(stored.songFormat as never) ? (stored.songFormat as HubPreferences['songFormat']) : DEFAULT_PREFERENCES.songFormat,
         albumSpaceGb: ALBUM_SPACE_GB.includes(stored.albumSpaceGb as never) ? (stored.albumSpaceGb as number) : DEFAULT_PREFERENCES.albumSpaceGb,
+        singlesPlaylist: typeof stored.singlesPlaylist === 'string' ? stored.singlesPlaylist : null,
       };
     } catch (err) {
       console.error(`[hub] ${this.preferencesFile} could not be read; using the defaults:`, err);
@@ -541,7 +596,8 @@ export class HubCore {
       if (typeof body.params !== 'object' || body.params === null || typeof body.count !== 'number') {
         throw new Refusal('body_invalid', 'A generate request is {params, count}.');
       }
-      return this.jobs.generate(this.registry.active(), client, body, this.preferences.songFormat);
+      const server = this.registry.active();
+      return this.jobs.generate(server, client, body, this.preferences.songFormat, null, await this.singlesPlaylist());
     });
     this.route('POST', '/api/jobs/:key/cancel', async (request) => {
       this.ownJob(request);

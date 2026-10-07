@@ -1,4 +1,5 @@
 import { computed, effect, inject, Injectable, signal, untracked } from '@angular/core';
+import { Router } from '@angular/router';
 
 import { batchCount } from '@shared/batch';
 import { addTags, clashesWith, joinTags, splitTags, toggleTag } from '@shared/tags';
@@ -6,6 +7,7 @@ import { TAG_MODEL, type DescribeResult, type Preset, type RefusalView, type Son
 
 import { HubService } from './hub.service';
 import { JobsService } from './jobs.service';
+import { PlayerService } from './player.service';
 
 /**
  * The studio's state: the active server's song page and presets, and the form.
@@ -18,6 +20,8 @@ import { JobsService } from './jobs.service';
 export class StudioService {
   private readonly hub = inject(HubService);
   private readonly jobs = inject(JobsService);
+  private readonly player = inject(PlayerService);
+  private readonly router = inject(Router);
 
   readonly page = signal<SongPage | null>(null);
   readonly pageRefusal = signal<RefusalView | null>(null);
@@ -232,8 +236,16 @@ export class StudioService {
     }
     this.sending.set(true);
     this.generateRefusal.set(null);
-    const refusal = await this.jobs.generate({ params, count: batchCount(this.count()) });
+    const made = await this.jobs.generate({ params, count: batchCount(this.count()) });
     this.sending.set(false);
-    this.generateRefusal.set(refusal);
+    if (!Array.isArray(made)) {
+      this.generateRefusal.set(made);
+      return;
+    }
+    // As an album (Owen, 2026-10-07): the song is made at the end of its playlist (New Songs), shown
+    // there with its progress, and plays when it lands.
+    this.player.playWhenMade(made.map((job) => job.key));
+    const playlist = made[0]?.playlist;
+    if (playlist != null) void this.router.navigate(['/library', playlist]);
   }
 }

@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { Router, RouterLink } from '@angular/router';
 
 import { MAX_BATCH } from '@shared/batch';
-import { ALBUM_MINUTES, ENDED_PHASES, albumBytes, type HubPreferences, type Playlist, type RefusalView } from '@shared/types';
+import { ALBUM_MINUTES, ENDED_PHASES, SINGLES_NAME, albumBytes, type HubPreferences, type Playlist, type RefusalView } from '@shared/types';
 
 import { CrucibleSetupComponent } from '../../components/crucible-setup/crucible-setup.component';
 import { PresetBarComponent } from '../../components/preset-bar/preset-bar.component';
@@ -210,7 +210,7 @@ import { StudioService } from '../../core/studio.service';
           <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
         }
         @if (jobs.generating()) {
-          <a class="making" routerLink="/"><span class="kicker">Making now</span><span>{{ makingCount() }} on the playing list</span><app-icon name="chevron" [size]="16" /></a>
+          <a class="making" [routerLink]="makingIn() ? ['/library', makingIn()] : '/'"><span class="kicker">Making now</span><span>{{ makingCount() }} in {{ makingIn() ? singlesName : 'the playing list' }}</span><app-icon name="chevron" [size]="16" /></a>
         }
         }
       }
@@ -349,6 +349,9 @@ export class StudioPageComponent {
   }
 
   protected readonly makingCount = computed(() => this.jobs.jobs().filter((job) => !ENDED_PHASES.includes(job.phase)).length);
+  /** The playlist the songs being made land in (New Songs), when they have one. */
+  protected readonly makingIn = computed(() => this.jobs.jobs().find((job) => !ENDED_PHASES.includes(job.phase) && job.playlist != null)?.playlist ?? null);
+  protected readonly singlesName = SINGLES_NAME;
   protected readonly maxBatch = MAX_BATCH;
 
   protected readonly lyricsPlaceholder = computed(() =>

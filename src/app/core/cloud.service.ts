@@ -104,7 +104,8 @@ export class CloudService {
 
   coverUrl(playlist: Playlist): string | null {
     const address = this.address();
-    if (playlist.album === undefined) return null;
+    // A playlist (New Songs included) wears the standard cover, as an album does until its own is painted.
+    if (playlist.album == null) return STOCK_COVER;
     const cover = playlist.album.cover;
     if (cover === null) return STOCK_COVER;
     if (address === null) return null;

@@ -1,8 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
-import { ENDED_PHASES, type InstallView, type JobView, type RefusalView, type Take } from '@shared/types';
+import type { JobView, RefusalView, Take } from '@shared/types';
 
-import { bytesText, clockText, secondsText } from '../../core/format';
+import { clockText } from '../../core/format';
+import { jobCancellable, jobEnded, jobShare, jobStatus, jobTitle } from '../../core/job-status';
 import { JobsService } from '../../core/jobs.service';
 import { LibraryService } from '../../core/library.service';
 import { PlayerService } from '../../core/player.service';
@@ -154,75 +155,23 @@ export class QueuePanelComponent {
   }
 
   protected ended(job: JobView): boolean {
-    return ENDED_PHASES.includes(job.phase);
+    return jobEnded(job);
   }
 
   protected jobTitle(job: JobView): string {
-    const batch = job.batch > 1 ? ` (${job.index} of ${job.batch})` : '';
-    const seed = job.seed === null ? '' : ` · seed ${job.seed}`;
-    return `${job.params.instrumental ? 'Instrumental' : 'Song'}${batch}${seed}`;
+    return jobTitle(job);
   }
 
-  /** The bar's fill, 0..1, or null for an indeterminate bar. */
   protected share(job: JobView): number | null {
-    const install = job.install;
-    if (job.phase === 'installing' && install !== null) {
-      return install.bytesTotal ? (install.bytesDone ?? 0) / install.bytesTotal : null;
-    }
-    if (job.phase === 'running' || job.phase === 'fetching') return job.fraction;
-    return null;
+    return jobShare(job);
   }
 
-  /** The status line, as the Crucible playground words it. */
   protected status(job: JobView): string {
-    const waited = secondsText(((job.ended ?? this.jobs.now()) - job.since) / 1000);
-    switch (job.phase) {
-      case 'submitting':
-        return job.message ?? 'Sending the job…';
-      case 'installing':
-        return `${this.installText(job.install)} (${waited})`;
-      case 'queued': {
-        const where = job.position === null ? 'in line' : `number ${job.position}${job.of ? ` of ${job.of}` : ''} in line`;
-        return `Waiting for the server, ${where} (${waited})${job.message ? ` — ${job.message}` : ''}`;
-      }
-      case 'running': {
-        const said = job.message ? job.message.charAt(0).toUpperCase() + job.message.slice(1) : 'Working';
-        const share = job.fraction === null ? '' : `, ${Math.round(job.fraction * 100)}%`;
-        return `${said}${share} (${waited})`;
-      }
-      case 'fetching':
-        return job.message ?? 'Fetching the song…';
-      case 'done':
-        return 'Done';
-      case 'cancelled':
-        return 'Cancelled.';
-      case 'removed':
-        return 'It left the server\'s queue without running. Generate again to send it again.';
-      case 'refused':
-        return 'The server refused it:';
-      case 'failed':
-        return 'It failed:';
-    }
-  }
-
-  private installText(install: InstallView | null): string {
-    if (install === null) return 'Installing';
-    let said = install.ours
-      ? 'Downloading what YuE2 needs first, once'
-      : 'Waiting for another install on the server to finish';
-    if (install.step !== null) said += `: step ${install.step.index} of ${install.step.total}, ${install.step.name}`;
-    const done = bytesText(install.bytesDone);
-    if (done !== null) {
-      const total = bytesText(install.bytesTotal);
-      said += `, ${done}${total === null ? ' so far' : ` of ${total}`}`;
-    }
-    return `${said}. The job starts by itself after it`;
+    return jobStatus(job, this.jobs.now());
   }
 
   protected cancellable(job: JobView): boolean {
-    if (this.ended(job)) return false;
-    if (job.phase === 'installing') return job.install?.ours === true;
-    return true;
+    return jobCancellable(job);
   }
 
   protected play(take: Take, event: MouseEvent): void {

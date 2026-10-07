@@ -27,7 +27,7 @@ export interface PlayItem {
   readonly title: string;
   readonly tags: string | null;
   readonly durationS: number | null;
-  /** The album's painted cover, for a song played from an album; null draws the song's own. */
+  /** The album's cover, for a song played from an album; null draws the song's own (a playlist's songs keep theirs). */
   readonly art: string | null;
   /** The words it was sung with, in section tags; null for an instrumental. */
   readonly lyrics: string | null;
@@ -115,11 +115,11 @@ export class PlayerService {
     if (source.kind === 'cloud') {
       const remote = this.cloud.playlist(source.id);
       if (remote === null) return [];
-      const remoteArt = this.cloud.coverUrl(remote);
+      const remoteArt = (remote.album ? this.cloud.coverUrl(remote) : null);
       return this.cloud.songsOf(remote).map((song) => ({ ...itemOfSong(song, remoteArt), key: `cloud:${song.id}`, kind: 'cloud' as const }));
     }
     if (playlist === null) return [];
-    const art = this.hub.coverUrl(playlist);
+    const art = (playlist.album ? this.hub.coverUrl(playlist) : null);
     return this.library.songsOf(playlist).map((song) => itemOfSong(song, art));
   });
 
@@ -150,6 +150,8 @@ export class PlayerService {
     const stage = album?.stage;
     return (stage === 'planning' || stage === 'cover' || stage === 'making') && album?.working !== false;
   });
+  /** Songs this device just asked for (job keys): the first to land plays, in its playlist. */
+  private readonly awaited = new Set<string>();
   /** An album this device just asked for: it starts playing the moment its first track lands. */
   private readonly autoplay = signal<string | null>(null);
   readonly hasPrevious = computed(() => this.current() !== null);
@@ -220,6 +222,18 @@ export class PlayerService {
         this.autoplay.set(null);
         this.playPlaylist(id);
       });
+    });
+    this.hub.onSongFiled((job) => {
+      if (!this.awaited.delete(job.key) || job.playlist == null || job.songId == null) return;
+      // The first of a new ask plays at once; the rest of its batch join the queue as they land
+      // (the queue follows the playlist), cutting in only when nothing is playing.
+      const playlist = this.library.playlist(job.playlist);
+      const song = this.library.songs().find((other) => other.id === job.songId);
+      if (playlist === null || song === undefined) return;
+      if (this.current() === null || this.waiting() || this.awaitedFresh) {
+        this.awaitedFresh = false;
+        this.playPlaylist(playlist.id, song);
+      }
     });
     this.hub.onTake((take) => {
       // Nothing playing: a song made here plays at once. (Waiting at the end is the effect above.)
@@ -359,6 +373,16 @@ export class PlayerService {
     }
   }
 
+  /** Whether the next awaited song may cut in on what is playing: yes for the first of a new ask. */
+  private awaitedFresh = false;
+
+  /** Play the first of these songs (job keys) the moment it lands, in the playlist it is filed into. */
+  playWhenMade(keys: readonly string[]): void {
+    this.awaited.clear();
+    for (const key of keys) this.awaited.add(key);
+    this.awaitedFresh = true;
+  }
+
   /** Start an album this device just asked for the moment its first track lands. */
   playWhenReady(albumId: string): void {
     this.autoplay.set(albumId);
@@ -370,7 +394,7 @@ export class PlayerService {
     if (playlist === null) return;
     const first = song ?? this.cloud.songsOf(playlist)[0];
     if (first !== undefined) {
-      this.play({ ...itemOfSong(first, this.cloud.coverUrl(playlist)), key: `cloud:${first.id}`, kind: 'cloud' }, { kind: 'cloud', id: playlistId });
+      this.play({ ...itemOfSong(first, (playlist.album ? this.cloud.coverUrl(playlist) : null)), key: `cloud:${first.id}`, kind: 'cloud' }, { kind: 'cloud', id: playlistId });
     }
   }
 
@@ -382,12 +406,12 @@ export class PlayerService {
     if (cloud) {
       const remote = this.cloud.playlist(playlistId);
       if (remote === null) return [];
-      const art = this.cloud.coverUrl(remote);
+      const art = (remote.album ? this.cloud.coverUrl(remote) : null);
       return (songs ?? this.cloud.songsOf(remote)).map((song) => ({ ...itemOfSong(song, art), key: `cloud:${song.id}`, kind: 'cloud' as const }));
     }
     const playlist = this.library.playlist(playlistId);
     if (playlist === null) return [];
-    const art = this.hub.coverUrl(playlist);
+    const art = (playlist.album ? this.hub.coverUrl(playlist) : null);
     return (songs ?? this.library.songsOf(playlist)).map((song) => itemOfSong(song, art));
   }
 
@@ -396,7 +420,7 @@ export class PlayerService {
     const playlist = this.library.playlist(playlistId);
     if (playlist === null) return;
     const first = song ?? this.library.songsOf(playlist)[0];
-    if (first !== undefined) this.play(itemOfSong(first, this.hub.coverUrl(playlist)), { kind: 'playlist', id: playlistId });
+    if (first !== undefined) this.play(itemOfSong(first, (playlist.album ? this.hub.coverUrl(playlist) : null)), { kind: 'playlist', id: playlistId });
   }
 
   toggle(): void {
