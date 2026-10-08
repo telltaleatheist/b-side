@@ -2,7 +2,7 @@ import { computed, effect, inject, Injectable, signal, untracked } from '@angula
 import { Router } from '@angular/router';
 
 import { batchCount } from '@shared/batch';
-import { addTags, clashesWith, joinTags, splitTags, toggleTag } from '@shared/tags';
+import { addTags, clashesWith, joinTags, splitTags, toggleTag, withoutVoice } from '@shared/tags';
 import { TAG_MODEL, type DescribeResult, type Preset, type RefusalView, type SongForm, type SongPage, type SongParams } from '@shared/types';
 
 import { HubService } from './hub.service';
@@ -109,7 +109,12 @@ export class StudioService {
   }
 
   /** Ask the server's tag model for tags; they replace the chips, and set Instrumental. */
-  async describe(): Promise<void> {
+  /**
+   * Fill in the tags (and the lyrics when sung). `instrumental` is what the
+   * person picked where they are: the song's switch, or the album's Vocals
+   * choice; picked instrumental, no lyrics are written and no singer is tagged.
+   */
+  async describe(instrumental = this.instrumental(), forAlbum = false): Promise<void> {
     this.describing.set(true);
     this.describeRefusal.set(null);
     this.described.set(null);
@@ -117,7 +122,7 @@ export class StudioService {
     const started = Date.now();
     this.describeElapsed.set(0);
     const ticker = setInterval(() => this.describeElapsed.set(Math.floor((Date.now() - started) / 1000)), 1000);
-    const outcome = await this.hub.call<DescribeResult>('POST', '/api/describe', { text: this.description(), instrumental: this.instrumental() });
+    const outcome = await this.hub.call<DescribeResult>('POST', '/api/describe', { text: this.description(), instrumental });
     clearInterval(ticker);
     this.describing.set(false);
     if (!outcome.ok) {
@@ -125,6 +130,11 @@ export class StudioService {
       return;
     }
     this.tags.set([...outcome.value.tags]);
+    // An album's tracks follow its own Vocals choice: the song's switch and Lyrics box are not the album's.
+    if (forAlbum) {
+      this.described.set(outcome.value);
+      return;
+    }
     if (this.page()?.instrumental !== false) this.instrumental.set(outcome.value.instrumental);
     // The words it wrote fill the Lyrics box, unless the person wrote their own there.
     const written = outcome.value.lyrics;
@@ -206,7 +216,8 @@ export class StudioService {
     // A song is made to be fast (Owen, 2026-10-05): with no tags picked, the description itself is
     // the style line, straight to the song model, with no chat model in the way. "Fill in the tags"
     // is there for whoever wants the tag model's pick (and lyrics) first.
-    const tags = this.tagLine() || this.description().trim();
+    // Instrumental means no voice (Owen, 2026-10-08): a singer among the chips (a preset's) is left out.
+    const tags = (this.instrumental() ? joinTags(withoutVoice(this.tags())) : this.tagLine()) || this.description().trim();
     if (tags !== '') params.tags = tags;
     if (!this.instrumental() && this.lyrics().trim() !== '') params.lyrics = this.lyrics();
     if (this.page()?.instrumental !== false) params.instrumental = this.instrumental();

@@ -26,6 +26,7 @@ import { clientFor, clientName } from './crucible';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { describe } from './describe';
+import { VOICE_TAG, withoutVoice } from '../tags';
 import type { AlbumAsk, AlbumMeta, AlbumPlan, AlbumTrack, SongPage } from '../types';
 
 /** A song is about this long: how many are counted as on their way. */
@@ -183,11 +184,13 @@ export async function writePlan(client: CrucibleClient, writer: string, ask: Alb
 
 /** A track's tags: the core, then its turn's new tags (none repeated); instrumental unless it is sung. */
 export function trackTags(core: string, turn: string, sung: boolean): string {
-  const tags = core.split(',').map((t) => t.trim()).filter((t) => t !== '');
+  const all = core.split(',').map((t) => t.trim()).filter((t) => t !== '');
+  // Instrumental means no voice (Owen, 2026-10-08): even a singer in the person's own tags goes.
+  const tags = sung ? all : withoutVoice(all);
   const seen = new Set(tags.map((t) => t.toLowerCase()));
   for (const extra of turn.split(',').map((t) => t.trim()).filter((t) => t !== '')) {
     if (seen.has(extra.toLowerCase())) continue;
-    if (!sung && /vocal|voice|singing|sung|choir/i.test(extra)) continue;
+    if (!sung && VOICE_TAG.test(extra)) continue;
     seen.add(extra.toLowerCase());
     tags.push(extra);
   }

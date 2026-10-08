@@ -24,7 +24,7 @@
 import { CrucibleRefused, type CrucibleClient } from '@crucible/client';
 
 import { Refusal } from './refusal';
-import { clashesWith, clashText, indexOfTag } from '../tags';
+import { clashesWith, clashText, indexOfTag, withoutVoice } from '../tags';
 import { TAG_MODEL, type DescribeResult, type SongPage } from '../types';
 
 const MAX_DESCRIPTION = 600;
@@ -206,8 +206,9 @@ export async function describe(client: CrucibleClient, page: SongPage, descripti
     throw error;
   }
   const fields = readFields(content);
-  const tags = composeTags(fields);
+  // Asked for instrumental, it is instrumental whatever the model answered: no singer among the tags.
   const instrumental = wantsInstrumental || fields.instrumental;
+  const tags = instrumental ? withoutVoice(composeTags({ ...fields, instrumental })) : composeTags(fields);
   return {
     tags,
     instrumental,

@@ -94,3 +94,8 @@ test('the last track landing finishes the album: its own job is not one still in
   expect(album.meta().stage).toBe('done');
   expect(album.rendered).toEqual([]);
 });
+
+test("an instrumental album drops a singer even from the person's own tags", () => {
+  expect(trackTags('soul, warm male vocal, Hammond organ', 'brushed drums', false)).toBe('soul, Hammond organ, brushed drums, instrumental');
+  expect(trackTags('soul, warm male vocal, Hammond organ', 'brushed drums', true)).toBe('soul, warm male vocal, Hammond organ, brushed drums');
+});

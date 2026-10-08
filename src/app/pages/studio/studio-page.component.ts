@@ -63,7 +63,7 @@ import { StudioService } from '../../core/studio.service';
           <p class="hint">Reading the song page from {{ hub.activeServer()?.name }}…</p>
         }
 
-        <form class="field" (submit)="$event.preventDefault(); studio.describe()">
+        <form class="field" (submit)="$event.preventDefault(); fillTags()">
           <label class="label" for="describe">Describe it</label>
           <textarea id="describe" rows="2" maxlength="600" class="describe"
                     placeholder="rainy 90s trip-hop, vinyl crackle, a little late-night jazz"
@@ -72,11 +72,11 @@ import { StudioService } from '../../core/studio.service';
             <button type="submit" class="ghost small" [disabled]="studio.describing() || studio.description().trim() === ''">
               {{ studio.describing() ? 'Working…' : 'Fill in the tags' }}
             </button>
-            <span class="hint">{{ studio.tagModel }} on the server picks the tags{{ studio.instrumental() ? '' : ' and writes the lyrics' }}; it swaps the song model out for a minute.</span>
+            <span class="hint">{{ studio.tagModel }} on the server picks the tags{{ instrumentalHere() ? ', no singer: it is instrumental' : (mode() === 'album' ? '' : ' and writes the lyrics') }}; it swaps the song model out for a minute.</span>
           </div>
           @if (studio.describing()) {
             <div class="progress-line">
-              <span>{{ studio.instrumental() ? 'Generating tags…' : 'Generating tags and lyrics…' }}</span>
+              <span>{{ instrumentalHere() || mode() === 'album' ? 'Generating tags…' : 'Generating tags and lyrics…' }}</span>
               <span class="mono">{{ studio.describeElapsed() }}s</span>
             </div>
             <div class="bar indeterminate"><span></span></div>
@@ -284,6 +284,13 @@ export class StudioPageComponent {
   protected readonly albumMinutes = ALBUM_MINUTES;
   protected readonly albumLength = signal(60);
   protected readonly albumSung = signal(false);
+  /** Instrumental where the person is: the album's Vocals choice, or the song's switch. */
+  protected readonly instrumentalHere = computed(() => (this.mode() === 'album' ? !this.albumSung() : this.studio.instrumental()));
+
+  /** Fill in the tags for what is being made: an instrumental gets no lyrics and no singer. */
+  protected fillTags(): void {
+    void this.studio.describe(this.instrumentalHere(), this.mode() === 'album');
+  }
   protected readonly albumSending = signal(false);
   protected readonly albumRefusal = signal<RefusalView | null>(null);
 

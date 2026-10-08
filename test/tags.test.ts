@@ -50,3 +50,10 @@ test('the tooltip names each conflict and why', () => {
   expect(clashText([{ tag: 'fast', why: 'one pace' }])).toBe('Conflicts with fast (one pace)');
   expect(clashText([])).toBe('');
 });
+
+import { withoutVoice } from '../shared/tags';
+
+test('instrumental means no voice: every tag that asks for a singer goes, the rest stay', () => {
+  expect(withoutVoice(['English', 'soul', 'warm male vocal', 'soft female voice', 'gospel choir', 'Hammond organ', 'instrumental', 'no vocals', '66 BPM']))
+    .toEqual(['English', 'soul', 'Hammond organ', 'instrumental', 'no vocals', '66 BPM']);
+});

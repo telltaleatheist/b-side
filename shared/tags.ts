@@ -41,6 +41,17 @@ export function toggleTag(tags: readonly string[], tag: string): string[] {
   return tags.filter((_, index) => index !== at);
 }
 
+/** A tag that asks for a voice: a singer, a choir, rapping. An instrumental never carries one. */
+export const VOICE_TAG = /\b(vocals?|voices?|vocalists?|singing|sung|singers?|choir|choral|rap|rapping|a cappella|crooner)\b/i;
+
+/**
+ * The tags without any that asks for a voice (Owen, 2026-10-08: instrumental
+ * means no voice). "Instrumental" and "no vocals" themselves are kept.
+ */
+export function withoutVoice(tags: readonly string[]): string[] {
+  return tags.filter((tag) => /^(instrumental|no vocals|no singing)$/i.test(tag.trim()) || !VOICE_TAG.test(tag));
+}
+
 /** The value the request sends: one comma-separated line. */
 export function joinTags(tags: readonly string[]): string {
   return tags.join(', ');
