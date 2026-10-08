@@ -1,5 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
 import { ConfirmDialogComponent } from './components/confirm-dialog/confirm-dialog.component';
@@ -9,7 +9,10 @@ import { IconComponent, type IconName } from './components/icon/icon.component';
 import { MiniPlayerComponent } from './components/mini-player/mini-player.component';
 import { NowPlayingComponent } from './components/now-playing/now-playing.component';
 import { PlayerBarComponent } from './components/player-bar/player-bar.component';
+import { SINGLES_NAME } from '@shared/types';
+
 import { HubService } from './core/hub.service';
+import { ImportService } from './core/import.service';
 import { LibraryService } from './core/library.service';
 import { PlayerService } from './core/player.service';
 import { UiService } from './core/ui.service';
@@ -37,6 +40,11 @@ interface Room {
 @Component({
   selector: 'app-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '(document:dragover)': 'dragOver($event)',
+    '(document:dragleave)': 'dragLeave($event)',
+    '(document:drop)': 'drop($event)',
+  },
   imports: [
     NgTemplateOutlet, RouterOutlet, RouterLink, RouterLinkActive, ConfirmDialogComponent, HubPickerComponent, CoverComponent,
     IconComponent, MiniPlayerComponent, NowPlayingComponent, PlayerBarComponent,
@@ -56,7 +64,7 @@ interface Room {
           <div class="side-list">
             <span class="kicker">Playlists</span>
             @for (playlist of library.playlists(); track playlist.id) {
-              <a class="side-item" [routerLink]="['/library', playlist.id]" routerLinkActive="on">
+              <a class="side-item" [routerLink]="['/library', playlist.id]" routerLinkActive="on" [attr.data-drop-playlist]="playlist.id">
                 <app-cover class="side-art" [key]="playlist.id" [src]="hub.coverUrl(playlist)" />
                 <span class="side-names">
                   <span class="side-name">{{ playlist.name }}</span>
@@ -128,6 +136,16 @@ interface Room {
 
     @if (ui.nowPlayingOpen()) { <app-now-playing mode="sheet" /> }
     <app-confirm-dialog />
+    @if (dropInto(); as into) {
+      <div class="drop-hint" role="status"><app-icon name="queue-add" [size]="20" />Drop to add to <strong>{{ into }}</strong></div>
+    }
+    @if (importer.state(); as state) {
+      <div class="import-toast" role="status">
+        <span>{{ state.finished ? 'Added ' + state.done + ' of ' + state.of : 'Adding ' + (state.done + 1) + ' of ' + state.of }} {{ state.of === 1 ? 'song' : 'songs' }} to <strong>{{ state.into }}</strong>{{ state.finished ? '' : '…' }}</span>
+        @for (problem of state.problems; track problem) { <span class="import-problem">{{ problem }}</span> }
+        @if (state.finished) { <button type="button" class="ghost small" (click)="importer.dismiss()">OK</button> }
+      </div>
+    }
 
     <ng-template #status>
       @switch (hub.state()) {
@@ -144,6 +162,15 @@ interface Room {
     </ng-template>
   `,
   styles: [`
+    .drop-hint, .import-toast {
+      position: fixed; left: 50%; bottom: calc(var(--player-h, 80px) + 18px); transform: translateX(-50%); z-index: 80;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: min(560px, calc(100vw - 32px));
+      padding: 12px 16px; border-radius: var(--radius-md); background: var(--bg-elevated); color: var(--text-primary);
+      border: 1px solid var(--accent); box-shadow: 0 18px 40px rgba(0,0,0,.5); font-size: 14px;
+    }
+    .drop-hint { pointer-events: none; }
+    .import-problem { flex-basis: 100%; font-size: 12px; color: var(--warn); }
+    :host ::ng-deep .drop-target { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-md); background: color-mix(in srgb, var(--accent) 10%, transparent); }
     :host { display: block; height: 100vh; }
     .shell {
       height: 100%;
@@ -246,6 +273,54 @@ export class App {
     { path: '/library', label: 'Library', icon: 'library', exact: false },
     { path: '/settings', label: 'Settings', icon: 'settings', exact: false },
   ];
+
+  protected readonly importer = inject(ImportService);
+  /** While files are dragged over the window: the playlist they would join (null = not dragging). */
+  private readonly dropTarget = signal<{ readonly id: string | null; readonly element: Element | null } | null>(null);
+  protected readonly dropInto = computed(() => {
+    const target = this.dropTarget();
+    if (target === null) return null;
+    return target.id === null ? SINGLES_NAME : (this.library.playlist(target.id)?.name ?? SINGLES_NAME);
+  });
+
+  /** Songs dragged in from the computer: the playlist under the pointer, else New Songs. */
+  protected dragOver(event: DragEvent): void {
+    if (!this.carriesFiles(event)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    const element = (event.target as Element | null)?.closest?.('[data-drop-playlist]') ?? null;
+    const id = element?.getAttribute('data-drop-playlist') || null;
+    const now = this.dropTarget();
+    if (now !== null && now.element === element) return;
+    now?.element?.classList.remove('drop-target');
+    element?.classList.add('drop-target');
+    this.dropTarget.set({ id, element });
+  }
+
+  protected dragLeave(event: DragEvent): void {
+    // Leaving the window itself (not one element for another).
+    if (event.relatedTarget === null && (event.clientX <= 0 || event.clientY <= 0 || event.clientX >= innerWidth || event.clientY >= innerHeight)) this.clearDrop();
+  }
+
+  protected drop(event: DragEvent): void {
+    if (!this.carriesFiles(event)) return;
+    // Never let the window open the file itself.
+    event.preventDefault();
+    const target = this.dropTarget();
+    this.clearDrop();
+    if (!this.importer.offered()) return;
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    void this.importer.importFiles(files, target?.id ?? null);
+  }
+
+  private clearDrop(): void {
+    this.dropTarget()?.element?.classList.remove('drop-target');
+    this.dropTarget.set(null);
+  }
+
+  private carriesFiles(event: DragEvent): boolean {
+    return Array.from(event.dataTransfer?.types ?? []).includes('Files');
+  }
 
   /** `crucible@owens-pc-wsl` reads as `owens-pc-wsl`: the machine is what a person recognises. */
   protected serverName(name: string): string {

@@ -25,7 +25,7 @@
  * snapshot of everything that client shows, then each change. A client that
  * reconnects gets a fresh snapshot, so nothing missed while it was away matters.
  */
-import { timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import * as os from 'node:os';
@@ -361,6 +361,26 @@ export class Hub {
       const target = this.core.importPath(request.params['name'] as string);
       await receiveFile(request.req, target);
       sendJson(request.res, 200, { name: request.params['name'] });
+    }, true);
+    // A song file dropped on the window (raw body): into the playlist named, else New Songs.
+    this.route('PUT', '/api/import/song', async (request) => {
+      const name = path.basename(request.url.searchParams.get('name') ?? '');
+      const extension = path.extname(name).toLowerCase();
+      if (!/^\.(flac|wav|mp3)$/.test(extension)) {
+        throw new Refusal('song_format', `B-Sides keeps flac, wav or mp3 audio; ${name || 'that file'} is not one.`);
+      }
+      const title = (request.url.searchParams.get('title') ?? '').trim() || path.basename(name, extension);
+      const duration = Number(request.url.searchParams.get('duration'));
+      const playlist = request.url.searchParams.get('playlist');
+      const temporary = path.join(os.tmpdir(), `bsides-import-${randomUUID()}${extension}`);
+      try {
+        await receiveFile(request.req, temporary);
+        const bytes = (await fsp.stat(temporary)).size;
+        const view = await this.core.importSong(temporary, { name, title, durationS: Number.isFinite(duration) && duration > 0 ? duration : null, bytes }, playlist || null);
+        sendJson(request.res, 200, view);
+      } finally {
+        await fsp.rm(temporary, { force: true });
+      }
     }, true);
     this.route('POST', '/api/import/albums', async (request) =>
       this.core.importAlbum((await request.body()) as unknown as ImportedAlbum));

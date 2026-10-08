@@ -177,3 +177,28 @@ test('an unknown route is a 404 that names it', async () => {
   expect(response.status).toBe(404);
   expect(((await response.json()) as { error: { message: string } }).error.message).toContain('/api/nothing-here');
 });
+
+test('a dropped song file lands in New Songs (made the first time), or in the playlist it was dropped on', async () => {
+  const bytes = new Uint8Array([1, 2, 3, 4, 5]);
+  const put = (query: string): Promise<Response> =>
+    fetch(`${base}/api/import/song?${query}`, { method: 'PUT', body: bytes, headers: { 'X-BSide-Key': key, ...desktop } });
+  const first = await put('name=oh-banana.flac&title=Oh%20Banana&duration=204.2');
+  expect(first.status).toBe(200);
+  let view = (await first.json()) as LibraryView;
+  const singles = view.playlists.find((p) => p.name === 'New Songs');
+  expect(singles).toBeDefined();
+  const song = view.songs.find((s) => s.id === singles?.songs[0]);
+  expect(song).toMatchObject({ title: 'Oh Banana', durationS: 204.2, bytes: 5, model: 'imported' });
+  expect(song?.file.endsWith('.flac')).toBe(true);
+
+  const made = (await (await api('/api/playlists', { method: 'POST', body: JSON.stringify({ name: 'Road' }) })).json()) as LibraryView;
+  const road = made.playlists.find((p) => p.name === 'Road') as { id: string };
+  view = (await (await put(`name=drive.mp3&playlist=${road.id}`)).json()) as LibraryView;
+  const into = view.playlists.find((p) => p.id === road.id);
+  expect(into?.songs.length).toBe(1);
+  expect(view.songs.find((s) => s.id === into?.songs[0])?.title).toBe('drive');
+  expect(view.playlists.find((p) => p.name === 'New Songs')?.songs.length).toBe(1);
+
+  const wrong = await put('name=notes.txt');
+  expect(wrong.status).toBe(400);
+});

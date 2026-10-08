@@ -332,6 +332,33 @@ export class HubCore {
     return song.id;
   }
 
+  /**
+   * File an audio file dropped on the app (Owen, 2026-10-08) into a playlist,
+   * or New Songs when it was not dropped on one. `file` is a copy the caller
+   * removes afterwards; the library keeps its own.
+   */
+  async importSong(
+    file: string,
+    facts: { readonly name: string; readonly title: string; readonly durationS: number | null; readonly bytes: number },
+    playlistId: string | null,
+  ): Promise<LibraryView> {
+    const target = playlistId ?? (await this.singlesPlaylist());
+    await this.library.saveTo(target, null, {
+      title: facts.title,
+      model: 'imported',
+      params: { tags: null, lyrics: null, instrumental: false, cfg: null, seed: null },
+      server: { name: 'imported', url: '' },
+      jobId: `import-${crypto.randomUUID()}`,
+      createdAt: new Date().toISOString(),
+      durationS: facts.durationS,
+      batch: null,
+      audioFrom: file,
+      bytes: facts.bytes,
+      effective: { importedFrom: facts.name },
+    });
+    return this.libraryChanged();
+  }
+
   /** New Songs' id: the one kept, else a playlist already named so, else a new one. */
   private async singlesPlaylist(): Promise<string> {
     const view = await this.library.list();

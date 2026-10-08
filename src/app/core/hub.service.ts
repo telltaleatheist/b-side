@@ -217,6 +217,12 @@ export class HubService {
   }
 
   /** One API call, answered as an Outcome so a refusal keeps its code. */
+  /** Send a file as the request's body (PUT): a song dropped on the window. Hubs on a computer only. */
+  async upload<T>(path: string, file: Blob): Promise<Outcome<T>> {
+    if (this.onPhone()) return { ok: false, refusal: { code: 'upload_phone', message: 'Songs are added on a computer running B-Sides.' } };
+    return this.call<T>('PUT', path, file);
+  }
+
   async call<T>(method: string, path: string, body?: unknown): Promise<Outcome<T>> {
     if (this.onPhone()) {
       try {
@@ -233,7 +239,10 @@ export class HubService {
       'X-BSide-Client-Kind': this.kind,
     };
     const init: RequestInit = { method, headers };
-    if (body !== undefined) {
+    if (body instanceof Blob) {
+      headers['Content-Type'] = body.type || 'application/octet-stream';
+      init.body = body;
+    } else if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(body);
     }

@@ -29,7 +29,7 @@ import { PlayerService } from '../../core/player.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, CoverComponent, IconComponent],
   template: `
-    <div class="page">
+    <div class="page" [attr.data-drop-playlist]="isCloud() ? null : (selected()?.id ?? null)">
       @if (selected(); as playlist) {
         <a class="back" routerLink="/library"><app-icon name="chevron" [size]="16" class="flip" />Library</a>
         <header class="head">
@@ -196,7 +196,7 @@ import { PlayerService } from '../../core/player.service';
         @if (cloud.linked()) { <h2 class="section-title">On this phone</h2> }
         <div class="grid">
           @for (playlist of library.playlists(); track playlist.id) {
-            <a class="tile" [routerLink]="['/library', playlist.id]">
+            <a class="tile" [routerLink]="['/library', playlist.id]" [attr.data-drop-playlist]="playlist.id">
               <app-cover class="tile-art" [key]="playlist.id" [src]="hub.coverUrl(playlist)" />
               <span class="tile-name">{{ playlist.name }}</span>
               @if (playlist.album; as album) {
