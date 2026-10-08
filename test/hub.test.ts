@@ -202,3 +202,11 @@ test('a dropped song file lands in New Songs (made the first time), or in the pl
   const wrong = await put('name=notes.txt');
   expect(wrong.status).toBe(400);
 });
+
+test('a song\'s lyrics can be set (and its title kept)', async () => {
+  const view = (await (await fetch(`${base}/api/import/song?name=words.mp3`, { method: 'PUT', body: new Uint8Array([9]), headers: { 'X-BSide-Key': key, ...desktop } })).json()) as LibraryView;
+  const song = view.songs.find((s) => s.title === 'words') as { id: string };
+  const after = (await (await api(`/api/songs/${song.id}`, { method: 'PATCH', body: JSON.stringify({ lyrics: '[verse]\r\nhello there\r\n' }) })).json()) as LibraryView;
+  expect(after.songs.find((s) => s.id === song.id)?.params).toMatchObject({ lyrics: '[verse]\nhello there', instrumental: false });
+  expect(after.songs.find((s) => s.id === song.id)?.title).toBe('words');
+});

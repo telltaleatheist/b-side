@@ -645,7 +645,14 @@ export class HubCore {
     // ── the library: saved songs and playlists ──────────────────────────────
     this.route('GET', '/api/library', () => this.libraryView());
     this.route('PATCH', '/api/songs/:id', async (request) => {
-      await this.library.rename(request.params['id'] as string, text((await request.body())['title'], 'title'));
+      const id = request.params['id'] as string;
+      const body = await request.body();
+      if (body['title'] === undefined && body['lyrics'] === undefined) throw new Refusal('body_invalid', 'A song change is {title} and/or {lyrics}.');
+      if (body['title'] !== undefined) await this.library.rename(id, text(body['title'], 'title'));
+      if (body['lyrics'] !== undefined) {
+        if (typeof body['lyrics'] !== 'string') throw new Refusal('body_invalid', 'lyrics must be text.');
+        await this.library.setLyrics(id, body['lyrics']);
+      }
       return this.libraryChanged();
     });
     this.route('POST', '/api/playlists', async (request) => {

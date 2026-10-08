@@ -435,6 +435,17 @@ export class Library {
     });
   }
 
+  /** Set a song's lyrics (pasted for a song made elsewhere, or corrected); blank clears them. */
+  async setLyrics(id: string, lyrics: string): Promise<Song> {
+    return this.serial(async () => {
+      const sidecar = await this.readSidecar(id);
+      const words = lyrics.replace(/\r\n?/g, '\n').trim();
+      const next = { ...sidecar, params: { ...sidecar.params, lyrics: words === '' ? null : words, instrumental: words === '' ? sidecar.params.instrumental : false } };
+      await this.disk.writeText(this.sidecarPath(id), `${JSON.stringify(next, null, 2)}\n`);
+      return songOf(next);
+    });
+  }
+
   async song(id: string): Promise<Song> {
     return songOf(await this.readSidecar(id));
   }
