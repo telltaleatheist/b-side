@@ -23,6 +23,7 @@
  */
 import { CrucibleRefused, type CrucibleClient } from '@crucible/client';
 
+import { chatSeed } from './crucible';
 import { Refusal } from './refusal';
 import { clashesWith, clashText, indexOfTag, withoutVoice } from '../tags';
 import { TAG_MODEL, type DescribeResult, type SongPage } from '../types';
@@ -185,6 +186,7 @@ export async function describe(client: CrucibleClient, page: SongPage, descripti
       model: TAG_MODEL,
       thinking: false,
       temperature: 0.5,
+      seed: chatSeed(),
       // The tags take ~150 tokens; a song's words up to ~700 more.
       maxTokens: wantsInstrumental ? 400 : 1100,
       act: 'generate',

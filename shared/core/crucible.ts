@@ -130,3 +130,13 @@ export async function deletePreset(server: StoredServer, name: string): Promise<
   await clientFor(server).deletePlaygroundPreset(SONG_MODEL, name);
   return listPresets(server);
 }
+
+/**
+ * A fresh sampling seed for one chat. Without one the engine samples from its
+ * own fixed seed, and a model loaded fresh answers the same request word for
+ * word: two albums from one description came out with the same names
+ * (2026-10-08), temperature 0.9 or not.
+ */
+export function chatSeed(): number {
+  return Math.floor(Math.random() * 2 ** 31);
+}

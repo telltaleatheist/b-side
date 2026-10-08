@@ -22,7 +22,7 @@
  */
 import type { CrucibleClient, CrucibleSession, ModelInfo } from '@crucible/client';
 
-import { clientFor, clientName } from './crucible';
+import { chatSeed, clientFor, clientName } from './crucible';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { describe } from './describe';
@@ -147,6 +147,7 @@ export async function writePlan(client: CrucibleClient, writer: string, ask: Alb
     model: writer,
     thinking: false,
     temperature: 0.9,
+    seed: chatSeed(),
     maxTokens: 400 + count * 70,
     act: 'generate',
     responseFormat: { type: 'json_schema', json_schema: { name: 'album_plan', schema: PLAN_SCHEMA, strict: true } },
@@ -206,6 +207,7 @@ export async function writeLyrics(client: CrucibleClient, writer: string, plan: 
     model: writer,
     thinking: false,
     temperature: 0.9,
+    seed: chatSeed(),
     maxTokens: 300 * tracks.length + 200,
     act: 'generate',
     responseFormat: { type: 'json_schema', json_schema: { name: 'album_lyrics', schema: LYRICS_SCHEMA, strict: true } },
