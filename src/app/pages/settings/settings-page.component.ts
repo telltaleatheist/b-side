@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 
+import type { FirewallView } from '@shared/api';
 import { ALBUM_SPACE_GB, type HubPreferences, type HubSettingsView, type RefusalView, type SongFormat } from '@shared/types';
 
 import { copyText } from '../../core/clipboard';
@@ -168,6 +169,24 @@ import { ServersCardComponent } from './servers-card.component';
             } @empty {
               <p class="hint">This computer has no network address right now.</p>
             }
+            @if (firewall(); as wall) {
+              @if (!wall.reachableOnPrivate) {
+                <div class="notice">Windows Firewall is keeping other devices away from B-Sides (port {{ wall.port }}).</div>
+                <div class="actions">
+                  <button type="button" class="ghost small" [disabled]="busy()" (click)="allowFirewall()">Allow B-Sides through Windows Firewall</button>
+                </div>
+                <p class="hint">Windows asks for permission once. This lets in devices on Private networks only.</p>
+              }
+              @for (network of wall.publicNetworks; track network) {
+                <div class="notice">Windows treats the network “{{ network }}” as Public, so other devices on it cannot reach B-Sides. If it is your home network, set it to Private.</div>
+                <div class="actions">
+                  <button type="button" class="ghost small" (click)="openNetworkSettings()">Open network settings</button>
+                </div>
+              }
+            }
+            @if (firewallRefusal(); as refused) {
+              <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+            }
             <label class="toggle">
               <input type="checkbox" [checked]="view.requireKey" [disabled]="busy()" (change)="requireKey($any($event.target).checked)" />
               <span>Require a key (devices then need the link, not just the address)</span>
@@ -210,6 +229,9 @@ export class SettingsPageComponent {
   protected readonly busy = signal(false);
   protected readonly copied = signal<string | null>(null);
   protected readonly isDesktop = desktop !== null;
+  /** Windows' firewall and the hub's port, read while sharing is on (null off Windows or before the read). */
+  protected readonly firewall = signal<FirewallView | null>(null);
+  protected readonly firewallRefusal = signal<RefusalView | null>(null);
 
   constructor() {
     void this.load();
@@ -272,8 +294,39 @@ export class SettingsPageComponent {
     // The phone's own hub has no computer settings (folder, sharing, key) to read.
     if (this.hub.onPhone()) return;
     const outcome = await this.hub.call<HubSettingsView>('GET', '/api/settings');
-    if (outcome.ok) this.settings.set(outcome.value);
-    else this.refusal.set(outcome.refusal);
+    if (outcome.ok) {
+      this.settings.set(outcome.value);
+      void this.readFirewall();
+    } else {
+      this.refusal.set(outcome.refusal);
+    }
+  }
+
+  /** Only the computer B-Sides runs on, only while it shares: that is when the firewall decides anything. */
+  private async readFirewall(): Promise<void> {
+    const view = this.settings();
+    if (desktop === null || view === null || !view.local || !view.sharing) {
+      this.firewall.set(null);
+      return;
+    }
+    const outcome = await desktop.firewall();
+    this.firewallRefusal.set(outcome.ok ? null : outcome.refusal);
+    this.firewall.set(outcome.ok ? outcome.value : null);
+  }
+
+  protected async allowFirewall(): Promise<void> {
+    if (desktop === null) return;
+    this.busy.set(true);
+    const outcome = await desktop.allowThroughFirewall();
+    this.busy.set(false);
+    this.firewallRefusal.set(outcome.ok ? null : outcome.refusal);
+    if (outcome.ok) this.firewall.set(outcome.value);
+  }
+
+  protected async openNetworkSettings(): Promise<void> {
+    if (desktop === null) return;
+    const outcome = await desktop.openNetworkSettings();
+    this.firewallRefusal.set(outcome.ok ? null : outcome.refusal);
   }
 
   protected async choose(): Promise<void> {
@@ -299,7 +352,10 @@ export class SettingsPageComponent {
     const outcome = await this.hub.call<HubSettingsView>('PUT', '/api/settings/sharing', { sharing });
     this.busy.set(false);
     this.refusal.set(outcome.ok ? null : outcome.refusal);
-    if (outcome.ok) this.settings.set(outcome.value);
+    if (outcome.ok) {
+      this.settings.set(outcome.value);
+      void this.readFirewall();
+    }
   }
 
   protected async requireKey(requireKey: boolean): Promise<void> {

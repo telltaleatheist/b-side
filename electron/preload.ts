@@ -19,6 +19,9 @@ const bridge: DesktopBridge = {
   resetLibraryDir: () => ipcRenderer.invoke('desktop:resetLibraryDir'),
   saveCopy: (id) => ipcRenderer.invoke('desktop:saveCopy', id),
   reveal: (id) => ipcRenderer.invoke('desktop:reveal', id),
+  firewall: () => ipcRenderer.invoke('desktop:firewall'),
+  allowThroughFirewall: () => ipcRenderer.invoke('desktop:allowThroughFirewall'),
+  openNetworkSettings: () => ipcRenderer.invoke('desktop:openNetworkSettings'),
   crucible: {
     local: () => ipcRenderer.invoke('crucible:local'),
     installPlan: () => ipcRenderer.invoke('crucible:install-plan'),

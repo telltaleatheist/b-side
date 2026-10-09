@@ -55,6 +55,15 @@ export interface CrucibleSetupBridge {
   uninstall(flags: CrucibleUninstallFlags): Promise<Outcome<CrucibleUninstallRun>>;
 }
 
+/** What Windows' firewall does with the hub's port (the desktop on Windows only). */
+export interface FirewallView {
+  readonly port: number;
+  /** Devices on a Private network can reach the hub: an Allow rule covers Private and no Block rule does. */
+  readonly reachableOnPrivate: boolean;
+  /** Networks this computer is on that Windows treats as Public, where other devices cannot reach it. */
+  readonly publicNetworks: readonly string[];
+}
+
 export interface DesktopBridge {
   /** Where this computer reaches the hub, and its key. Read once, at start. */
   readonly hub: { readonly url: string; readonly key: string };
@@ -66,6 +75,12 @@ export interface DesktopBridge {
   saveCopy(songId: string): Promise<Outcome<string | null>>;
   /** Show a saved song in its folder. */
   reveal(songId: string): Promise<Outcome<null>>;
+  /** Windows' firewall and the hub's port; null off Windows. */
+  firewall(): Promise<Outcome<FirewallView | null>>;
+  /** Let other devices on Private networks reach the hub (Windows asks for permission once). */
+  allowThroughFirewall(): Promise<Outcome<FirewallView | null>>;
+  /** Open Windows' network settings, where a network is set to Private. */
+  openNetworkSettings(): Promise<Outcome<null>>;
 
   readonly crucible: CrucibleSetupBridge;
 }

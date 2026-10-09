@@ -83,6 +83,9 @@ interface Route {
 /** Marks a handler's answer as "already sent". */
 const SENT = Symbol('sent');
 
+/** Adapters that belong to virtual machines on this computer, by the name Windows gives them. */
+const VIRTUAL_ADAPTER = /^(vEthernet|VMware|VirtualBox)/i;
+
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
 function sameKey(given: string, key: string): boolean {
@@ -222,7 +225,9 @@ export class Hub {
   private settingsView(view: StoredSettings, local: boolean): HubSettingsView {
     const links: string[] = [];
     if (view.sharing) {
-      for (const addresses of Object.values(os.networkInterfaces())) {
+      for (const [adapter, addresses] of Object.entries(os.networkInterfaces())) {
+        // A virtual machine's adapter (WSL's, Hyper-V's, VMware's, VirtualBox's) is an address only this computer reaches.
+        if (VIRTUAL_ADAPTER.test(adapter)) continue;
         for (const address of addresses ?? []) {
           if (address.family === 'IPv4' && !address.internal) {
             links.push(`http://${address.address}:${view.port}${view.requireKey ? `/#key=${view.key}` : ''}`);

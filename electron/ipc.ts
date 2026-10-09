@@ -16,11 +16,27 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { crucibleInstallPlan } from './crucible-install';
 import { crucibleInstallDoor } from './crucible-install-door';
 import { localView, refreshPublished, startAndUse, useLocal } from './crucible-local';
+import { allowThroughFirewall, firewallView } from './firewall';
 import { uninstallAvailability, uninstallDryRun, uninstallPerform } from './crucible-uninstall';
 import type { Hub } from './hub/hub';
 import { answer, Refusal } from './refusal';
 import { appWindow } from './window';
 import type { CrucibleUninstallFlags } from '../shared/uninstall-wire';
+
+/**
+ * A song title as a file name every system takes: no characters Windows forbids,
+ * no trailing dots or spaces, never a device name (CON, NUL…), at most 120
+ * characters. Null when nothing is left.
+ */
+function fileNameOf(title: string): string | null {
+  const name = title
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '')
+    .slice(0, 120)
+    .replace(/[. ]+$/, '')
+    .trim();
+  if (name === '') return null;
+  return /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i.test(name) ? `${name} (song)` : name;
+}
 
 export function registerIpc(hub: Hub): void {
   ipcMain.on('hub:address', (event) => {
@@ -40,13 +56,20 @@ export function registerIpc(hub: Hub): void {
       if (choice.canceled || dir === undefined) return null;
       return hub.setLibraryDir(dir);
     }));
+  ipcMain.handle('desktop:firewall', () => answer(() => firewallView(hub.settings.view().port)));
+  ipcMain.handle('desktop:allowThroughFirewall', () => answer(() => allowThroughFirewall(hub.settings.view().port)));
+  ipcMain.handle('desktop:openNetworkSettings', () =>
+    answer(async () => {
+      await shell.openExternal('ms-settings:network-status');
+      return null;
+    }));
   ipcMain.handle('desktop:resetLibraryDir', () => answer(() => hub.setLibraryDir(null)));
 
   ipcMain.handle('desktop:saveCopy', (_e, id: string) =>
     answer(async () => {
       const song = await hub.songFile(id);
       const extension = path.extname(song.file);
-      const safeTitle = song.title.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim() || id;
+      const safeTitle = fileNameOf(song.title) ?? id;
       const window = appWindow();
       const options = {
         title: 'Save a copy of this song',
