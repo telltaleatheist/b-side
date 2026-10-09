@@ -11,10 +11,12 @@
 export const SONG_MODEL = 'yue2-3b';
 
 /**
- * The chat model that turns a description into style tags and lyrics (shared/core/describe.ts):
- * qwen3.5-4b fine-tuned on B-Sides' own describe answers (training/lyrics), served by Crucible 1.0.108+.
+ * The chat models that turn a description into style tags and lyrics (shared/core/describe.ts),
+ * best first: qwen3.5-4b fine-tuned on B-Sides' own describe answers (training/lyrics, Crucible
+ * 1.0.108+), then the same fine-tune at 4 bits for a card that cannot hold it (~5.3 GB against
+ * ~13.4 GB; cuda-linux only). Which one a server gets is chooseTagModel's (shared/core/crucible.ts).
  */
-export const TAG_MODEL = 'qwen3.5-4b-bside';
+export const TAG_MODELS = ['qwen3.5-4b-bside', 'qwen3.5-4b-bside-4bit'] as const;
 
 /** A refusal or failure, in the server's own words where it gave some. */
 export interface RefusalView {
@@ -121,6 +123,10 @@ export interface SongPage {
   readonly instrumental: boolean;
   readonly cfg: NumberField | null;
   readonly seed: NumberField | null;
+  /** The tag and lyrics model this server gets (chooseTagModel), or null when it can hold none of them. */
+  readonly tagModel: string | null;
+  /** Why there is no tag model on this server, in a sentence; null when there is one. */
+  readonly tagModelReason: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

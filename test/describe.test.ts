@@ -23,6 +23,8 @@ const page: SongPage = {
   instrumental: true,
   cfg: null,
   seed: null,
+  tagModel: 'qwen3.5-4b-bside',
+  tagModelReason: null,
 };
 
 const fields: TagFields = {
@@ -48,9 +50,9 @@ test('an instrumental answer drops any voice the model named anyway', () => {
 });
 
 test('a malformed answer is refused by name, never guessed at', () => {
-  expect(() => readFields('not json')).toThrow('did not answer JSON');
-  expect(() => readFields(JSON.stringify({ ...fields, bpm: 'fast' }))).toThrow('missing a field');
-  expect(readFields(JSON.stringify(fields)).genre).toEqual(['lo-fi', 'jazz']);
+  expect(() => readFields('not json', 'm')).toThrow('did not answer JSON');
+  expect(() => readFields(JSON.stringify({ ...fields, bpm: 'fast' }), 'm')).toThrow('missing a field');
+  expect(readFields(JSON.stringify(fields), 'm').genre).toEqual(['lo-fi', 'jazz']);
 });
 
 test('clashes are reported with the server\'s reason, not dropped', () => {
@@ -68,9 +70,9 @@ test('the prompt offers the server\'s phrases as examples, without the language 
 });
 
 test('a sung answer carries its lyrics; one without the field is refused', () => {
-  expect(readFields(JSON.stringify(fields)).lyrics).toContain('[chorus]');
+  expect(readFields(JSON.stringify(fields), 'm').lyrics).toContain('[chorus]');
   const { lyrics: _dropped, ...noLyrics } = fields;
-  expect(() => readFields(JSON.stringify(noLyrics))).toThrow('missing a field');
+  expect(() => readFields(JSON.stringify(noLyrics), 'm')).toThrow('missing a field');
 });
 
 test('the prompt asks for lyrics only when the song is sung', () => {

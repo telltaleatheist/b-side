@@ -72,7 +72,7 @@ import { StudioService } from '../../core/studio.service';
             <button type="submit" class="ghost small" [disabled]="studio.describing() || studio.description().trim() === ''">
               {{ studio.describing() ? 'Working…' : 'Fill in the tags' }}
             </button>
-            <span class="hint">{{ studio.tagModel }} on the server picks the tags{{ instrumentalHere() ? ', no singer: it is instrumental' : (mode() === 'album' ? '' : ' and writes the lyrics') }}; it swaps the song model out for a minute.</span>
+            <span class="hint">@if (studio.tagModel(); as model) {{{ model }} on the server picks the tags{{ instrumentalHere() ? ', no singer: it is instrumental' : (mode() === 'album' ? '' : ' and writes the lyrics') }}; it swaps the song model out for a minute.} @else {{{ studio.page()?.tagModelReason ?? 'Reading which tag model this server has…' }}}</span>
           </div>
           @if (studio.describing()) {
             <div class="progress-line">
@@ -129,7 +129,7 @@ import { StudioService } from '../../core/studio.service';
                 <p class="hint">Every track's lyrics are written to this, and the titles fit it. Blank: the album's description leads.</p>
               </div>
             }
-            <p class="opt-note hint">The biggest chat model on {{ hub.activeServer()?.name }} writes the name, the artist and every track{{ albumSung() ? '; ' + studio.tagModel + ' writes the lyrics, a song per two minutes so ' + albumLength() + ' minutes is always filled' : '' }}; its image model paints the cover. All of that is done first, so the album comes out right; then the music is made, track by track, and fills in while you listen.</p>
+            <p class="opt-note hint">The biggest chat model on {{ hub.activeServer()?.name }} writes the name, the artist and every track{{ albumSung() ? '; ' + (studio.tagModel() ?? 'no tag model on this server, so the album's writer') + ' writes the lyrics, a song per two minutes so ' + albumLength() + ' minutes is always filled' : '' }}; its image model paints the cover. All of that is done first, so the album comes out right; then the music is made, track by track, and fills in while you listen.</p>
           </div>
           @if (spaceFull()) {
             <div class="room-card">

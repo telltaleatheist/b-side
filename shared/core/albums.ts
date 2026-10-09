@@ -5,7 +5,7 @@
  *   plan     the server's best chat model writes the album in ONE call: title,
  *            artist, a line about it, the cover prompt, and a track list (each
  *            track a name and its own turn on the album's tags).
- *   lyrics   a sung album: B-Sides' own lyrics model (TAG_MODEL, the 4B fine-tuned
+ *   lyrics   a sung album: B-Sides' own lyrics model (the song page's tagModel, the 4B fine-tuned
  *            on describe answers) writes each track's words, one call per track. The plan has a track for every two minutes of
  *            the length (songs run two to five), so there are always words enough;
  *            tracks play in order until the length is filled and the rest go unmade.

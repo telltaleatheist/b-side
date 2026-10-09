@@ -7,11 +7,11 @@
  * answer strictly and raises one error type per failure; `refusal.ts` turns
  * those into what the screen shows.
  */
-import { CrucibleClient, type PlaygroundField, type PlaygroundPreset } from '@crucible/client';
+import { CrucibleClient, type ModelInfo, type PlaygroundField, type PlaygroundPreset } from '@crucible/client';
 
 import { Refusal } from './refusal';
 import type { StoredServer } from './servers';
-import { SONG_MODEL, type NumberField, type Preset, type ServerProbe, type SongForm, type SongPage } from '../types';
+import { SONG_MODEL, TAG_MODELS, type NumberField, type Preset, type ServerProbe, type SongForm, type SongPage } from '../types';
 
 /** The app's name; each install adds its own (`b-sides@<host>`), set by the hub that runs it. */
 export const APP_CLIENT = 'b-sides';
@@ -72,8 +72,34 @@ function numberField(field: PlaygroundField | undefined): NumberField | null {
 }
 
 /** `GET /v1/playground`, read down to the `yue2-3b` audio page. */
+/**
+ * Which tag model (TAG_MODELS, best first) this server gets, from what it publishes: its
+ * models' memory estimates against its card's total, the same test the server itself
+ * refuses a load by. Among the ones that fit, one already installed wins (no download
+ * on the first describe); else the best that fits, which installs on its first use.
+ * A model the server's build does not have, or not for its backend, is not a choice.
+ */
+export function chooseTagModel(models: readonly ModelInfo[], cardBytes: number): { model: string | null; reason: string | null } {
+  const gib = (bytes: number): string => `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
+  const fitting: ModelInfo[] = [];
+  const why: string[] = [];
+  for (const id of TAG_MODELS) {
+    const row = models.find((m) => m.id === id);
+    if (row === undefined) why.push(`${id} is not in this server's build`);
+    else if (!row.backendSupported) why.push(`${id} has no build for this server's backend`);
+    else if (row.memoryBytesEstimate !== null && row.memoryBytesEstimate > cardBytes) {
+      why.push(`${id} needs ${gib(row.memoryBytesEstimate)} and the card has ${gib(cardBytes)}`);
+    } else fitting.push(row);
+  }
+  const chosen = fitting.find((row) => row.installed) ?? fitting[0];
+  if (chosen !== undefined) return { model: chosen.id, reason: null };
+  return { model: null, reason: `No tag model fits this server: ${why.join('; ')}.` };
+}
+
 export async function songPage(server: StoredServer): Promise<SongPage> {
-  const pages = await clientFor(server).playground();
+  const client = clientFor(server);
+  const [pages, models, info] = await Promise.all([client.playground(), client.models(), client.info({ timeoutMs: INFO_MS })]);
+  const tagModel = chooseTagModel(models, info.host.gpu.vramBytes);
   const page = pages.find((p) => p.id === SONG_MODEL && p.jobType === 'audio');
   if (page === undefined) {
     throw new Refusal('unknown_model', `${server.name} has no ${SONG_MODEL} song model (its build does not declare one).`);
@@ -101,6 +127,8 @@ export async function songPage(server: StoredServer): Promise<SongPage> {
     instrumental: named('instrumental') !== undefined,
     cfg: numberField(named('cfg')),
     seed: numberField(named('seed')),
+    tagModel: tagModel.model,
+    tagModelReason: tagModel.reason,
   };
 }
 

@@ -4,7 +4,7 @@
  * 'music in the style of one must fall 2097 dos game' or 'smooth lo fi with
  * jazz/sax'").
  *
- * A small chat model on the same Crucible server (`TAG_MODEL`) reads the
+ * A small chat model on the same Crucible server (the song page's `tagModel`) reads the
  * description and answers structured fields — language, genre, mood, vocal,
  * instruments, sound, tempo, instrumental — held to a JSON schema, so the answer
  * is always parseable and always the right shape. B-Sides then lays the fields out
@@ -26,7 +26,7 @@ import { CrucibleRefused, type CrucibleClient } from '@crucible/client';
 import { chatSeed } from './crucible';
 import { Refusal } from './refusal';
 import { clashesWith, clashText, indexOfTag, withoutVoice } from '../tags';
-import { TAG_MODEL, type DescribeResult, type SongPage } from '../types';
+import type { DescribeResult, SongPage } from '../types';
 
 const MAX_DESCRIPTION = 600;
 const PHRASE_MAX = 48;
@@ -98,12 +98,12 @@ export function tagPrompt(page: SongPage, wantsInstrumental = false): string {
 }
 
 /** Read and check the model's answer. A malformed one is a refusal that says so, never a guess. */
-export function readFields(content: string): TagFields {
+export function readFields(content: string, model: string): TagFields {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
   } catch {
-    throw new Refusal('describe_unreadable', `${TAG_MODEL} did not answer JSON: ${content.slice(0, 160)}`);
+    throw new Refusal('describe_unreadable', `${model} did not answer JSON: ${content.slice(0, 160)}`);
   }
   const fields = parsed as Partial<TagFields>;
   const list = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === 'string');
@@ -112,7 +112,7 @@ export function readFields(content: string): TagFields {
     || !list(fields.instruments) || !list(fields.sound) || typeof fields.bpm !== 'number' || typeof fields.instrumental !== 'boolean'
     || typeof fields.lyrics !== 'string'
   ) {
-    throw new Refusal('describe_unreadable', `${TAG_MODEL}'s answer is missing a field: ${content.slice(0, 160)}`);
+    throw new Refusal('describe_unreadable', `${model}'s answer is missing a field: ${content.slice(0, 160)}`);
   }
   return fields as TagFields;
 }
@@ -183,11 +183,13 @@ export async function describe(client: CrucibleClient, page: SongPage, descripti
     throw new Refusal('describe_too_long', `A description is at most ${MAX_DESCRIPTION} characters.`);
   }
   const brief = wantsInstrumental ? '' : lyricsBrief.trim().slice(0, MAX_LYRICS_BRIEF);
+  const model = page.tagModel;
+  if (model === null) throw new Refusal('no_tag_model', page.tagModelReason ?? 'This server has no tag model.');
   const started = Date.now();
   let content: string;
   try {
     const answer = await client.chat({
-      model: TAG_MODEL,
+      model,
       thinking: false,
       temperature: 0.5,
       seed: chatSeed(),
@@ -202,7 +204,7 @@ export async function describe(client: CrucibleClient, page: SongPage, descripti
       ],
     });
     if (answer.finishReason === 'length') {
-      throw new Refusal('describe_truncated', `${TAG_MODEL} ran out of room before it finished the tags; describe it again.`);
+      throw new Refusal('describe_truncated', `${model} ran out of room before it finished the tags; describe it again.`);
     }
     content = answer.content;
   } catch (error) {
@@ -212,7 +214,7 @@ export async function describe(client: CrucibleClient, page: SongPage, descripti
     }
     throw error;
   }
-  const fields = readFields(content);
+  const fields = readFields(content, model);
   // Asked for instrumental, it is instrumental whatever the model answered: no singer among the tags.
   const instrumental = wantsInstrumental || fields.instrumental;
   const tags = instrumental ? withoutVoice(composeTags({ ...fields, instrumental })) : composeTags(fields);
@@ -221,7 +223,7 @@ export async function describe(client: CrucibleClient, page: SongPage, descripti
     instrumental,
     lyrics: instrumental ? null : layLyrics(fields.lyrics) || null,
     clashes: clashesIn(tags, page),
-    model: TAG_MODEL,
+    model,
     seconds: (Date.now() - started) / 1000,
   };
 }

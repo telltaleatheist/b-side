@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 
 import { batchCount } from '@shared/batch';
 import { addTags, clashesWith, joinTags, splitTags, toggleTag, withoutVoice } from '@shared/tags';
-import { TAG_MODEL, type DescribeResult, type Preset, type RefusalView, type SongForm, type SongPage, type SongParams } from '@shared/types';
+import { type DescribeResult, type Preset, type RefusalView, type SongForm, type SongPage, type SongParams } from '@shared/types';
 
 import { HubService } from './hub.service';
 import { JobsService } from './jobs.service';
@@ -42,8 +42,8 @@ export class StudioService {
   readonly count = signal(1);
 
   // ── describe the music ─────────────────────────────────────────────────────
-  /** The chat model the hub asks, named in the hint. */
-  readonly tagModel = TAG_MODEL;
+  /** The chat model the hub asks on this server (the full one, or 4-bit on a small card), named in the hint. */
+  readonly tagModel = computed(() => this.page()?.tagModel ?? null);
   readonly description = signal('');
   readonly describing = signal(false);
   readonly described = signal<DescribeResult | null>(null);
