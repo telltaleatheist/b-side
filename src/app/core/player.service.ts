@@ -8,6 +8,7 @@ import { HubService, isNative } from './hub.service';
 import { JobsService } from './jobs.service';
 import { LibraryService } from './library.service';
 import { OfflineService } from './offline.service';
+import { PeersService } from './peers.service';
 
 const STORED_OUTPUT = 'bside.output';
 
@@ -16,13 +17,17 @@ export type PlaySource =
   | { readonly kind: 'takes' }
   | { readonly kind: 'playlist'; readonly id: string }
   /** A playlist in the phone's cloud (a B-Sides computer): streamed from it, or played from the phone's copy. */
-  | { readonly kind: 'cloud'; readonly id: string };
+  | { readonly kind: 'cloud'; readonly id: string }
+  /** A playlist in another B-Sides library on the network (`peer` is its id): played from that computer. */
+  | { readonly kind: 'peer'; readonly peer: string; readonly id: string };
 
 /** One thing the player can play, whichever list it came from. */
 export interface PlayItem {
   /** `take:<id>` or `song:<id>`: unique across both lists. */
   readonly key: string;
-  readonly kind: 'take' | 'song' | 'cloud';
+  readonly kind: 'take' | 'song' | 'cloud' | 'peer';
+  /** For a song in another library on the network: which one (its id in routes). */
+  readonly peer?: string;
   readonly id: string;
   readonly title: string;
   readonly tags: string | null;
@@ -85,6 +90,7 @@ export class PlayerService {
   private readonly jobs = inject(JobsService);
   private readonly offline = inject(OfflineService);
   private readonly cloud = inject(CloudService);
+  private readonly peers = inject(PeersService);
 
   readonly source = signal<PlaySource>({ kind: 'takes' });
   /** Everything queued, in play order: what played, what is playing, what comes next. */
@@ -111,6 +117,7 @@ export class PlayerService {
   readonly items = computed<PlayItem[]>(() => {
     const source = this.source();
     if (source.kind === 'takes') return this.library.takes().map(itemOfTake);
+    if (source.kind === 'peer') return this.peerItems(source.peer, source.id);
     const playlist = this.library.playlist(source.id);
     if (source.kind === 'cloud') {
       const remote = this.cloud.playlist(source.id);
@@ -127,6 +134,11 @@ export class PlayerService {
     const source = this.source();
     if (source.kind === 'takes') return 'Playing list';
     if (source.kind === 'cloud') return this.cloud.playlist(source.id)?.name ?? 'A playlist no longer in the cloud';
+    if (source.kind === 'peer') {
+      const peer = this.peers.byId(source.peer);
+      const name = this.peers.playlist(source.peer, source.id)?.name ?? 'A playlist no longer there';
+      return peer === null ? name : `${name} · ${this.peers.name(peer)}`;
+    }
     return this.library.playlist(source.id)?.name ?? 'A deleted playlist';
   });
 
@@ -402,7 +414,8 @@ export class PlayerService {
    * A playlist's songs as queue items (all of them, or just `songs`), for Play
    * next and Add to queue: a local playlist, or one in the cloud (`cloud`).
    */
-  itemsOf(playlistId: string, cloud: boolean, songs?: readonly Song[]): PlayItem[] {
+  itemsOf(playlistId: string, cloud: boolean, songs?: readonly Song[], peer?: string): PlayItem[] {
+    if (peer !== undefined) return this.peerItems(peer, playlistId, songs);
     if (cloud) {
       const remote = this.cloud.playlist(playlistId);
       if (remote === null) return [];
@@ -413,6 +426,21 @@ export class PlayerService {
     if (playlist === null) return [];
     const art = (playlist.album ? this.hub.coverUrl(playlist) : null);
     return (songs ?? this.library.songsOf(playlist)).map((song) => itemOfSong(song, art));
+  }
+
+  /** Play a playlist in another library on the network, from `song` (or its first song). */
+  playPeer(peer: string, playlistId: string, song?: Song): void {
+    const items = this.peerItems(peer, playlistId);
+    const first = song === undefined ? items[0] : items.find((item) => item.id === song.id);
+    if (first !== undefined) this.play(first, { kind: 'peer', peer, id: playlistId });
+  }
+
+  /** A playlist of another library's songs as play items, each played from that computer. */
+  private peerItems(peer: string, playlistId: string, songs?: readonly Song[]): PlayItem[] {
+    const playlist = this.peers.playlist(peer, playlistId);
+    if (playlist === null) return [];
+    const art = playlist.album ? this.peers.coverUrl(peer, playlist) : null;
+    return (songs ?? this.peers.songsOf(peer, playlist)).map((song) => ({ ...itemOfSong(song, art), key: `peer:${peer}:${song.id}`, kind: 'peer' as const, peer }));
   }
 
   /** Play a playlist from `song` (or from its first song). */
@@ -471,7 +499,9 @@ export class PlayerService {
         ? this.offline.urlOf(item.id) ?? this.hub.audioUrl('songs', item.id)
         : item.kind === 'cloud'
           ? this.offline.urlOf(item.id) ?? this.cloud.audioUrl(item.id)
-          : this.hub.audioUrl('takes', item.id),
+          : item.kind === 'peer'
+            ? this.peers.audioUrl(item.peer ?? '', item.id)
+            : this.hub.audioUrl('takes', item.id),
       title: item.title,
       artist: item.tags ?? 'B-Sides',
       album: from,

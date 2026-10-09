@@ -210,3 +210,12 @@ test('a song\'s lyrics can be set (and its title kept)', async () => {
   expect(after.songs.find((s) => s.id === song.id)?.params).toMatchObject({ lyrics: '[verse]\nhello there', instrumental: false });
   expect(after.songs.find((s) => s.id === song.id)?.title).toBe('words');
 });
+
+test('another B-Sides reads who this one is, and its library, with the address alone', async () => {
+  const info = (await (await fetch(`${base}/api/info`, { headers: tab })).json()) as { app: string; hostname: string };
+  expect(info.app).toBe('b-side');
+  expect(typeof info.hostname).toBe('string');
+  const library = await fetch(`${base}/api/library`, { headers: tab });
+  expect(library.status).toBe(200);
+  expect(library.headers.get('access-control-allow-origin')).toBe('*');
+});

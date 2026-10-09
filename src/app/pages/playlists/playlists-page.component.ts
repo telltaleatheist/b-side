@@ -16,6 +16,7 @@ import { LibraryService } from '../../core/library.service';
 import { OfflineService } from '../../core/offline.service';
 import { jobCancellable, jobEnded, jobShare, jobStatus, jobTitle } from '../../core/job-status';
 import { JobsService } from '../../core/jobs.service';
+import { PeersService, peerId } from '../../core/peers.service';
 import { PlayerService } from '../../core/player.service';
 
 /**
@@ -29,13 +30,15 @@ import { PlayerService } from '../../core/player.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, CoverComponent, IconComponent],
   template: `
-    <div class="page" [attr.data-drop-playlist]="isCloud() ? null : (selected()?.id ?? null)">
+    <div class="page" [attr.data-drop-playlist]="remote() ? null : (selected()?.id ?? null)">
       @if (selected(); as playlist) {
         <a class="back" routerLink="/library"><app-icon name="chevron" [size]="16" class="flip" />Library</a>
         <header class="head">
-          <app-cover class="head-art" [key]="playlist.id" [src]="isCloud() ? cloud.coverUrl(playlist) : hub.coverUrl(playlist)" />
+          <app-cover class="head-art" [key]="playlist.id" [src]="coverOf(playlist)" />
           <div class="head-text">
-            @if (isCloud()) {
+            @if (isPeer()) {
+              <span class="kicker">{{ playlist.album ? 'Album' : 'Playlist' }} · in {{ peerName() }}'s library</span>
+            } @else if (isCloud()) {
               <span class="kicker">{{ playlist.album ? 'Album' : 'Playlist' }} · in the cloud on {{ cloud.host() }}</span>
             } @else if (playlist.album; as album) {
               <span class="kicker" [class.amber]="busy(album.stage) && !interrupted(album)">Album · {{ interrupted(album) ? 'interrupted' : stageWords(album.stage) }}</span>
@@ -73,30 +76,32 @@ import { PlayerService } from '../../core/player.service';
               <span class="head-sub">{{ songs().length }} {{ songs().length === 1 ? 'song' : 'songs' }}{{ total() }}</span>
             }
             <div class="head-actions">
-              <button type="button" class="primary" [disabled]="songs().length === 0" (click)="isCloud() ? player.playCloud(playlist.id) : player.playPlaylist(playlist.id)"><app-icon name="play" [size]="18" />Play</button>
+              <button type="button" class="primary" [disabled]="songs().length === 0" (click)="playAll(playlist)"><app-icon name="play" [size]="18" />Play</button>
               <button type="button" class="icon-btn outlined" aria-label="Play next" title="Play next: right after the song playing" [disabled]="songs().length === 0"
                       (click)="queue(playlist, true)"><app-icon name="play-next" [size]="18" /></button>
               <button type="button" class="icon-btn outlined" aria-label="Add to queue" title="Add to queue: at the end" [disabled]="songs().length === 0"
                       (click)="queue(playlist, false)"><app-icon name="queue-add" [size]="18" /></button>
-              @if (!isCloud() && cloud.linked() && playlist.album && !busy(playlist.album.stage)) {
+              @if (!remote() && cloud.linked() && playlist.album && !busy(playlist.album.stage)) {
                 <button type="button" class="ghost" [disabled]="cloud.saving() !== null" (click)="saveToCloud(playlist)">
                   <app-icon name="cloud" [size]="18" />{{ cloud.saving()?.playlist === playlist.id ? 'Saving ' + cloud.saving()!.done + ' of ' + cloud.saving()!.of + '…' : 'Save to cloud' }}
                 </button>
               }
-              @if (!isCloud() && canContinue()) {
+              @if (!remote() && canContinue()) {
                 <button type="button" class="ghost" (click)="continueAlbum(playlist)"><app-icon name="play-next" [size]="18" />{{ playlist.album?.stage === 'done' ? 'Make the missing tracks' : 'Continue making it' }}</button>
               }
-              @if (!isCloud() && playlist.album && busy(playlist.album.stage) && !interrupted(playlist.album)) {
+              @if (!remote() && playlist.album && busy(playlist.album.stage) && !interrupted(playlist.album)) {
                 <button type="button" class="ghost stop" (click)="stopAlbum(playlist)"><app-icon name="close" [size]="16" />Stop making it</button>
               }
-              @if (!isCloud()) {
+              @if (!remote()) {
                 <button type="button" class="icon-btn outlined" aria-label="Rename" title="Rename" (click)="renaming.set('playlist')"><app-icon name="edit" [size]="18" /></button>
               }
+              @if (!isPeer()) {
               <button type="button" class="icon-btn outlined" [attr.aria-label]="isCloud() ? 'Delete from the cloud' : 'Delete'" [title]="isCloud() ? 'Delete from the cloud' : 'Delete'" (click)="deletePlaylist(playlist)"><app-icon name="trash" [size]="18" /></button>
+              }
             </div>
           </div>
         </header>
-        @if (offline.offered() && (isCloud() || !hub.onPhone())) {
+        @if (!isPeer() && offline.offered() && (isCloud() || !hub.onPhone())) {
           <label class="keep switch">
             <input type="checkbox" [checked]="offline.kept().has(playlist.id)" (change)="offline.keep(playlist.id, $any($event.target).checked)" />
             <span>Keep on this phone</span>
@@ -134,7 +139,7 @@ import { PlayerService } from '../../core/player.service';
               <div class="actions">
                 <button type="button" class="icon-btn" aria-label="Play next" title="Play next" (click)="queue(playlist, true, song)"><app-icon name="play-next" [size]="18" /></button>
                 <button type="button" class="icon-btn" aria-label="Add to queue" title="Add to queue" (click)="queue(playlist, false, song)"><app-icon name="queue-add" [size]="18" /></button>
-              @if (!isCloud()) {
+              @if (!remote()) {
                 <button type="button" class="icon-btn" aria-label="Move up" title="Move up" [disabled]="at === 0" (click)="move(playlist, at, -1)"><app-icon name="down" [size]="18" class="flip-v" /></button>
                 <button type="button" class="icon-btn" aria-label="Move down" title="Move down" [disabled]="at === songs().length - 1" (click)="move(playlist, at, 1)"><app-icon name="down" [size]="18" /></button>
                 <button type="button" class="icon-btn" aria-label="Rename" title="Rename" (click)="renaming.set(song.id)"><app-icon name="edit" [size]="16" /></button>
@@ -212,6 +217,23 @@ import { PlayerService } from '../../core/player.service';
             <p class="hint">{{ cloud.linked() ? 'Nothing kept only on this phone.' : 'No playlists yet. Save a song from the playing list, or make one here.' }}</p>
           }
         </div>
+        @for (peer of peers.present(); track peer.url) {
+          <div class="cloud-head">
+            <h2 class="section-title">{{ peers.name(peer) }}'s library</h2>
+            <span class="mono hint">{{ peer.library?.songs?.length ?? 0 }} songs · on the network</span>
+          </div>
+          <div class="grid">
+            @for (playlist of peer.library?.playlists ?? []; track playlist.id) {
+              <a class="tile" [routerLink]="['/peer', peerId(peer), playlist.id]">
+                <app-cover class="tile-art" [key]="playlist.id" [src]="peers.coverUrl(peerId(peer), playlist)" />
+                <span class="tile-name">{{ playlist.name }}</span>
+                <span class="tile-sub">{{ playlist.album ? (playlist.album.artist || 'Album') : playlist.songs.length + (playlist.songs.length === 1 ? ' song' : ' songs') }}</span>
+              </a>
+            } @empty {
+              <p class="hint">Nothing in it yet.</p>
+            }
+          </div>
+        }
         @if (cloud.linked()) {
           <div class="cloud-head">
             <h2 class="section-title">In the cloud</h2>
@@ -323,6 +345,17 @@ export class PlaylistsPageComponent {
   protected readonly cloud = inject(CloudService);
   /** `/cloud/<id>`: a playlist in the phone's cloud (read from the computer), not one of the phone's own. */
   protected readonly isCloud = toSignal(this.route.data.pipe(map((data) => data['cloud'] === true)), { initialValue: false });
+  protected readonly peers = inject(PeersService);
+  /** `/peer/<host>/<id>`: a playlist in another B-Sides library on the network, read and played from there. */
+  protected readonly isPeer = toSignal(this.route.data.pipe(map((data) => data['peer'] === true)), { initialValue: false });
+  private readonly peerKey = toSignal(this.route.paramMap.pipe(map((params) => params.get('peer') ?? '')), { initialValue: '' });
+  /** Not this library's own: nothing on it is edited from here. */
+  protected readonly remote = computed(() => this.isCloud() || this.isPeer());
+  protected readonly peerName = computed(() => {
+    const peer = this.peers.byId(this.peerKey());
+    return peer === null ? this.peerKey() : this.peers.name(peer);
+  });
+  protected readonly peerId = peerId;
   protected readonly newName = signal('');
   protected readonly renaming = signal<string | null>(null);
   protected readonly refusal = signal<RefusalView | null>(null);
@@ -330,12 +363,14 @@ export class PlaylistsPageComponent {
   protected readonly selected = computed<Playlist | null>(() => {
     const id = this.chosen();
     if (id === null) return null;
+    if (this.isPeer()) return this.peers.playlist(this.peerKey(), id);
     return this.isCloud() ? this.cloud.playlist(id) : (this.library.playlist(id) ?? null);
   });
 
   protected readonly songs = computed(() => {
     const playlist = this.selected();
     if (playlist === null) return [];
+    if (this.isPeer()) return this.peers.songsOf(this.peerKey(), playlist);
     return this.isCloud() ? this.cloud.songsOf(playlist) : this.library.songsOf(playlist);
   });
 
@@ -441,26 +476,39 @@ export class PlaylistsPageComponent {
   }
 
   protected isCurrent(song: Song): boolean {
-    return this.player.current()?.key === `${this.isCloud() ? 'cloud' : 'song'}:${song.id}`;
+    const key = this.isPeer() ? `peer:${this.peerKey()}:${song.id}` : `${this.isCloud() ? 'cloud' : 'song'}:${song.id}`;
+    return this.player.current()?.key === key;
   }
 
   protected alsoIn(song: Song, here: Playlist): string | null {
-    if (this.isCloud()) return null;
+    if (this.remote()) return null;
     const others = this.library.holding(song.id).filter((playlist) => playlist.id !== here.id).map((playlist) => playlist.name);
     return others.length === 0 ? null : others.join(', ');
   }
 
   /** Play next (`next`) or Add to queue: the whole playlist, or one song of it. */
   protected queue(playlist: Playlist, next: boolean, song?: Song): void {
-    const items = this.player.itemsOf(playlist.id, this.isCloud(), song === undefined ? undefined : [song]);
+    const items = this.player.itemsOf(playlist.id, this.isCloud(), song === undefined ? undefined : [song], this.isPeer() ? this.peerKey() : undefined);
     if (next) this.player.playNext(items, playlist.name);
     else this.player.addToQueue(items, playlist.name);
   }
 
   protected play(playlist: Playlist, song: Song, event: MouseEvent): void {
     if ((event.target as HTMLElement).closest('button, input')) return;
-    if (this.isCloud()) this.player.playCloud(playlist.id, song);
+    if (this.isPeer()) this.player.playPeer(this.peerKey(), playlist.id, song);
+    else if (this.isCloud()) this.player.playCloud(playlist.id, song);
     else this.player.playPlaylist(playlist.id, song);
+  }
+
+  protected playAll(playlist: Playlist): void {
+    if (this.isPeer()) this.player.playPeer(this.peerKey(), playlist.id);
+    else if (this.isCloud()) this.player.playCloud(playlist.id);
+    else this.player.playPlaylist(playlist.id);
+  }
+
+  protected coverOf(playlist: Playlist): string | null {
+    if (this.isPeer()) return this.peers.coverUrl(this.peerKey(), playlist);
+    return this.isCloud() ? this.cloud.coverUrl(playlist) : this.hub.coverUrl(playlist);
   }
 
   protected async create(): Promise<void> {

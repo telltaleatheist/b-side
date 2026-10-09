@@ -5,6 +5,7 @@ import { ALBUM_SPACE_GB, type HubPreferences, type HubSettingsView, type Refusal
 
 import { copyText } from '../../core/clipboard';
 import { CloudService } from '../../core/cloud.service';
+import { PeersService } from '../../core/peers.service';
 import { desktop, HubService, isNative, parseHubLink } from '../../core/hub.service';
 import { PlayerService } from '../../core/player.service';
 import { LibraryService } from '../../core/library.service';
@@ -202,12 +203,41 @@ import { ServersCardComponent } from './servers-card.component';
         }
       </div>
 
+      <div class="card">
+        <h2 class="card-title">Other libraries</h2>
+        <p class="detail">Another B-Sides on your network, added by its address: its songs show in your Library and play from there. Nothing is copied. When it is off or away, it is simply not listed. On that computer: Settings → Other devices → turn on sharing.</p>
+        @for (peer of peers.peers(); track peer.url) {
+          <div class="link">
+            <span class="peer-dot" [class.ok]="peer.state === 'ok'" [class.away]="peer.state === 'away'"></span>
+            <span class="peer-names">
+              <span>{{ peers.name(peer) }}</span>
+              <span class="hint mono">{{ peer.url }} · {{ peer.state === 'ok' ? (peer.library?.songs?.length ?? 0) + ' songs' : peer.state === 'away' ? 'not answering now' : 'looking…' }}</span>
+            </span>
+            <button type="button" class="ghost small" (click)="peers.remove(peer.url)">Remove</button>
+          </div>
+        }
+        <form class="link peer-add" (submit)="$event.preventDefault(); addPeer()">
+          <input type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Its address"
+                 placeholder="its address, like 192.168.68.50" [value]="peerAddress()" (input)="peerAddress.set($any($event.target).value)" />
+          <input type="text" maxlength="40" aria-label="What to call it" placeholder="name (optional), like Victoria"
+                 [value]="peerLabel()" (input)="peerLabel.set($any($event.target).value)" />
+          <button type="submit" class="primary small" [disabled]="peerAddress().trim() === '' || peerAdding()">{{ peerAdding() ? 'Looking…' : 'Add' }}</button>
+        </form>
+        @if (peerNote(); as note) { <p class="hint">{{ note }}</p> }
+      </div>
+
       @if (refusal(); as refused) {
         <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
       }
     </div>
   `,
   styles: [`
+    .peer-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted); flex: none; }
+    .peer-dot.ok { background: #5fbf7a; }
+    .peer-dot.away { background: var(--warn); }
+    .peer-names { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .peer-add { flex-wrap: wrap; }
+    .peer-add input { flex: 1; min-width: 160px; }
     :host { display: block; height: 100%; overflow-y: auto; }
     .page { max-width: 860px; margin: 0 auto; padding: 18px 20px 32px; display: flex; flex-direction: column; gap: 16px; }
 
@@ -257,6 +287,22 @@ export class SettingsPageComponent {
     this.outputs.set(devices.filter((d) => d.kind === 'audiooutput' && d.deviceId !== 'default' && d.deviceId !== 'communications'));
   }
   protected readonly cloud = inject(CloudService);
+  protected readonly peers = inject(PeersService);
+  protected readonly peerAddress = signal('');
+  protected readonly peerLabel = signal('');
+  protected readonly peerAdding = signal(false);
+  protected readonly peerNote = signal<string | null>(null);
+
+  protected async addPeer(): Promise<void> {
+    this.peerAdding.set(true);
+    const note = await this.peers.add(this.peerAddress(), this.peerLabel());
+    this.peerAdding.set(false);
+    this.peerNote.set(note);
+    if (note === null || note.includes('stays added')) {
+      this.peerAddress.set('');
+      this.peerLabel.set('');
+    }
+  }
   protected readonly cloudLink = signal('');
   protected readonly cloudLinkWrong = signal(false);
 

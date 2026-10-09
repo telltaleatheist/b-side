@@ -647,6 +647,8 @@ export class HubCore {
 
     // ── the library: saved songs and playlists ──────────────────────────────
     this.route('GET', '/api/library', () => this.libraryView());
+    // Who this hub is (its computer's name), for another B-Sides listing its library.
+    this.route('GET', '/api/info', () => this.options.info);
     this.route('PATCH', '/api/songs/:id', async (request) => {
       const id = request.params['id'] as string;
       const body = await request.body();
