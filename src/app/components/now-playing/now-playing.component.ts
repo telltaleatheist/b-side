@@ -28,9 +28,28 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
     '[class.pulling]': 'held()',
     '[style.transform]': "pull() > 0 ? 'translateY(' + pull() + 'px)' : null",
     '(keydown.escape)': 'close()',
+    '(scroll)': 'scrolled()',
   },
   template: `
     <div class="frame" [appSwipe]="panel() ? 'x' : 'y'" (swipeMove)="pulling($event)" (swipeEnd)="pulled($event)" (swipeCancel)="pull.set(0)">
+    @if (!panel() && player.current(); as item) {
+      <!-- Scrolled down into the lyrics, the player folds into a bar at the top, as the mini player
+           sits at the bottom elsewhere; scrolled back up, it unfolds into the full controls. -->
+      <div class="fold-bar" [class.shown]="folded()" [attr.aria-hidden]="!folded()">
+        <button type="button" class="fold-open" aria-label="Back to the controls" (click)="unfold()">
+          <app-cover class="fold-art" [key]="coverKey(item)" [src]="item.art" />
+          <span class="fold-names">
+            <span class="fold-title">{{ item.title }}</span>
+            <span class="fold-sub">{{ item.tags ?? player.sourceName() }}</span>
+          </span>
+        </button>
+        <button type="button" class="icon-btn" [attr.aria-label]="player.paused() ? 'Play' : 'Pause'" (click)="player.toggle()">
+          <app-icon [name]="player.paused() ? 'play' : 'pause'" [size]="26" />
+        </button>
+        <button type="button" class="icon-btn" aria-label="Next" [disabled]="!player.hasNext()" (click)="player.next()"><app-icon name="next" /></button>
+        <div class="fold-line"><span [style.width.%]="player.progress() * 100"></span></div>
+      </div>
+    }
     @if (mode() === 'sheet') {
       <div class="grabber" aria-hidden="true"></div>
       <div class="top">
@@ -100,7 +119,7 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
         <div class="times mono"><span>{{ clock(scrubbing() ?? player.time()) }}</span><span>-{{ clock(remaining()) }}</span></div>
       </div>
 
-      <div class="controls">
+      <div class="controls" #controls>
         <button type="button" class="icon-btn toggle" aria-label="Shuffle" [class.on]="player.shuffle()" [attr.aria-pressed]="player.shuffle()" (click)="player.toggleShuffle()"><app-icon name="shuffle" [size]="22" /></button>
         <button type="button" class="icon-btn big" aria-label="Previous" [disabled]="!player.hasPrevious()" (click)="player.previous()"><app-icon name="prev" [size]="30" /></button>
         <button type="button" class="play" [attr.aria-label]="player.paused() ? 'Play' : 'Pause'" (click)="player.toggle()">
@@ -174,15 +193,35 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
     }
     :host(.panel) { padding: 24px 20px; min-height: 0; overflow-y: auto; }
     .frame { display: flex; flex-direction: column; gap: 18px; min-height: 100%; }
-    :host(.sheet) { overscroll-behavior: none; transition: transform 340ms cubic-bezier(0.22, 1, 0.36, 1); }
+    :host(.sheet) { overscroll-behavior: none; transition: transform 340ms cubic-bezier(0.22, 1, 0.36, 1); scroll-snap-type: y proximity; }
+    :host(.sheet) .frame { scroll-snap-align: start; }
+    :host(.sheet) .lyrics-section { scroll-snap-align: start; scroll-margin-top: calc(env(safe-area-inset-top) + 76px); }
     :host(.sheet.pulling) { transition: none; }
     .grabber { align-self: center; width: 38px; height: 5px; margin-bottom: -10px; border-radius: 3px; background: rgba(255,255,255,.25); }
     .art-swipe { width: 100%; max-width: 420px; align-self: center; transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 300ms ease; touch-action: pan-y; }
     .lyrics-section { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
     .art-swipe.moving { transition: none; }
     .art-swipe .art { max-width: none; }
+    .fold-bar {
+      position: fixed; z-index: 5; left: 0; right: 0; top: 0;
+      display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+      padding: calc(env(safe-area-inset-top) + 8px) 14px 8px;
+      background: rgba(19, 22, 26, 0.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      transform: translateY(-110%); opacity: 0; pointer-events: none;
+      transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease;
+    }
+    .fold-bar.shown { transform: none; opacity: 1; pointer-events: auto; }
+    .fold-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0; border: none; background: transparent; text-align: left; color: inherit; }
+    .fold-art { width: 44px; --cover-radius: 6px; }
+    .fold-names { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .fold-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fold-sub { font-size: 12px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fold-line { flex-basis: 100%; height: 2px; margin-top: 6px; background: #2e2924; border-radius: 2px; overflow: hidden; }
+    .fold-line span { display: block; height: 100%; background: var(--accent); }
     .lyrics-card {
-      height: min(70vh, 620px); overflow-y: auto; padding: 22px 20px 40vh; border-radius: 14px;
+      /* Scrolled all the way, the lyrics fill the screen below the folded bar. */
+      height: calc(100dvh - env(safe-area-inset-top) - 96px); overflow-y: auto; padding: 22px 20px 40vh; border-radius: 14px;
       background: linear-gradient(160deg, #6b3a1f 0%, #3a2117 55%, #1d1410 100%);
       display: flex; flex-direction: column; gap: 10px; scroll-behavior: smooth;
       -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 60px), transparent 100%);
@@ -334,6 +373,25 @@ export class NowPlayingComponent {
         if (element !== null) card.scrollTo({ top: element.offsetTop - card.clientHeight * 0.38, behavior: 'smooth' });
       });
     });
+  }
+
+  private readonly controls = viewChild<ElementRef<HTMLElement>>('controls');
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  /** Scrolled past the controls: the player is the bar at the top. */
+  protected readonly folded = signal(false);
+
+  /** Folded once the controls have scrolled up under where the bar sits. */
+  protected scrolled(): void {
+    if (this.mode() !== 'sheet') return;
+    const controls = this.controls()?.nativeElement;
+    if (controls === undefined) return;
+    const top = this.host.nativeElement.getBoundingClientRect().top;
+    this.folded.set(controls.getBoundingClientRect().bottom - top < 70);
+  }
+
+  /** The bar tapped: back up to the full controls. */
+  protected unfold(): void {
+    this.host.nativeElement.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   protected touchedLyrics(): void {
