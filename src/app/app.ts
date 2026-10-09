@@ -1,6 +1,6 @@
-import { NgTemplateOutlet } from '@angular/common';
+import { Location, NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
 import { ConfirmDialogComponent } from './components/confirm-dialog/confirm-dialog.component';
 import { CoverComponent } from './components/cover/cover.component';
@@ -13,6 +13,7 @@ import { SINGLES_NAME } from '@shared/types';
 
 import { HubService } from './core/hub.service';
 import { ImportService } from './core/import.service';
+import { SwipeDirective, type Swipe } from './core/swipe.directive';
 import { LibraryService } from './core/library.service';
 import { PlayerService } from './core/player.service';
 import { UiService } from './core/ui.service';
@@ -47,7 +48,7 @@ interface Room {
   },
   imports: [
     NgTemplateOutlet, RouterOutlet, RouterLink, RouterLinkActive, ConfirmDialogComponent, HubPickerComponent, CoverComponent,
-    IconComponent, MiniPlayerComponent, NowPlayingComponent, PlayerBarComponent,
+    IconComponent, MiniPlayerComponent, NowPlayingComponent, PlayerBarComponent, SwipeDirective,
   ],
   template: `
     <div class="shell">
@@ -84,7 +85,8 @@ interface Room {
         <ng-container *ngTemplateOutlet="status" />
       </header>
 
-      <main class="room">
+      <main class="room" appSwipe="x" [swipeEdge]="30" (swipeMove)="edgeMove($event)" (swipeEnd)="edgeEnd($event)" (swipeCancel)="edgePull.set(0)"
+            [class.edge-moving]="edgePull() > 0" [style.transform]="edgePull() > 0 ? 'translateX(' + edgePull() + 'px)' : null">
         @if (hub.state() === 'key' || hub.state() === 'no-hub') {
           <div class="gate">
             <div class="card">
@@ -162,6 +164,8 @@ interface Room {
     </ng-template>
   `,
   styles: [`
+    .room { transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+    .room.edge-moving { transition: none; }
     .drop-hint, .import-toast {
       position: fixed; left: 50%; bottom: calc(var(--player-h, 80px) + 18px); transform: translateX(-50%); z-index: 80;
       display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: min(560px, calc(100vw - 32px));
@@ -320,6 +324,33 @@ export class App {
 
   private carriesFiles(event: DragEvent): boolean {
     return Array.from(event.dataTransfer?.types ?? []).includes('Files');
+  }
+
+  private readonly router = inject(Router);
+  private readonly location = inject(Location);
+  /** How far the page follows a swipe in from the left edge (px). */
+  protected readonly edgePull = signal(0);
+  /** Pages visited in this run: back goes through them, as iOS's own back swipe does. */
+  private visited = 0;
+
+  constructor() {
+    this.router.events.subscribe((event) => {
+      if (event instanceof NavigationEnd) this.visited += 1;
+    });
+  }
+
+  protected edgeMove(swipe: Swipe): void {
+    this.edgePull.set(Math.max(0, swipe.dx));
+  }
+
+  /** A swipe in from the left edge goes back a page: a playlist back to the Library, else the page before. */
+  protected edgeEnd(swipe: Swipe): void {
+    const far = swipe.dx > 90 || (swipe.vx ?? 0) > 0.5;
+    this.edgePull.set(0);
+    if (!far || swipe.dx <= 0) return;
+    const url = this.router.url;
+    if (/^\/(library|cloud)\/[^/]+/.test(url)) void this.router.navigate(['/library']);
+    else if (this.visited > 1) this.location.back();
   }
 
   /** `crucible@owens-pc-wsl` reads as `owens-pc-wsl`: the machine is what a person recognises. */

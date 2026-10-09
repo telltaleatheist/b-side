@@ -1,18 +1,23 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 
 import { PlayerService } from '../../core/player.service';
+import { SwipeDirective, type Swipe } from '../../core/swipe.directive';
 import { UiService } from '../../core/ui.service';
 import { CoverComponent } from '../cover/cover.component';
 import { IconComponent } from '../icon/icon.component';
 
-/** The phone's player: one row above the tabs on every screen; tap it for Now Playing. */
+/**
+ * The phone's player: one row above the tabs on every screen. Tap it, or swipe
+ * it up, for Now Playing; swipe it left for the next song, right for the one before.
+ */
 @Component({
   selector: 'app-mini-player',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CoverComponent, IconComponent],
+  imports: [CoverComponent, IconComponent, SwipeDirective],
   template: `
     @if (player.current(); as item) {
-      <div class="row">
+      <div class="row" appSwipe="xy" (swipeMove)="moved($event)" (swipeEnd)="swiped($event)" (swipeCancel)="shift.set(0)"
+           [class.moving]="shift() !== 0" [style.transform]="shift() ? 'translateX(' + shift() + 'px)' : null">
         <button type="button" class="open" aria-label="Open Now Playing" (click)="ui.nowPlayingOpen.set(true)">
           <app-cover class="art" [key]="item.id + (item.tags ?? '')" [src]="item.art" />
           <span class="names">
@@ -30,6 +35,8 @@ import { IconComponent } from '../icon/icon.component';
   `,
   styles: [`
     :host { display: block; padding: 0 10px; }
+    .row { transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1); touch-action: none; }
+    .row.moving { transition: none; }
     .row {
       display: flex; align-items: center; gap: 4px; padding: 6px;
       background: #1f1b17; border: 1px solid #2e2924; border-radius: 12px;
@@ -46,4 +53,21 @@ import { IconComponent } from '../icon/icon.component';
 export class MiniPlayerComponent {
   protected readonly player = inject(PlayerService);
   protected readonly ui = inject(UiService);
+  /** How far the row follows a sideways swipe (px). */
+  protected readonly shift = signal(0);
+
+  protected moved(swipe: Swipe): void {
+    this.shift.set(swipe.axis === 'x' ? swipe.dx * 0.6 : 0);
+  }
+
+  protected swiped(swipe: Swipe): void {
+    this.shift.set(0);
+    if (swipe.axis === 'y') {
+      if (swipe.dy < -30 || (swipe.vy ?? 0) < -0.4) this.ui.nowPlayingOpen.set(true);
+      return;
+    }
+    if (Math.abs(swipe.dx) < 70 && Math.abs(swipe.vx ?? 0) < 0.5) return;
+    if (swipe.dx < 0 && this.player.hasNext()) this.player.next();
+    else if (swipe.dx > 0) this.player.previous();
+  }
 }
