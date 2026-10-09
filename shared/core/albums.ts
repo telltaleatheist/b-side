@@ -116,6 +116,7 @@ function planPrompt(ask: AlbumAsk, count: number, page: SongPage | null): string
   return [
     'You plan a whole music album for an AI music model (YuE). Reply with JSON only.',
     `Make exactly ${count} tracks. ${ask.sung ? 'The album is sung: every track has a singer (the lyrics are written later).' : 'The album is instrumental: no vocals.'}`,
+    ...(ask.sung && ask.lyrics ? [`The lyrics will be: ${ask.lyrics}. Let the album and track titles fit them.`] : []),
     'title: a creative album title, 1-5 words, not generic.',
     'artist: an invented band or artist name that fits the sound, not a real artist.',
     'blurb: one sentence about the record, like a liner note.',
@@ -215,7 +216,7 @@ export async function writeLyrics(client: CrucibleClient, writer: string, plan: 
       { role: 'system', content: lyricsPrompt() },
       {
         role: 'user',
-        content: `Album: "${plan.title}" by ${plan.artist}. ${plan.blurb}\nWhat it is about: ${ask.description || ask.tags.join(', ')}\nWrite lyrics for:\n${asked}`,
+        content: `Album: "${plan.title}" by ${plan.artist}. ${plan.blurb}\nWhat it is about: ${ask.description || ask.tags.join(', ')}${ask.lyrics ? `\nThe lyrics: ${ask.lyrics}` : ''}\nWrite lyrics for:\n${asked}`,
       },
     ],
   });
@@ -237,7 +238,7 @@ export async function lyricsFor(client: CrucibleClient, page: SongPage, plan: Al
   const about = (ask.description.trim() || plan.blurb).slice(0, 240);
   const request = `A song called "${track.title}" from the album "${plan.title}" by ${plan.artist}. ${about} Sound: ${track.tags}`.slice(0, 580);
   try {
-    const written = await describe(client, page, request, false);
+    const written = await describe(client, page, request, false, ask.lyrics ?? '');
     return written.lyrics;
   } catch (error) {
     console.error(`[albums] the lyrics model did not write "${track.title}":`, error);

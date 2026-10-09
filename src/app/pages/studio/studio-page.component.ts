@@ -120,6 +120,15 @@ import { StudioService } from '../../core/studio.service';
                 <button type="button" class="chip" [class.on]="albumSung()" (click)="albumSung.set(true)">Sung</button>
               </div>
             </div>
+            @if (albumSung()) {
+              <div class="field">
+                <label class="label" for="album-lyrics">What the lyrics are about</label>
+                <textarea id="album-lyrics" rows="2" maxlength="400" spellcheck="true"
+                          placeholder="their mood, style or story: late-night regrets, wry and tender, told by a bartender"
+                          [value]="studio.lyricsBrief()" (input)="studio.lyricsBrief.set($any($event.target).value)"></textarea>
+                <p class="hint">Every track's lyrics are written to this, and the titles fit it. Blank: the album's description leads.</p>
+              </div>
+            }
             <p class="opt-note hint">The biggest chat model on {{ hub.activeServer()?.name }} writes the name, the artist and every track{{ albumSung() ? '; ' + studio.tagModel + ' writes the lyrics, a song per two minutes so ' + albumLength() + ' minutes is always filled' : '' }}; its image model paints the cover. All of that is done first, so the album comes out right; then the music is made, track by track, and fills in while you listen.</p>
           </div>
           @if (spaceFull()) {
@@ -157,6 +166,13 @@ import { StudioService } from '../../core/studio.service';
           </label>
         }
         @if (!studio.instrumental()) {
+          <div class="field">
+            <label class="label" for="lyrics-brief">What the lyrics are about</label>
+            <textarea id="lyrics-brief" rows="2" maxlength="400" spellcheck="true"
+                      placeholder="a banana going brown on the windowsill; bittersweet, a little funny"
+                      [value]="studio.lyricsBrief()" (input)="studio.lyricsBrief.set($any($event.target).value)"></textarea>
+            <p class="hint">Fill in the tags writes the lyrics to this. With the Lyrics box empty, Make writes them first.</p>
+          </div>
           <div class="field">
             <label class="label" for="lyrics">Lyrics</label>
             <textarea id="lyrics" rows="10" spellcheck="true"
@@ -345,6 +361,7 @@ export class StudioPageComponent {
       tags: this.studio.tags(),
       minutes: this.albumLength(),
       sung: this.albumSung(),
+      lyrics: this.albumSung() ? this.studio.lyricsBrief().trim() : '',
       cfg: this.studio.cfg().trim() === '' ? null : Number(this.studio.cfg()),
     });
     this.albumSending.set(false);

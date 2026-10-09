@@ -22,7 +22,7 @@ import type { CrucibleClient } from '@crucible/client';
 
 import { AlbumMaker } from './albums';
 import { clientFor, deletePreset, listPresets, probe, savePreset, setClientName, songPage } from './crucible';
-import { describe } from './describe';
+import { describe, MAX_LYRICS_BRIEF } from './describe';
 import { join, type Disk } from './disk';
 import { JobRunner, type AudioFetcher } from './jobs';
 import { Library, type ImportedAlbum } from './library';
@@ -567,7 +567,8 @@ export class HubCore {
     this.route('POST', '/api/describe', async (request) => {
       const server = this.registry.active();
       const body = await request.body();
-      return describe(clientFor(server), await songPage(server), text(body['text'], 'text'), body['instrumental'] === true);
+      const brief = typeof body['lyrics'] === 'string' ? body['lyrics'] : '';
+      return describe(clientFor(server), await songPage(server), text(body['text'], 'text'), body['instrumental'] === true, brief);
     });
     this.route('PUT', '/api/presets/:name', async (request) =>
       savePreset(this.registry.active(), request.params['name'] as string, (await request.body()) as unknown as SongForm));
@@ -584,7 +585,9 @@ export class HubCore {
       }
       if (!Array.isArray(tags) || !tags.every((tag) => typeof tag === 'string')) throw new Refusal('body_invalid', 'tags must be a list of text.');
       const cfg = typeof body['cfg'] === 'number' && Number.isFinite(body['cfg']) ? body['cfg'] : null;
-      const ask: AlbumAsk = { description: text(body['description'] ?? '', 'description').slice(0, 600), tags: tags as string[], minutes, sung: body['sung'] === true, cfg };
+      const sung = body['sung'] === true;
+      const lyrics = sung && typeof body['lyrics'] === 'string' ? body['lyrics'].trim().slice(0, MAX_LYRICS_BRIEF) : '';
+      const ask: AlbumAsk = { description: text(body['description'] ?? '', 'description').slice(0, 600), tags: tags as string[], minutes, sung, cfg, ...(lyrics ? { lyrics } : {}) };
       if (ask.description.trim() === '' && ask.tags.length === 0) {
         throw new Refusal('album_ask_empty', 'Describe the album, or pick some tags, first.');
       }

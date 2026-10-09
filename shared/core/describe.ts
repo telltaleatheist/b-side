@@ -173,12 +173,16 @@ export function clashesIn(tags: readonly string[], page: SongPage): string[] {
 }
 
 /** Ask the tag model for `description`'s tags. */
-export async function describe(client: CrucibleClient, page: SongPage, description: string, wantsInstrumental = false): Promise<DescribeResult> {
+/** How long a lyrics brief may be ("about a banana going brown, bittersweet, a little funny"). */
+export const MAX_LYRICS_BRIEF = 400;
+
+export async function describe(client: CrucibleClient, page: SongPage, description: string, wantsInstrumental = false, lyricsBrief = ''): Promise<DescribeResult> {
   const text = typeof description === 'string' ? description.trim() : '';
   if (text === '') throw new Refusal('describe_empty', 'Describe the music first, e.g. "smooth lo-fi with jazz sax".');
   if (text.length > MAX_DESCRIPTION) {
     throw new Refusal('describe_too_long', `A description is at most ${MAX_DESCRIPTION} characters.`);
   }
+  const brief = wantsInstrumental ? '' : lyricsBrief.trim().slice(0, MAX_LYRICS_BRIEF);
   const started = Date.now();
   let content: string;
   try {
@@ -193,7 +197,8 @@ export async function describe(client: CrucibleClient, page: SongPage, descripti
       responseFormat: { type: 'json_schema', json_schema: { name: 'song_tags', schema: SCHEMA, strict: true } },
       messages: [
         { role: 'system', content: tagPrompt(page, wantsInstrumental) },
-        { role: 'user', content: text },
+        // What the words should be about (Owen, 2026-10-09), said after the music, as a person would.
+        { role: 'user', content: brief === '' ? text : `${text}\nThe lyrics: ${brief}` },
       ],
     });
     if (answer.finishReason === 'length') {

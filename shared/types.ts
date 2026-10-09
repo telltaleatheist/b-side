@@ -400,6 +400,8 @@ export interface AlbumAsk {
   readonly tags: readonly string[];
   readonly minutes: number;
   readonly sung: boolean;
+  /** Sung albums: what the lyrics should be about, or their mood and style, in the person's words. */
+  readonly lyrics?: string;
   /** Guidance from the form (a preset's), sent with every track; null for the server's default. */
   readonly cfg?: number | null;
 }

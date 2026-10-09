@@ -83,3 +83,21 @@ test('lyrics with double spaces for line breaks come out one line per line, sect
   expect(layLyrics('[verse]  The kitchen lights are low,  The vinyl spins.  [Chorus]  Dancing with you,  my love.'))
     .toBe('[verse]\nThe kitchen lights are low,\nThe vinyl spins.\n\n[chorus]\nDancing with you,\nmy love.');
 });
+
+import { describe as describeMusic } from '../shared/core/describe';
+
+test('what the lyrics are about rides after the description, and never on an instrumental', async () => {
+  const sent: string[] = [];
+  const client = {
+    chat: async (options: { messages: { role: string; content: string }[] }) => {
+      sent.push(options.messages[options.messages.length - 1]?.content ?? '');
+      return { content: JSON.stringify(fields), finishReason: 'stop' };
+    },
+  } as never;
+  await describeMusic(client, page, 'retro soul ballad', false, 'a banana going brown, bittersweet');
+  expect(sent[0]).toBe('retro soul ballad\nThe lyrics: a banana going brown, bittersweet');
+  const answer = await describeMusic(client, page, 'retro soul ballad', true, 'a banana going brown');
+  expect(sent[1]).toBe('retro soul ballad');
+  expect(answer.lyrics).toBeNull();
+  expect(answer.tags.some((tag) => /voice/i.test(tag))).toBe(false);
+});

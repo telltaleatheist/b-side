@@ -34,6 +34,8 @@ export class StudioService {
   readonly tags = signal<string[]>([]);
   readonly lyrics = signal('');
   readonly instrumental = signal(false);
+  /** What the lyrics should be about, or their mood and style (Owen, 2026-10-09): a song's, or a sung album's. */
+  readonly lyricsBrief = signal('');
   /** As typed; blank sends nothing and the server's default applies. */
   readonly cfg = signal('');
   readonly seed = signal('');
@@ -122,7 +124,9 @@ export class StudioService {
     const started = Date.now();
     this.describeElapsed.set(0);
     const ticker = setInterval(() => this.describeElapsed.set(Math.floor((Date.now() - started) / 1000)), 1000);
-    const outcome = await this.hub.call<DescribeResult>('POST', '/api/describe', { text: this.description(), instrumental });
+    const text = this.description().trim() || this.tagLine() || this.lyricsBrief().trim();
+    const lyrics = instrumental || forAlbum ? '' : this.lyricsBrief().trim();
+    const outcome = await this.hub.call<DescribeResult>('POST', '/api/describe', { text, instrumental, lyrics });
     clearInterval(ticker);
     this.describing.set(false);
     if (!outcome.ok) {
@@ -240,6 +244,15 @@ export class StudioService {
   }
 
   async generate(): Promise<void> {
+    // Asked what the lyrics are about, with none written yet: write them first (and the tags, if none).
+    if (!this.instrumental() && this.lyricsBrief().trim() !== '' && this.lyrics().trim() === '') {
+      const keep = this.tags().length > 0 ? [...this.tags()] : null;
+      this.sending.set(true);
+      await this.describe(false);
+      this.sending.set(false);
+      if (keep !== null) this.tags.set(keep);
+      if (this.describeRefusal() !== null || this.lyrics().trim() === '') return;
+    }
     const params = this.params();
     if ('code' in params) {
       this.generateRefusal.set(params);
