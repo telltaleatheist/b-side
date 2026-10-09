@@ -17,7 +17,7 @@ import { IconComponent } from '../icon/icon.component';
   template: `
     @if (player.current(); as item) {
       <div class="row" appSwipe="xy" (swipeMove)="moved($event)" (swipeEnd)="swiped($event)" (swipeCancel)="shift.set(0)"
-           [class.moving]="shift() !== 0" [style.transform]="shift() ? 'translateX(' + shift() + 'px)' : null">
+           [class.moving]="held()" [style.transform]="shift() ? 'translateX(' + shift() + 'px)' : null" [style.opacity]="shift() ? 1 - Math.min(0.7, Math.abs(shift()) / 300) : null">
         <button type="button" class="open" aria-label="Open Now Playing" (click)="ui.nowPlayingOpen.set(true)">
           <app-cover class="art" [key]="item.id + (item.tags ?? '')" [src]="item.art" />
           <span class="names">
@@ -35,7 +35,7 @@ import { IconComponent } from '../icon/icon.component';
   `,
   styles: [`
     :host { display: block; padding: 0 10px; }
-    .row { transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1); touch-action: none; }
+    .row { transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 300ms ease; touch-action: none; }
     .row.moving { transition: none; }
     .row {
       display: flex; align-items: center; gap: 4px; padding: 6px;
@@ -55,19 +55,38 @@ export class MiniPlayerComponent {
   protected readonly ui = inject(UiService);
   /** How far the row follows a sideways swipe (px). */
   protected readonly shift = signal(0);
+  /** A finger on it (or the jump to the far side): it moves without easing. */
+  protected readonly held = signal(false);
+  protected readonly Math = Math;
 
   protected moved(swipe: Swipe): void {
-    this.shift.set(swipe.axis === 'x' ? swipe.dx * 0.6 : 0);
+    this.held.set(true);
+    this.shift.set(swipe.axis === 'x' ? swipe.dx : 0);
   }
 
+  /** Up opens Now Playing; a sideways flick glides the row off, changes the song, and glides it back. */
   protected swiped(swipe: Swipe): void {
-    this.shift.set(0);
+    this.held.set(false);
     if (swipe.axis === 'y') {
+      this.shift.set(0);
       if (swipe.dy < -30 || (swipe.vy ?? 0) < -0.4) this.ui.nowPlayingOpen.set(true);
       return;
     }
-    if (Math.abs(swipe.dx) < 70 && Math.abs(swipe.vx ?? 0) < 0.5) return;
-    if (swipe.dx < 0 && this.player.hasNext()) this.player.next();
-    else if (swipe.dx > 0) this.player.previous();
+    const forward = swipe.dx < 0;
+    if ((Math.abs(swipe.dx) < 70 && Math.abs(swipe.vx ?? 0) < 0.45) || (forward && !this.player.hasNext())) {
+      this.shift.set(0);
+      return;
+    }
+    this.shift.set(forward ? -innerWidth : innerWidth);
+    setTimeout(() => {
+      if (forward) this.player.next();
+      else this.player.previous();
+      this.held.set(true);
+      this.shift.set(forward ? innerWidth * 0.5 : -innerWidth * 0.5);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        this.held.set(false);
+        this.shift.set(0);
+      }));
+    }, 200);
   }
 }

@@ -86,7 +86,8 @@ interface Room {
       </header>
 
       <main class="room" appSwipe="x" [swipeEdge]="30" (swipeMove)="edgeMove($event)" (swipeEnd)="edgeEnd($event)" (swipeCancel)="edgePull.set(0)"
-            [class.edge-moving]="edgePull() > 0" [style.transform]="edgePull() > 0 ? 'translateX(' + edgePull() + 'px)' : null">
+            [class.edge-moving]="edgeHeld()" [style.transform]="edgePull() !== 0 ? 'translateX(' + edgePull() + 'px)' : null"
+            [style.opacity]="edgePull() !== 0 ? 1 - Math.min(0.5, Math.abs(edgePull()) / innerWidthPx) : null">
         @if (hub.state() === 'key' || hub.state() === 'no-hub') {
           <div class="gate">
             <div class="card">
@@ -164,7 +165,7 @@ interface Room {
     </ng-template>
   `,
   styles: [`
-    .room { transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+    .room { transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 320ms ease; }
     .room.edge-moving { transition: none; }
     .drop-hint, .import-toast {
       position: fixed; left: 50%; bottom: calc(var(--player-h, 80px) + 18px); transform: translateX(-50%); z-index: 80;
@@ -330,6 +331,11 @@ export class App {
   private readonly location = inject(Location);
   /** How far the page follows a swipe in from the left edge (px). */
   protected readonly edgePull = signal(0);
+  protected readonly edgeHeld = signal(false);
+  protected readonly Math = Math;
+  protected get innerWidthPx(): number {
+    return innerWidth;
+  }
   /** Pages visited in this run: back goes through them, as iOS's own back swipe does. */
   private visited = 0;
 
@@ -340,17 +346,32 @@ export class App {
   }
 
   protected edgeMove(swipe: Swipe): void {
+    this.edgeHeld.set(true);
     this.edgePull.set(Math.max(0, swipe.dx));
   }
 
   /** A swipe in from the left edge goes back a page: a playlist back to the Library, else the page before. */
   protected edgeEnd(swipe: Swipe): void {
     const far = swipe.dx > 90 || (swipe.vx ?? 0) > 0.5;
-    this.edgePull.set(0);
-    if (!far || swipe.dx <= 0) return;
+    this.edgeHeld.set(false);
     const url = this.router.url;
-    if (/^\/(library|cloud)\/[^/]+/.test(url)) void this.router.navigate(['/library']);
-    else if (this.visited > 1) this.location.back();
+    const parent = /^\/(library|cloud)\/[^/]+/.test(url);
+    if (!far || swipe.dx <= 0 || (!parent && this.visited <= 1)) {
+      this.edgePull.set(0);
+      return;
+    }
+    // The page glides off to the right, the one before comes in from the left.
+    this.edgePull.set(innerWidth);
+    setTimeout(() => {
+      if (parent) void this.router.navigate(['/library']);
+      else this.location.back();
+      this.edgeHeld.set(true);
+      this.edgePull.set(-innerWidth * 0.3);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        this.edgeHeld.set(false);
+        this.edgePull.set(0);
+      }));
+    }, 240);
   }
 
   /** `crucible@owens-pc-wsl` reads as `owens-pc-wsl`: the machine is what a person recognises. */

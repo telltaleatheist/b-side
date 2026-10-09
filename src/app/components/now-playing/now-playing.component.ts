@@ -25,7 +25,7 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
   host: {
     '[class.sheet]': "mode() === 'sheet'",
     '[class.panel]': "mode() === 'panel'",
-    '[class.pulling]': 'pull() > 0',
+    '[class.pulling]': 'held()',
     '[style.transform]': "pull() > 0 ? 'translateY(' + pull() + 'px)' : null",
     '(keydown.escape)': 'close()',
   },
@@ -39,8 +39,7 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
           <span class="kicker">Playing from</span>
           <span class="from-name">{{ player.sourceName() }}</span>
         </div>
-        <button type="button" class="icon-btn lyrics-toggle" [class.on]="showingLyrics()" [attr.aria-pressed]="showingLyrics()"
-                [disabled]="player.current() === null" (click)="showingLyrics.set(!showingLyrics())" aria-label="Lyrics"><span class="lyrics-mark">Aa</span></button>
+        <span class="spacer-44"></span>
       </div>
     } @else {
       <span class="kicker">Now playing</span>
@@ -70,23 +69,10 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
         <button type="button" class="song-btn" title="Show the lyrics" (click)="showingLyrics.set(true)">
           <app-cover class="art" [key]="coverKey(item)" [src]="item.art" />
         </button>
-      } @else if (showingLyrics()) {
-        <div class="lyrics-card" #lyricsCard (touchstart)="touchedLyrics()" (wheel)="touchedLyrics()">
-          @if (item.lyrics) {
-            @for (line of lyricLines(item.lyrics); track $index; let at = $index) {
-              @if (line.section) {
-                <span class="card-section">{{ line.text }}</span>
-              } @else {
-                <span class="card-line" [attr.data-line]="at" [class.now]="at === activeLine()" [class.sung]="activeLine() !== null && at < activeLine()!">{{ line.text }}</span>
-              }
-            }
-          } @else {
-            <p class="card-empty">No lyrics: this one is instrumental.</p>
-          }
-        </div>
       } @else {
-        <div class="art-swipe" appSwipe="x" (swipeMove)="artShift.set($event.dx)" (swipeEnd)="swiped($event)" (swipeCancel)="artShift.set(0)"
-             [class.moving]="artShift() !== 0" [style.transform]="artShift() ? 'translateX(' + artShift() + 'px) rotate(' + artShift() / 40 + 'deg)' : null">
+        <div class="art-swipe" appSwipe="x" (swipeMove)="artDrag($event)" (swipeEnd)="swiped($event)" (swipeCancel)="artSettle()"
+             [class.moving]="artHeld()" [style.transform]="artShift() ? 'translateX(' + artShift() + 'px) rotate(' + artShift() / 60 + 'deg)' : null"
+             [style.opacity]="artShift() ? 1 - Math.min(0.6, Math.abs(artShift()) / innerWidthPx) : null">
           <app-cover class="art" [key]="coverKey(item)" [src]="item.art" />
         </div>
       }
@@ -125,6 +111,21 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
       </div>
       }
       @if (player.waiting()) { <p class="hint center">Waiting for the next song to finish…</p> }
+      @if (!panel() && item.lyrics) {
+        <!-- Below the controls, as Spotify has it: scroll down for the words. -->
+        <section class="lyrics-section">
+          <span class="kicker">Lyrics</span>
+          <div class="lyrics-card" #lyricsCard (touchstart)="touchedLyrics()" (wheel)="touchedLyrics()">
+            @for (line of lyricLines(item.lyrics); track $index; let at = $index) {
+              @if (line.section) {
+                <span class="card-section">{{ line.text }}</span>
+              } @else {
+                <span class="card-line" [attr.data-line]="at" [class.now]="at === activeLine()" [class.sung]="activeLine() !== null && at < activeLine()!">{{ line.text }}</span>
+              }
+            }
+          </div>
+        </section>
+      }
       }
     } @else {
       <div class="art empty"><app-icon name="listen" [size]="48" /></div>
@@ -169,21 +170,19 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
       position: fixed; inset: 0; z-index: 50; overflow-y: auto;
       padding: calc(env(safe-area-inset-top) + 10px) 24px calc(env(safe-area-inset-bottom) + 24px);
       background: radial-gradient(120% 70% at 50% 18%, #1c2b33 0%, #13161a 45%, #0b0a09 80%);
-      animation: rise 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+      animation: rise 360ms cubic-bezier(0.22, 1, 0.36, 1);
     }
     :host(.panel) { padding: 24px 20px; min-height: 0; overflow-y: auto; }
     .frame { display: flex; flex-direction: column; gap: 18px; min-height: 100%; }
-    :host(.sheet) { overscroll-behavior: none; transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+    :host(.sheet) { overscroll-behavior: none; transition: transform 340ms cubic-bezier(0.22, 1, 0.36, 1); }
     :host(.sheet.pulling) { transition: none; }
     .grabber { align-self: center; width: 38px; height: 5px; margin-bottom: -10px; border-radius: 3px; background: rgba(255,255,255,.25); }
-    .lyrics-toggle { color: var(--text-tertiary); }
-    .lyrics-toggle.on { color: var(--accent); }
-    .lyrics-mark { font-family: var(--font-display); font-weight: 800; font-size: 17px; letter-spacing: -0.5px; }
-    .art-swipe { width: 100%; max-width: 420px; align-self: center; transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1); touch-action: pan-y; }
+    .art-swipe { width: 100%; max-width: 420px; align-self: center; transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 300ms ease; touch-action: pan-y; }
+    .lyrics-section { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
     .art-swipe.moving { transition: none; }
     .art-swipe .art { max-width: none; }
     .lyrics-card {
-      height: min(62vh, 560px); overflow-y: auto; padding: 22px 20px 40vh; border-radius: 14px;
+      height: min(70vh, 620px); overflow-y: auto; padding: 22px 20px 40vh; border-radius: 14px;
       background: linear-gradient(160deg, #6b3a1f 0%, #3a2117 55%, #1d1410 100%);
       display: flex; flex-direction: column; gap: 10px; scroll-behavior: smooth;
       -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 60px), transparent 100%);
@@ -194,7 +193,7 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
     .card-line.sung { color: rgba(255,255,255,.72); }
     .card-line.now { color: #fff; }
     .card-empty { font-size: 18px; color: rgba(255,255,255,.7); }
-    @keyframes rise { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes rise { from { transform: translateY(100%); } to { transform: none; } }
     .top { display: flex; align-items: center; justify-content: space-between; }
     .from { display: flex; flex-direction: column; align-items: center; gap: 2px; }
     .from-name { font-size: 13px; font-weight: 600; }
@@ -285,8 +284,16 @@ export class NowPlayingComponent {
   protected readonly panel = computed(() => this.mode() === 'panel');
   /** How far the sheet is pulled down (px), while a finger drags it. */
   protected readonly pull = signal(0);
+  /** Whether a finger holds the sheet now: it follows without easing; let go, it eases. */
+  protected readonly held = signal(false);
   /** How far the cover is dragged sideways (px): left for the next song, right for the one before. */
   protected readonly artShift = signal(0);
+  /** Whether the cover moves without easing (a finger on it, or the jump to the far side). */
+  protected readonly artHeld = signal(false);
+  protected readonly Math = Math;
+  protected get innerWidthPx(): number {
+    return innerWidth;
+  }
   private readonly lyricsCard = viewChild<ElementRef<HTMLElement>>('lyricsCard');
   /** When a finger last moved the lyrics: following the song waits a moment after it. */
   private lyricsTouchedAt = 0;
@@ -335,29 +342,60 @@ export class NowPlayingComponent {
 
   /** The sheet follows a finger pulling it down. */
   protected pulling(swipe: Swipe): void {
-    if (this.mode() === 'sheet' && swipe.axis === 'y') this.pull.set(Math.max(0, swipe.dy));
+    if (this.mode() !== 'sheet' || swipe.axis !== 'y') return;
+    this.held.set(true);
+    this.pull.set(Math.max(0, swipe.dy));
   }
 
-  /** Let go far or fast enough, the sheet closes (minimised to the mini player); else it springs back. */
+  /**
+   * Let go far or fast enough, the sheet glides the rest of the way down and
+   * closes (minimised to the mini player); else it eases back up.
+   */
   protected pulled(swipe: Swipe): void {
-    if (this.mode() === 'sheet' && swipe.axis === 'y' && (swipe.dy > 140 || (swipe.vy ?? 0) > 0.6)) {
+    this.held.set(false);
+    if (this.mode() === 'sheet' && swipe.axis === 'y' && (swipe.dy > 120 || (swipe.vy ?? 0) > 0.5)) {
       this.pull.set(innerHeight);
       setTimeout(() => {
-        this.pull.set(0);
         this.close();
-      }, 200);
+        this.pull.set(0);
+      }, 320);
       return;
     }
     this.pull.set(0);
   }
 
-  /** The cover flicked left plays the next song, right the one before. */
-  protected swiped(swipe: Swipe): void {
+  protected artDrag(swipe: Swipe): void {
+    this.artHeld.set(true);
+    this.artShift.set(swipe.dx);
+  }
+
+  protected artSettle(): void {
+    this.artHeld.set(false);
     this.artShift.set(0);
-    const far = Math.abs(swipe.dx) > 90 || Math.abs(swipe.vx ?? 0) > 0.5;
-    if (!far) return;
-    if (swipe.dx < 0 && this.player.hasNext()) this.player.next();
-    else if (swipe.dx > 0) this.player.previous();
+  }
+
+  /**
+   * The cover flicked left plays the next song, right the one before: it
+   * glides off that side, the song changes, and the new cover glides in from
+   * the other. Not far enough, it eases back.
+   */
+  protected swiped(swipe: Swipe): void {
+    const far = Math.abs(swipe.dx) > 80 || Math.abs(swipe.vx ?? 0) > 0.45;
+    const forward = swipe.dx < 0;
+    if (!far || (forward && !this.player.hasNext())) {
+      this.artSettle();
+      return;
+    }
+    const width = innerWidth;
+    this.artHeld.set(false);
+    this.artShift.set(forward ? -width : width);
+    setTimeout(() => {
+      if (forward) this.player.next();
+      else this.player.previous();
+      this.artHeld.set(true);
+      this.artShift.set(forward ? width * 0.6 : -width * 0.6);
+      requestAnimationFrame(() => requestAnimationFrame(() => this.artSettle()));
+    }, 220);
   }
 
   /** The take being played, when the current song is one (only a take can be saved from here). */
