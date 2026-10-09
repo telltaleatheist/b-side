@@ -59,9 +59,17 @@ export function stamp(date: Date): string {
   return `${date.getFullYear()}${two(date.getMonth() + 1)}${two(date.getDate())}-${two(date.getHours())}${two(date.getMinutes())}${two(date.getSeconds())}`;
 }
 
+/** Names Windows keeps for devices, with or without an extension (`CON`, `nul.json`). */
+const DEVICE_NAME = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\.|$)/i;
+
+/** Whether `id` can name a file on every system: letters, digits, `._-`, no leading dot, no device name. */
+export function isId(id: string): boolean {
+  return /^[A-Za-z0-9._-]+$/.test(id) && !id.startsWith('.') && !DEVICE_NAME.test(id);
+}
+
 /** An id is a bare file stem: nothing that could climb out of its folder. */
 export function checkId(id: string, what: string): string {
-  if (!/^[A-Za-z0-9._-]+$/.test(id) || id.startsWith('.')) {
+  if (!isId(id)) {
     throw new Refusal(`${what}_id_invalid`, `${id} is not a ${what}.`, 404);
   }
   return id;

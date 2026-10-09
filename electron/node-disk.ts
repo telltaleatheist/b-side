@@ -4,7 +4,7 @@
 import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
 
-import { writeAtomically } from './atomic';
+import { renameIntoPlace, writeAtomically } from './atomic';
 import type { Vault } from '../shared/core/servers';
 import type { Disk } from '../shared/core/disk';
 
@@ -43,16 +43,18 @@ export const nodeDisk: Disk = {
   },
   async move(from, to) {
     await fsp.mkdir(path.dirname(to), { recursive: true });
-    await fsp.rename(from, to);
+    await renameIntoPlace(from, to);
   },
   async copy(from, to) {
     const temporary = `${to}.writing`;
     await fsp.mkdir(path.dirname(to), { recursive: true });
     await fsp.copyFile(from, temporary);
-    await fsp.rename(temporary, to);
+    await renameIntoPlace(temporary, to);
   },
   async remove(file) {
-    await fsp.rm(file, { force: true });
+    // Windows: a file an antivirus or another program holds for a moment refuses
+    // deletion (EBUSY/EPERM); Node's own retry waits it out (~1.5 s).
+    await fsp.rm(file, { force: true, maxRetries: 5, retryDelay: 100 });
   },
 };
 

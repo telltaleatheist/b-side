@@ -3,8 +3,9 @@
  * runs on the desktop (Node's fs, electron/node-disk.ts) and on the phone (the
  * native file plugin, src/app/phone/native-disk.ts).
  *
- * Paths are `/`-joined. Audio never passes through here as bytes on the phone:
- * a song arrives through the job runner's audio fetcher, which writes the file
+ * Paths are joined in their root's own style: `\` under a Windows root
+ * (`C:\…`, `\\server\…`), `/` everywhere else. Audio never passes through here
+ * as bytes on the phone: a song arrives through the job runner's audio fetcher, which writes the file
  * itself (natively on the phone), and is then moved or copied by name.
  */
 export interface Disk {
@@ -26,12 +27,20 @@ export interface Disk {
   remove(file: string): Promise<void>;
 }
 
-/** `/`-join path parts, without doubled slashes. */
+/**
+ * Join path parts in the first part's style, without doubled separators: a
+ * Windows root (`C:\Music`, `\\nas\share`) joins with `\`, so a path handed to
+ * Windows (Explorer's "Show in folder", a refusal's sentence) reads as one.
+ */
 export function join(...parts: string[]): string {
-  return parts
-    .filter((part) => part !== '')
-    .map((part, at) => (at === 0 ? part.replace(/\/+$/, '') : part.replace(/^\/+|\/+$/g, '')))
-    .join('/');
+  const kept = parts.filter((part) => part !== '');
+  const windows = kept.length > 0 && /^([A-Za-z]:[\\/]|\\\\)/.test(kept[0] as string);
+  const sep = windows ? '\\' : '/';
+  const trailing = windows ? /[\\/]+$/ : /\/+$/;
+  const edges = windows ? /^[\\/]+|[\\/]+$/g : /^\/+|\/+$/g;
+  return kept
+    .map((part, at) => (at === 0 ? part.replace(trailing, '') : part.replace(edges, '')))
+    .join(sep);
 }
 
 /** The last part of a `/`- or `\`-separated path. */

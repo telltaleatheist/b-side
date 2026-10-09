@@ -190,6 +190,13 @@ export class Hub {
             `Port ${view.port} is already in use by another program, so B-Sides cannot start its hub. ` +
               `Close that program, or set "hubPort" to another number in ${path.join(this.options.userData, 'settings.json')}.`,
           ));
+        } else if (err.code === 'EACCES') {
+          reject(new Refusal(
+            'hub_port_reserved',
+            `Windows has reserved port ${view.port} (Hyper-V, WSL or Docker hold ranges of ports; ` +
+              `\`netsh int ipv4 show excludedportrange protocol=tcp\` lists them), so B-Sides cannot start its hub there. ` +
+              `Set "hubPort" to a number outside those ranges in ${path.join(this.options.userData, 'settings.json')}.`,
+          ));
         } else {
           reject(err);
         }

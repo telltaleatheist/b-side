@@ -15,14 +15,25 @@ export async function writeAtomically(destination: string, bytes: Uint8Array | s
   await fsp.mkdir(path.dirname(target), { recursive: true });
   const temporary = `${target}.writing`;
   await fsp.writeFile(temporary, bytes);
-  const transient = new Set(['EPERM', 'EBUSY', 'EACCES']);
+  await renameIntoPlace(temporary, target);
+}
+
+const TRANSIENT = new Set(['EPERM', 'EBUSY', 'EACCES']);
+
+/**
+ * Rename a finished file onto its final name. The one place every rename onto a
+ * final name goes through, so the Windows retry is not something a caller can
+ * forget. The budget (~6 s) covers an antivirus scanning a fresh multi-MB song,
+ * and a player closing the file it was reading; a lock that outlives it throws.
+ */
+export async function renameIntoPlace(temporary: string, target: string): Promise<void> {
   for (let wait = 50; ; wait *= 2) {
     try {
       await fsp.rename(temporary, target);
       return;
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code ?? '';
-      if (!transient.has(code) || wait > 800) throw err;
+      if (!TRANSIENT.has(code) || wait > 3200) throw err;
       await new Promise((rest) => setTimeout(rest, wait));
     }
   }

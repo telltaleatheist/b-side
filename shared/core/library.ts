@@ -26,7 +26,7 @@
  */
 import { basename, join, type Disk } from './disk';
 import { Refusal } from './refusal';
-import { AUDIO_FILE, checkId, stamp } from './takes';
+import { AUDIO_FILE, checkId, isId, stamp } from './takes';
 import type { AlbumMeta, LibraryView, Playlist, Song, SongFacts } from '../types';
 
 /** Marks a sidecar as B-Sides', and its shape's version. */
@@ -108,7 +108,9 @@ export class Library {
   /** The audio file a song's sidecar names, or a refusal when it is not a library file. */
   audioPath(file: string): string {
     const name = basename(file);
-    if (name !== file || !AUDIO_FILE.test(name)) {
+    const stem = name.replace(AUDIO_FILE, '');
+    // A song's id names its file: a name from the network never becomes a stream (`a:b`), a device or an illegal path.
+    if (name !== file || stem === name || !isId(stem)) {
       throw new Refusal('song_file_invalid', `${file} is not a library audio file.`);
     }
     return join(this.dir, name);

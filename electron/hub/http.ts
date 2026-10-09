@@ -9,6 +9,7 @@ import * as fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import * as path from 'node:path';
 
+import { renameIntoPlace } from '../atomic';
 import { Refusal, refusalOf } from '../refusal';
 
 const MEDIA_TYPES: Record<string, string> = {
@@ -184,5 +185,5 @@ export async function receiveFile(req: IncomingMessage, target: string): Promise
     await fs.promises.rm(temporary, { force: true });
     throw error;
   });
-  await fs.promises.rename(temporary, target);
+  await renameIntoPlace(temporary, target);
 }

@@ -204,7 +204,7 @@ Owen, 2026-10-04. Supersedes "Web and iOS never talk to Crucible directly" above
 Crucible is like Ollama: a service that can run anywhere (a headless GPU box, a rented
 GPU), not necessarily beside a B-Side desktop. So the desktop and the phone are BOTH
 clients of Crucible; a desktop hub is optional, never required.
-- [x] Add a server by its address (`owens-pc.owenmorgan.com`, an IP, `http://host:7100`):
+- [x] Add a server by its address (`my-pc.example.com`, an IP, `http://host:7100`):
       `@crucible/client` startPairing/pollPairing, the token stays in the hub. Remembered;
       the first one is in use, Settings' "Use this server" switches and it holds until
       switched (ContentStudio's model). First-run card and Settings both offer it; the

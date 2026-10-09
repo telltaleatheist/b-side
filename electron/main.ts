@@ -81,6 +81,8 @@ if (!single) {
   });
 
   void app.whenReady().then(async () => {
+    // Windows groups the window, its taskbar pin and the media flyout by this id (the installer's appId).
+    if (process.platform === 'win32') app.setAppUserModelId('com.owenmorgan.bside');
     buildMenu();
     // Unpackaged, the Dock would show Electron's own icon.
     if (process.platform === 'darwin') app.dock?.setIcon(path.join(ICONS, 'icon-mac.png'));

@@ -2,11 +2,12 @@
 #
 # Install B-Sides onto a plugged-in iPhone.
 #
-# telltaleatheist@gmail.com is now on the PAID Apple Developer Program, so signed
-# builds are good for ~1 YEAR (not the old 7-day free-team window). Re-run this
-# whenever you want to push new code to the phone. Prereqs are all one-time and
-# already done:
-#   - telltaleatheist@gmail.com added to Xcode → Settings → Accounts
+# Signs with your Apple Developer team. A paid-program team gives builds good for
+# ~1 YEAR (a free team: 7 days). Re-run this whenever you want to push new code to
+# the phone. One-time prereqs:
+#   - your Apple ID added to Xcode → Settings → Accounts
+#   - your team id (10 characters, developer.apple.com → Membership) in
+#     mobile/.apple-team-id (gitignored), or in APPLE_TEAM_ID
 #   - the developer profile trusted once on the phone
 #   - Developer Mode enabled on the phone
 #
@@ -16,7 +17,15 @@
 #
 set -euo pipefail
 
-TEAM="N7V7AT6CZ9"                       # telltaleatheist@gmail.com (paid Apple Developer Program — 1-yr signing)
+TEAM_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.apple-team-id"
+if [ -n "${APPLE_TEAM_ID:-}" ]; then
+  TEAM="$APPLE_TEAM_ID"
+elif [ -s "$TEAM_FILE" ]; then
+  TEAM="$(tr -d '[:space:]' < "$TEAM_FILE")"
+else
+  echo "ERROR: no Apple team id. Put yours in $TEAM_FILE or set APPLE_TEAM_ID." >&2
+  exit 1
+fi
 BUNDLE_ID="com.owenmorgan.bside"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_PROJ="$SCRIPT_DIR/ios/App/App.xcodeproj"
@@ -39,7 +48,7 @@ echo "Node: $(node -v)"
 # silently failing every deploy.)
 #
 # With more than one iPhone around, name the one to install on:
-#   DEVICE="Victoria" npm run package:ios     (any part of its name)
+#   DEVICE="Kitchen" npm run package:ios     (any part of its name)
 DEVICE_UDID="$(xcrun xctrace list devices 2>/dev/null \
   | grep -viE 'watch|simulator' \
   | grep -iF "${DEVICE:-}" \
