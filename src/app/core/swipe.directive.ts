@@ -32,8 +32,11 @@ const LOCK_PX = 10;
 })
 export class SwipeDirective {
   /** The axes this element listens to. */
-  readonly appSwipe = input<'x' | 'y' | 'xy'>('xy');
+  /** The axes this element listens to; 'down' is the vertical axis, downward only (upward stays a scroll). */
+  readonly appSwipe = input<'x' | 'y' | 'xy' | 'down'>('xy');
   readonly swipeEdge = input<number | null>(null);
+  /** Claim a vertical swipe even inside something scrolled: a handle, whose pull always means pull. */
+  readonly swipeAlways = input(false);
   readonly swipeMove = output<Swipe>();
   readonly swipeEnd = output<Swipe>();
   readonly swipeCancel = output<void>();
@@ -52,7 +55,7 @@ export class SwipeDirective {
     const edge = this.swipeEdge();
     if (edge !== null && touch.clientX > edge) return;
     const now = performance.now();
-    this.origin = { x: touch.clientX, y: touch.clientY, t: now, scrolled: scrolledAway(event.target as Element | null) };
+    this.origin = { x: touch.clientX, y: touch.clientY, t: now, scrolled: !this.swipeAlways() && scrolledAway(event.target as Element | null) };
     this.axis = null;
     this.last = this.previous = { x: touch.clientX, y: touch.clientY, t: now };
   }
@@ -67,8 +70,9 @@ export class SwipeDirective {
       if (Math.max(Math.abs(dx), Math.abs(dy)) < LOCK_PX) return;
       const axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
       const wanted = this.appSwipe();
-      // Not an axis this element listens to, or a list's own scroll: let it go.
-      if ((wanted !== 'xy' && wanted !== axis) || (axis === 'y' && origin.scrolled)) {
+      const listens = wanted === 'xy' || wanted === axis || (wanted === 'down' && axis === 'y' && dy > 0);
+      // Not an axis (or way) this element listens to, or a list's own scroll: let it go, never block it.
+      if (!listens || (axis === 'y' && origin.scrolled)) {
         this.origin = null;
         return;
       }

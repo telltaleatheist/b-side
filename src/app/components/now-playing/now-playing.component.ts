@@ -31,7 +31,7 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
     '(scroll)': 'scrolled()',
   },
   template: `
-    <div class="frame" [appSwipe]="panel() ? 'x' : 'y'" (swipeMove)="pulling($event)" (swipeEnd)="pulled($event)" (swipeCancel)="pull.set(0)">
+    <div class="frame" [appSwipe]="panel() ? 'x' : 'down'" (swipeMove)="pulling($event)" (swipeEnd)="pulled($event)" (swipeCancel)="pullBack()">
     @if (!panel() && player.current(); as item) {
       <!-- Scrolled down into the lyrics, the player folds into a bar at the top, as the mini player
            sits at the bottom elsewhere; scrolled back up, it unfolds into the full controls. -->
@@ -51,6 +51,7 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
       </div>
     }
     @if (mode() === 'sheet') {
+      <div class="handle" appSwipe="down" [swipeAlways]="true" (swipeMove)="pulling($event)" (swipeEnd)="pulled($event)" (swipeCancel)="pullBack()">
       <div class="grabber" aria-hidden="true"></div>
       <div class="top">
         <button type="button" class="icon-btn" aria-label="Close" (click)="close()"><app-icon name="down" /></button>
@@ -59,6 +60,7 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
           <span class="from-name">{{ player.sourceName() }}</span>
         </div>
         <span class="spacer-44"></span>
+      </div>
       </div>
     } @else {
       <span class="kicker">Now playing</span>
@@ -193,9 +195,9 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
     }
     :host(.panel) { padding: 24px 20px; min-height: 0; overflow-y: auto; }
     .frame { display: flex; flex-direction: column; gap: 18px; min-height: 100%; }
-    :host(.sheet) { overscroll-behavior: none; transition: transform 340ms cubic-bezier(0.22, 1, 0.36, 1); scroll-snap-type: y proximity; }
-    :host(.sheet) .frame { scroll-snap-align: start; }
-    :host(.sheet) .lyrics-section { scroll-snap-align: start; scroll-margin-top: calc(env(safe-area-inset-top) + 76px); }
+    :host(.sheet) { overscroll-behavior: none; transition: transform 340ms cubic-bezier(0.22, 1, 0.36, 1); }
+    .handle { touch-action: none; }
+    .top .icon-btn { touch-action: manipulation; }
     :host(.sheet.pulling) { transition: none; }
     .grabber { align-self: center; width: 38px; height: 5px; margin-bottom: -10px; border-radius: 3px; background: rgba(255,255,255,.25); }
     .art-swipe { width: 100%; max-width: 420px; align-self: center; transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 300ms ease; touch-action: pan-y; }
@@ -369,6 +371,9 @@ export class NowPlayingComponent {
       if (line === null || card === undefined) return;
       untracked(() => {
         if (Date.now() - this.lyricsTouchedAt < 4000) return;
+        // Only while the card is on screen: scrolling an unseen list kept the sheet busy for nothing.
+        const box = card.getBoundingClientRect();
+        if (box.bottom < 0 || box.top > innerHeight) return;
         const element = card.querySelector<HTMLElement>(`[data-line="${line}"]`);
         if (element !== null) card.scrollTo({ top: element.offsetTop - card.clientHeight * 0.38, behavior: 'smooth' });
       });
@@ -396,6 +401,11 @@ export class NowPlayingComponent {
 
   protected touchedLyrics(): void {
     this.lyricsTouchedAt = Date.now();
+  }
+
+  protected pullBack(): void {
+    this.held.set(false);
+    this.pull.set(0);
   }
 
   /** The sheet follows a finger pulling it down. */
