@@ -84,6 +84,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
           }
           @if (studio.described(); as said) {
             <p class="hint filled">Filled in {{ said.tags.length }} tags{{ said.lyrics && mode() !== 'album' ? ' and the lyrics' : '' }} in {{ said.seconds | number: '1.0-0' }}s{{ mode() === 'album' ? '; the album uses them as its sound' : '' }}. They are below; change any you like.</p>
+            @if (mode() !== 'album' && studio.songTitle(); as named) { <p class="hint">It's called <strong>{{ named }}</strong>.</p> }
             @if (studio.lyricsKept()) { <p class="hint">It wrote lyrics too, but your own are in the Lyrics box, so they stayed.</p> }
             @for (clash of said.clashes; track clash) { <div class="notice">{{ clash }}</div> }
           }

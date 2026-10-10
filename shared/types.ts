@@ -258,6 +258,8 @@ export interface JobView {
   readonly album: { readonly id: string; readonly track: number } | null;
   /** The playlist a song asked for on its own is filed into when it lands (New Songs). */
   readonly playlist?: string | null;
+  /** The name the writer gave a song asked for on its own (GenerateRequest.title). */
+  readonly title?: string | null;
   /** Once filed into `playlist`: the song it became. */
   readonly songId?: string | null;
 }
@@ -273,6 +275,8 @@ export interface DescribeResult {
   readonly model: string;
   /** Who wrote the lyrics when not `model` (Claude, the stand-in lyricist). */
   readonly lyricsModel?: string;
+  /** The song's name, when the writer names songs (Claude; B-Sides' model from v3). */
+  readonly title?: string | null;
   readonly seconds: number;
 }
 
@@ -280,6 +284,8 @@ export interface GenerateRequest {
   readonly params: SongParams;
   /** How many in a row; with a seed they get seed, seed+1, ... */
   readonly count: number;
+  /** The name the writer gave it when it described the song; without one, titles.ts names it. */
+  readonly title?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

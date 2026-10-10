@@ -149,6 +149,9 @@ export function matchRoute<R extends { method: string; pattern: RegExp; names: r
   return null;
 }
 
+/** The longest name a song is given when it lands (a writer's title, cut to fit). */
+const SONG_TITLE_MAX = 80;
+
 /** The painted cover's width and height, in pixels. */
 const COVER_SIZE = 256;
 
@@ -188,7 +191,7 @@ export class HubCore {
           const take = await this.takes.add({
             client: landed.job.client,
             kind: landed.job.clientKind,
-            title: planned?.title ?? defaultTitle(params),
+            title: planned?.title ?? landed.job.title ?? defaultTitle(params),
             extension: landed.extension,
             fill: landed.fill,
             model: SONG_MODEL,
@@ -628,9 +631,10 @@ export class HubCore {
       }
       // Claude writing: the tags from the same call B-Sides' model answers, the words from its
       // lyricist prompt (a story, YuE2's full sections), which the tag call's four-line form lacks.
-      const described = await describe(claude.text, page, text(body['text'], 'text'), body['instrumental'] === true, brief);
+      // Claude names the song too (Owen, 2026-10-10), and writes the words to that name.
+      const described = await describe(claude.text, page, text(body['text'], 'text'), body['instrumental'] === true, brief, true);
       if (described.instrumental) return described;
-      const lyrics = layLyrics(await claude.lyricist.write({ title: null, tags: described.tags.join(', '), about: text(body['text'], 'text'), brief }));
+      const lyrics = layLyrics(await claude.lyricist.write({ title: described.title ?? null, tags: described.tags.join(', '), about: text(body['text'], 'text'), brief }));
       return { ...described, lyrics, lyricsModel: claude.lyricist.name };
     });
     this.route('PUT', '/api/presets/:name', async (request) =>
@@ -703,8 +707,10 @@ export class HubCore {
       if (typeof body.params !== 'object' || body.params === null || typeof body.count !== 'number') {
         throw new Refusal('body_invalid', 'A generate request is {params, count}.');
       }
+      const title = typeof body.title === 'string' ? body.title.trim().slice(0, SONG_TITLE_MAX) : '';
+      const { title: _given, ...rest } = body;
       const server = this.registry.active();
-      return this.jobs.generate(server, client, body, this.preferences.songFormat, null, await this.singlesPlaylist());
+      return this.jobs.generate(server, client, title === '' ? rest : { ...rest, title }, this.preferences.songFormat, null, await this.singlesPlaylist());
     });
     this.route('POST', '/api/jobs/:key/cancel', async (request) => {
       this.ownJob(request);

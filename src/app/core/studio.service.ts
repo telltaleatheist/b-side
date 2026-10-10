@@ -54,6 +54,9 @@ export class StudioService {
   readonly describeElapsed = signal(0);
   /** The words the model last wrote into the box (replaced freely; anything else is the person's). */
   private lastWritten = '';
+  /** The name the writer gave the song it described, and the lyrics it named (null: none). */
+  readonly title = signal<string | null>(null);
+  private titledLyrics = '';
 
   /** The refusal from the last Generate press, shown by the button. */
   readonly generateRefusal = signal<RefusalView | null>(null);
@@ -140,6 +143,7 @@ export class StudioService {
       return;
     }
     if (this.page()?.instrumental !== false) this.instrumental.set(outcome.value.instrumental);
+    this.title.set(outcome.value.title ?? null);
     // The words it wrote fill the Lyrics box, unless the person wrote their own there.
     const written = outcome.value.lyrics;
     const box = this.lyrics().trim();
@@ -150,9 +154,23 @@ export class StudioService {
         this.lastWritten = written;
       } else {
         this.lyricsKept.set(true);
+        // Named for the words it wrote, which were not kept: the person's own song goes unnamed.
+        this.title.set(null);
       }
     }
+    this.titledLyrics = this.lyricsSent();
     this.described.set(outcome.value);
+  }
+
+  /** The lyrics a song would be sent with now ('' when instrumental). */
+  private lyricsSent(): string {
+    return this.instrumental() ? '' : this.lyrics().trim();
+  }
+
+  /** The writer's name for the song, while its lyrics are still the ones it named. */
+  songTitle(): string | null {
+    const title = this.title();
+    return title !== null && this.lyricsSent() === this.titledLyrics ? title : null;
   }
 
   // ── tags ───────────────────────────────────────────────────────────────────
@@ -260,7 +278,8 @@ export class StudioService {
     }
     this.sending.set(true);
     this.generateRefusal.set(null);
-    const made = await this.jobs.generate({ params, count: batchCount(this.count()) });
+    const title = this.songTitle();
+    const made = await this.jobs.generate({ params, count: batchCount(this.count()), ...(title !== null ? { title } : {}) });
     this.sending.set(false);
     if (!Array.isArray(made)) {
       this.generateRefusal.set(made);

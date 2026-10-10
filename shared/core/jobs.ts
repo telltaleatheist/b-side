@@ -223,6 +223,7 @@ export class JobRunner {
           refusal: null,
           params,
           seed,
+          title: request.title ?? null,
           takeId: null,
           since: Date.now(),
           ended: null,

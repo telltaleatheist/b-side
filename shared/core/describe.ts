@@ -95,6 +95,19 @@ export function tagPrompt(page: SongPage, wantsInstrumental = false): string {
   ].join('\n');
 }
 
+/**
+ * The schema with a song title first: asked only of a writer not held to B-Sides' model's
+ * trained [describe] contract (Claude), until v3 learns it (Owen, 2026-10-10: "lets have the
+ * model generate a title for one song as well, not just for albums").
+ */
+const TITLED_SCHEMA = {
+  ...SCHEMA,
+  required: ['title', ...SCHEMA.required],
+  properties: { title: { type: 'string', maxLength: 60 }, ...SCHEMA.properties },
+} as const;
+
+const TITLE_RULE = '- title: a creative song title, 1-5 words, that fits what the song is about (and its words, when sung); never its first line, never generic.';
+
 /** Read and check the model's answer. A malformed one is a refusal that says so, never a guess. */
 export function readFields(content: string, model: string): TagFields {
   let parsed: unknown;
@@ -174,7 +187,9 @@ export function clashesIn(tags: readonly string[], page: SongPage): string[] {
 /** How long a lyrics brief may be ("about a banana going brown, bittersweet, a little funny"). */
 export const MAX_LYRICS_BRIEF = 400;
 
-export async function describe(writer: TextModel, page: SongPage, description: string, wantsInstrumental = false, lyricsBrief = ''): Promise<DescribeResult> {
+export async function describe(
+  writer: TextModel, page: SongPage, description: string, wantsInstrumental = false, lyricsBrief = '', titled = false,
+): Promise<DescribeResult> {
   const text = typeof description === 'string' ? description.trim() : '';
   if (text === '') throw new Refusal('describe_empty', 'Describe the music first, e.g. "smooth lo-fi with jazz sax".');
   if (text.length > MAX_DESCRIPTION) {
@@ -185,10 +200,12 @@ export async function describe(writer: TextModel, page: SongPage, description: s
   const answer = await writer.ask({
     tag: '[describe]',
     name: 'song_tags',
-    system: tagPrompt(page, wantsInstrumental),
+    system: titled ? `${tagPrompt(page, wantsInstrumental)}
+
+${TITLE_RULE}` : tagPrompt(page, wantsInstrumental),
     // What the words should be about (Owen, 2026-10-09), said after the music, as a person would.
     user: brief === '' ? text : `${text}\nThe lyrics: ${brief}`,
-    schema: SCHEMA,
+    schema: titled ? TITLED_SCHEMA : SCHEMA,
     temperature: 0.5,
     // The tags take ~150 tokens; a song's words up to ~700 more.
     maxTokens: wantsInstrumental ? 400 : 1100,
@@ -199,6 +216,7 @@ export async function describe(writer: TextModel, page: SongPage, description: s
   const model = writer.name;
   const content = answer.content;
   const fields = readFields(content, model);
+  const title = titled ? titleOf(content) : null;
   // Asked for instrumental, it is instrumental whatever the model answered: no singer among the tags.
   const instrumental = wantsInstrumental || fields.instrumental;
   const tags = instrumental ? withoutVoice(composeTags({ ...fields, instrumental })) : composeTags(fields);
@@ -208,6 +226,15 @@ export async function describe(writer: TextModel, page: SongPage, description: s
     lyrics: instrumental ? null : layLyrics(fields.lyrics) || null,
     clashes: clashesIn(tags, page),
     model,
+    ...(titled ? { title } : {}),
     seconds: (Date.now() - started) / 1000,
   };
+}
+
+/** The title a titled answer carries, tidied; null when it gave none worth using. */
+function titleOf(content: string): string | null {
+  const raw = (JSON.parse(content) as { title?: unknown }).title;
+  if (typeof raw !== 'string') return null;
+  const title = raw.replace(/\s+/g, ' ').trim().replace(/^["'“]+|["'”]+$/g, '').trim();
+  return title === '' ? null : title;
 }

@@ -70,3 +70,16 @@ test('a song that failed for any other reason is not sent again', async () => {
   expect(submitted).toBe(1);
   expect(ended[0]?.refusal?.code).toBe('bad_params');
 });
+
+test("a song asked for with the writer's title carries it to the end, for its name when it lands", async () => {
+  const server = crashingServer({ status: 'failed', error: { code: 'bad_params', message: 'no' } });
+  const ended: JobView[] = [];
+  const runner = new JobRunner(
+    { publish: () => undefined, ended: (job) => { ended.push(job); }, land: async () => { throw new Error('nothing lands'); }, server: () => ({}) as never },
+    disk, 'pending.json', async () => 0, () => server.client,
+  );
+  runner.generate({ name: 'pc', url: 'http://pc:7100', token: 't' } as never, { id: 'c', kind: 'desktop' }, { params: { tags: 'folk' }, count: 1, title: 'Brown Banana Blues' }, 'flac');
+  for (let i = 0; i < 200 && ended.length === 0; i += 1) await new Promise((rest) => setTimeout(rest, 5));
+  expect(ended[0]?.title).toBe('Brown Banana Blues');
+  expect(server.sent[0]?.['title']).toBeUndefined();
+});

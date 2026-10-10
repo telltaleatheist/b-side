@@ -121,3 +121,23 @@ test('any writer answers describe: Claude gets the content and the prompt, witho
   const cut: TextModel = { name: 'w', ask: async () => ({ content: '{', truncated: true }) };
   await expect(describeMusic(cut, page, 'retro soul ballad')).rejects.toThrow('ran out of room');
 });
+
+test('a titled describe asks for a title first and answers it tidied; untitled, the trained schema is untouched', async () => {
+  const asked: { system: string; schema: object }[] = [];
+  const writer = (content: object): TextModel => ({
+    name: 'claude-sonnet-5-5',
+    ask: async (request) => { asked.push(request); return { content: JSON.stringify(content), truncated: false }; },
+  });
+  const named = await describeMusic(writer({ title: ' "Brown  Banana Blues" ', ...fields }), page, 'retro soul ballad', false, '', true);
+  expect(named.title).toBe('Brown Banana Blues');
+  const schema = asked[0]!.schema as { required: string[]; properties: Record<string, unknown> };
+  expect(schema.required[0]).toBe('title');
+  expect(Object.keys(schema.properties)[0]).toBe('title');
+  expect(asked[0]!.system).toContain('- title:');
+
+  const plain = await describeMusic(writer(fields), page, 'retro soul ballad');
+  expect('title' in plain).toBe(false);
+  const trained = asked[1]!.schema as { required: string[] };
+  expect(trained.required).not.toContain('title');
+  expect(asked[1]!.system).not.toContain('- title:');
+});
