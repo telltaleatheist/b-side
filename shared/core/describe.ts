@@ -23,7 +23,7 @@
  */
 import { CrucibleRefused, type CrucibleClient } from '@crucible/client';
 
-import { chatSeed } from './crucible';
+import { chatSeed, startInstall } from './crucible';
 import { Refusal } from './refusal';
 import { clashesWith, clashText, indexOfTag, withoutVoice } from '../tags';
 import type { DescribeResult, SongPage } from '../types';
@@ -185,6 +185,12 @@ export async function describe(client: CrucibleClient, page: SongPage, descripti
   const brief = wantsInstrumental ? '' : lyricsBrief.trim().slice(0, MAX_LYRICS_BRIEF);
   const model = page.tagModel;
   if (model === null) throw new Refusal('no_tag_model', page.tagModelReason ?? 'This server has no tag model.');
+  // A chat never installs a model: a server without the tag model starts installing it here, and
+  // the person is told so (the Studio says to describe again once it is done).
+  const installing = await startInstall(client, model);
+  if (installing !== null) {
+    throw new Refusal('describe_installing', `The tag model is being set up on the server first: ${installing.message}`, 409);
+  }
   const started = Date.now();
   let content: string;
   try {

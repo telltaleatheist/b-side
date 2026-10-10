@@ -1,9 +1,10 @@
 import { expect, test } from 'bun:test';
 import { CrucibleRefused, type CrucibleClient } from '@crucible/client';
 
-import { chooseWriter, installWriter } from '../shared/core/albums';
+import { chooseWriter } from '../shared/core/albums';
+import { installModel } from '../shared/core/crucible';
 
-/** A stand-in client: only what chooseWriter and installWriter call. */
+/** A stand-in client: only what each function under test calls. */
 function fake(parts: Record<string, unknown>): CrucibleClient {
   return parts as unknown as CrucibleClient;
 }
@@ -25,7 +26,7 @@ test('a server with no writer says why, in its words', async () => {
 test('an installed writer needs nothing', async () => {
   let loads = 0;
   const client = fake({ models: async () => [{ id: 'w', installed: true }], loadModel: async () => { loads += 1; return 'j'; } });
-  await installWriter(client, 'w', async () => undefined);
+  await installModel(client, 'w', async () => undefined);
   expect(loads).toBe(0);
 });
 
@@ -40,7 +41,7 @@ test('a missing writer is installed through install-on-submit, its task followed
   const realTimeout = globalThis.setTimeout;
   globalThis.setTimeout = ((fn: () => void) => realTimeout(fn, 0)) as typeof setTimeout;
   try {
-    await installWriter(client, 'w', async (detail) => { said.push(detail); });
+    await installModel(client, 'w', async (detail) => { said.push(detail); });
   } finally {
     globalThis.setTimeout = realTimeout;
   }
@@ -54,7 +55,7 @@ test('a failed install is a refusal with the server\'s reason', async () => {
     loadModel: async () => { throw new CrucibleRefused(409, 'installing', 'x', { task_id: 't1', reason: 'installing', message: 'm', progress: null }); },
     task: async () => ({ state: 'failed', message: null, error: { code: 'pull_failed', message: 'disk full' } }),
   });
-  await expect(installWriter(client, 'w', async () => undefined)).rejects.toThrow('disk full');
+  await expect(installModel(client, 'w', async () => undefined)).rejects.toThrow('disk full');
 });
 
 test('a cover is painted only by an image model the server has ready', async () => {
@@ -65,4 +66,29 @@ test('a cover is painted only by an image model the server has ready', async () 
   expect(await chooseCoverModel(pages('download'))).toBeNull();
   expect(await chooseCoverModel(pages('unavailable'))).toBeNull();
   expect(await chooseCoverModel(fake({ playground: async () => [{ jobType: 'audio', standing: 'ready', id: 'yue2-3b' }] }))).toBeNull();
+});
+
+test('a writer already on the card is not loaded again', async () => {
+  const { loadWriter } = await import('../shared/core/albums');
+  let stepped = false;
+  await loadWriter(fake({ models: async () => [{ id: 'w', resident: true }] }), 'w', async () => { stepped = true; });
+  expect(stepped).toBe(false);
+});
+
+test('a writer off the card is loaded first with the step shown, and a failed load says why', async () => {
+  const { loadWriter } = await import('../shared/core/albums');
+  let stepped = false;
+  const ok = fake({
+    models: async () => [{ id: 'w', resident: false }],
+    loadModel: async () => 'j1',
+    events: async function* () { yield { event: 'started', data: {} }; yield { event: 'done', data: {} }; },
+  });
+  await loadWriter(ok, 'w', async () => { stepped = true; });
+  expect(stepped).toBe(true);
+  const failing = fake({
+    models: async () => [{ id: 'w', resident: false }],
+    loadModel: async () => 'j2',
+    events: async function* () { yield { event: 'failed', data: { error: { code: 'card_guard', message: 'needs 18 GiB, the card has 7' } } }; },
+  });
+  await expect(loadWriter(failing, 'w', async () => undefined)).rejects.toThrow('needs 18 GiB, the card has 7');
 });

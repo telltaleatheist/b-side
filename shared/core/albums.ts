@@ -20,9 +20,9 @@
  * is written to the playlist, so an album being made when the hub stops carries
  * on when it starts again.
  */
-import { CrucibleRefused, type CapabilityRecord, type CrucibleClient, type CrucibleSession, type InstallingDetails } from '@crucible/client';
+import type { CapabilityRecord, CrucibleClient, CrucibleSession } from '@crucible/client';
 
-import { chatSeed, clientFor, clientName } from './crucible';
+import { chatSeed, clientFor, clientName, installModel } from './crucible';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { describe } from './describe';
@@ -42,10 +42,6 @@ const LYRICS_PER_CALL = 4;
 const AHEAD = 2;
 /** This many failed tracks in a row stops the album. */
 const FAILURES_TO_STOP = 3;
-/** How long the server may take to install the album's writer (a download of up to tens of GB). */
-const WRITER_INSTALL_MS = 90 * 60_000;
-const WRITER_INSTALL_POLL_MS = 3000;
-
 /**
  * The chat model to write an album with: Crucible's own pick for the `generate` class,
  * the largest model up to its goal that fits this card, down to 0.8B (Crucible 1.0.117,
@@ -67,41 +63,26 @@ export async function chooseWriter(client: CrucibleClient): Promise<string> {
 }
 
 /**
- * Have the writer installed before the album asks it anything: a chat loads a model
- * that is installed (it waits in the server's line while it loads) but never installs
- * one. A load job on a model the server lacks is refused `installing` and starts the
- * install (install-on-submit); that task is followed to its end, each step shown, then
- * the chat that follows loads it. Another task holding the install lane (`task_busy`)
- * is waited out and the load asked again. All within WRITER_INSTALL_MS.
+ * Put the writer on the card before the plan asks it anything, so a long first load
+ * (vLLM's warm-up takes minutes) shows as loading rather than as a plan that hangs
+ * (Victoria's runs, 2026-10-10). A writer already resident needs nothing; a load the
+ * server fails is a refusal in its words. A stream that ends with no outcome is
+ * followed again: the job is still the server's.
  */
-export async function installWriter(client: CrucibleClient, model: string, step: (detail: string) => Promise<void>): Promise<void> {
+export async function loadWriter(client: CrucibleClient, model: string, step: () => Promise<void>): Promise<void> {
   const row = (await client.models()).find((entry) => entry.id === model);
-  // A model the server routes elsewhere (an upstream account) or already has needs nothing here.
-  if (row === undefined || row.installed) return;
-  const until = Date.now() + WRITER_INSTALL_MS;
+  // Not a local model (an upstream account) or already on the card: nothing to load.
+  if (row === undefined || row.resident) return;
+  await step();
+  const jobId = await client.loadModel(model);
   for (;;) {
-    let details: InstallingDetails;
-    try {
-      await client.loadModel(model);
-      return;
-    } catch (error) {
-      if (!(error instanceof CrucibleRefused) || error.code !== 'installing') throw error;
-      details = error.details as InstallingDetails;
-    }
-    for (;;) {
-      if (Date.now() > until) {
-        throw new Refusal('writer_install_slow', `The server is still installing ${model} after ${WRITER_INSTALL_MS / 60_000} minutes; make the album again once it is done.`);
+    for await (const event of client.events(jobId)) {
+      if (event.event === 'done') return;
+      if (event.event === 'failed') throw new Refusal('writer_load_failed', `The server could not load ${model}: ${event.data.error.message}`);
+      if (event.event === 'cancelled' || event.event === 'removed') {
+        throw new Refusal('writer_load_failed', `Loading ${model} was ${event.event} on the server; make the album again.`);
       }
-      const task = await client.task(details.task_id);
-      if (task.state === 'done') break;
-      if (task.state !== 'running') {
-        throw new Refusal('writer_install_failed', `The server could not install ${model}: ${task.error?.message ?? task.state}`);
-      }
-      await step(task.message ?? details.message);
-      await new Promise((rest) => setTimeout(rest, WRITER_INSTALL_POLL_MS));
     }
-    // Its own install done: the load goes through. Another task's done: ask again, which may start ours.
-    if (details.reason === 'installing') return;
   }
 }
 
@@ -504,8 +485,12 @@ export class AlbumMaker {
       }
       const writer = meta.writer ?? (await chooseWriter(client));
       if (meta.plan == null) {
-        await installWriter(client, writer, async (detail) => {
+        await installModel(client, writer, async (detail) => {
           meta = { ...(await this.hooks.meta(id) ?? meta), step: { kind: 'install', done: 0, of: 0, detail } };
+          await this.hooks.update(id, meta);
+        });
+        await loadWriter(client, writer, async () => {
+          meta = { ...(await this.hooks.meta(id) ?? meta), step: { kind: 'load', done: 0, of: 0, detail: writer } };
           await this.hooks.update(id, meta);
         });
         meta = { ...(await this.hooks.meta(id) ?? meta), step: { kind: 'plan', done: 0, of: 1 } };
@@ -518,8 +503,16 @@ export class AlbumMaker {
       const early = meta.openers ?? 0;
       if (early > 0) await this.hooks.retitle(id, plan.tracks.slice(0, early).map((track) => track.title));
       if (meta.ask.sung) {
-        const sungAt = plan.tracks.map((_, at) => at).filter((at) => at >= early);
         const page = await this.hooks.page(server);
+        // The lyrics model too: a chat never installs one, so the first sung album on a server
+        // that lacks it would hand every track to the writer without a word.
+        if (page?.tagModel) {
+          await installModel(client, page.tagModel, async (detail) => {
+            meta = { ...(await this.hooks.meta(id) ?? meta), step: { kind: 'install', done: 0, of: 0, detail } };
+            await this.hooks.update(id, meta);
+          });
+        }
+        const sungAt = plan.tracks.map((_, at) => at).filter((at) => at >= early);
         // One call per track with the lyrics model, each kept as it comes (a restart carries on).
         for (const [done, at] of sungAt.entries()) {
           if ((plan.tracks[at] as AlbumTrack).lyrics !== null) continue;

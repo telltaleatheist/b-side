@@ -7,7 +7,7 @@
  * answer strictly and raises one error type per failure; `refusal.ts` turns
  * those into what the screen shows.
  */
-import { CrucibleClient, type ModelInfo, type PlaygroundField, type PlaygroundPreset } from '@crucible/client';
+import { CrucibleClient, CrucibleRefused, type InstallingDetails, type ModelInfo, type PlaygroundField, type PlaygroundPreset } from '@crucible/client';
 
 import { Refusal } from './refusal';
 import type { StoredServer } from './servers';
@@ -72,6 +72,56 @@ function numberField(field: PlaygroundField | undefined): NumberField | null {
 }
 
 /** `GET /v1/playground`, read down to the `yue2-3b` audio page. */
+/** How long the server may take to install a model B-Sides needs (a download of up to tens of GB). */
+const INSTALL_MS = 90 * 60_000;
+const INSTALL_POLL_MS = 3000;
+
+/**
+ * Start installing `model` when the server lacks it: a chat loads a model that is installed
+ * (it waits in the server's line while it loads) but never installs one, and a load job on a
+ * missing model is refused `installing` and begins the install (install-on-submit). Null when
+ * nothing needed installing: the model is there (the load job then just loads it), or it is
+ * not a local model at all (an upstream account).
+ */
+export async function startInstall(client: CrucibleClient, model: string): Promise<InstallingDetails | null> {
+  const row = (await client.models()).find((entry) => entry.id === model);
+  if (row === undefined || row.installed) return null;
+  try {
+    await client.loadModel(model);
+    return null;
+  } catch (error) {
+    if (!(error instanceof CrucibleRefused) || error.code !== 'installing') throw error;
+    return error.details as InstallingDetails;
+  }
+}
+
+/**
+ * Have `model` installed before anything asks it: startInstall, then its task followed to its
+ * end, `step` told the server's words each time. Another task holding the install lane
+ * (`task_busy`) is waited out and the install asked again. All within INSTALL_MS.
+ */
+export async function installModel(client: CrucibleClient, model: string, step: (detail: string) => Promise<void>): Promise<void> {
+  const until = Date.now() + INSTALL_MS;
+  for (;;) {
+    const details = await startInstall(client, model);
+    if (details === null) return;
+    for (;;) {
+      if (Date.now() > until) {
+        throw new Refusal('model_install_slow', `The server is still installing ${model} after ${INSTALL_MS / 60_000} minutes; try again once it is done.`);
+      }
+      const task = await client.task(details.task_id);
+      if (task.state === 'done') break;
+      if (task.state !== 'running') {
+        throw new Refusal('model_install_failed', `The server could not install ${model}: ${task.error?.message ?? task.state}`);
+      }
+      await step(task.message ?? details.message);
+      await new Promise((rest) => setTimeout(rest, INSTALL_POLL_MS));
+    }
+    // Its own install done: installed now. Another task's done: ask again, which may start ours.
+    if (details.reason === 'installing') return;
+  }
+}
+
 /**
  * Which tag model (TAG_MODELS, best first) this server gets, from what it publishes: its
  * models' memory estimates against what its card leaves for models (`/v1/capability`'s

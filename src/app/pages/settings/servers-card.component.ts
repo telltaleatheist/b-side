@@ -6,6 +6,7 @@ import { CrucibleSetupComponent } from '../../components/crucible-setup/crucible
 import { PairServerComponent } from '../../components/pair-server/pair-server.component';
 import { ConfirmService } from '../../core/confirm.service';
 import { HubService } from '../../core/hub.service';
+import { RefusalComponent } from '../../components/refusal/refusal.component';
 
 interface Editing {
   readonly name: string;
@@ -28,7 +29,7 @@ interface Editing {
 @Component({
   selector: 'app-servers-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CrucibleSetupComponent, PairServerComponent],
+  imports: [RefusalComponent, CrucibleSetupComponent, PairServerComponent],
   template: `
     <div class="card">
       <h2 class="card-title">Crucible servers</h2>
@@ -72,7 +73,7 @@ interface Editing {
             <p class="ok">Connected: {{ probe.name }} · Crucible {{ probe.version }} · {{ probe.backend }}@if (!probe.audio) { — <span class="warn">this server does not offer audio jobs</span>}</p>
           }
           @if (refusals()[server.name]; as refused) {
-            <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+            <app-refusal [refusal]="refused" />
           }
         </div>
       } @empty {
@@ -101,7 +102,7 @@ interface Editing {
       </details>
 
       @if (addRefusal(); as refused) {
-        <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+        <app-refusal [refusal]="refused" />
       }
     </div>
   `,

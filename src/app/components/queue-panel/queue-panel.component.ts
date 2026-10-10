@@ -10,6 +10,7 @@ import { PlayerService } from '../../core/player.service';
 import { CoverComponent } from '../cover/cover.component';
 import { IconComponent } from '../icon/icon.component';
 import { SaveMenuComponent } from '../save-menu/save-menu.component';
+import { RefusalComponent } from '../refusal/refusal.component';
 
 type Row =
   | { readonly kind: 'take'; readonly number: number; readonly take: Take }
@@ -27,7 +28,7 @@ type Row =
 @Component({
   selector: 'app-queue-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SaveMenuComponent, CoverComponent, IconComponent],
+  imports: [RefusalComponent, SaveMenuComponent, CoverComponent, IconComponent],
   template: `
     <div class="head">
       <h2 class="section-title">Playing list</h2>
@@ -50,7 +51,7 @@ type Row =
                 <app-save-menu [take]="row.take" (closed)="saving.set(null)" />
               }
               @if (takeRefusal()?.id === row.take.id) {
-                <div class="refusal"><code>{{ takeRefusal()!.refusal.code }}</code><span>{{ takeRefusal()!.refusal.message }}</span></div>
+                <app-refusal [refusal]="takeRefusal()!.refusal" />
               }
             </div>
             <div class="actions">
@@ -73,10 +74,10 @@ type Row =
               <div class="meta" [class.amber]="!ended(row.job)">{{ status(row.job) }}</div>
               @if (row.job.install?.line; as line) { <div class="meta mono">{{ line }}</div> }
               @if (row.job.refusal; as refused) {
-                <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+                <app-refusal [refusal]="refused" />
               }
               @if (jobRefusal()?.key === row.job.key) {
-                <div class="refusal"><code>{{ jobRefusal()!.refusal.code }}</code><span>{{ jobRefusal()!.refusal.message }}</span></div>
+                <app-refusal [refusal]="jobRefusal()!.refusal" />
               }
             </div>
             <div class="actions">

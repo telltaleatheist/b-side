@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, inject, input, output, signal } fro
 import type { Playlist, RefusalView, Take } from '@shared/types';
 
 import { LibraryService } from '../../core/library.service';
+import { RefusalComponent } from '../refusal/refusal.component';
 
 /**
  * "Save to playlist" for one take: each playlist (a tick where the song already
@@ -10,6 +11,7 @@ import { LibraryService } from '../../core/library.service';
  */
 @Component({
   selector: 'app-save-menu',
+  imports: [RefusalComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="menu">
@@ -24,7 +26,7 @@ import { LibraryService } from '../../core/library.service';
         <button type="submit" class="primary small" [disabled]="busy() || name().trim() === ''">Make and save</button>
       </form>
       @if (refusal(); as refused) {
-        <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+        <app-refusal [refusal]="refused" />
       }
       <button type="button" class="ghost small done" (click)="closed.emit()">Done</button>
     </div>

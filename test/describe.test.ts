@@ -91,6 +91,7 @@ import { describe as describeMusic } from '../shared/core/describe';
 test('what the lyrics are about rides after the description, and never on an instrumental', async () => {
   const sent: string[] = [];
   const client = {
+    models: async () => [{ id: 'qwen3.5-4b-bside', installed: true }],
     chat: async (options: { messages: { role: string; content: string }[] }) => {
       sent.push(options.messages[options.messages.length - 1]?.content ?? '');
       return { content: JSON.stringify(fields), finishReason: 'stop' };
@@ -102,4 +103,18 @@ test('what the lyrics are about rides after the description, and never on an ins
   expect(sent[1]).toBe('retro soul ballad');
   expect(answer.lyrics).toBeNull();
   expect(answer.tags.some((tag) => /voice/i.test(tag))).toBe(false);
+});
+
+test('a server without the tag model starts installing it and says so, instead of a chat that cannot run', async () => {
+  let chats = 0;
+  const client = {
+    models: async () => [{ id: 'qwen3.5-4b-bside', installed: false }],
+    loadModel: async () => {
+      const { CrucibleRefused } = await import('@crucible/client');
+      throw new CrucibleRefused(409, 'installing', 'x', { task_id: 't', reason: 'installing', message: 'pulling qwen3.5-4b-bside (4.6 GB)', progress: null });
+    },
+    chat: async () => { chats += 1; return { content: '{}', finishReason: 'stop' }; },
+  } as never;
+  await expect(describeMusic(client, page, 'retro soul ballad')).rejects.toThrow('being set up on the server first: pulling qwen3.5-4b-bside (4.6 GB)');
+  expect(chats).toBe(0);
 });

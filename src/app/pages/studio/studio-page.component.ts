@@ -18,6 +18,7 @@ import { JobsService } from '../../core/jobs.service';
 import { PlayerService } from '../../core/player.service';
 import { LibraryService } from '../../core/library.service';
 import { StudioService } from '../../core/studio.service';
+import { RefusalComponent } from '../../components/refusal/refusal.component';
 
 /**
  * Make: the song form, Night Deck. Describe it (a small model fills the tags),
@@ -33,7 +34,7 @@ import { StudioService } from '../../core/studio.service';
 @Component({
   selector: 'app-studio-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe, RouterLink, CrucibleSetupComponent, PresetBarComponent, TagInputComponent, IconComponent, CoverComponent],
+  imports: [RefusalComponent, DecimalPipe, RouterLink, CrucibleSetupComponent, PresetBarComponent, TagInputComponent, IconComponent, CoverComponent],
   template: `
     <div class="page">
       <h1 class="page-title">Make</h1>
@@ -49,7 +50,7 @@ import { StudioService } from '../../core/studio.service';
         </div>
       } @else {
         @if (studio.pageRefusal(); as refused) {
-          <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+          <app-refusal [refusal]="refused" />
           <div><button type="button" class="ghost small" (click)="studio.reload()">Try again</button></div>
         }
         @if (studio.page(); as page) {
@@ -87,7 +88,7 @@ import { StudioService } from '../../core/studio.service';
             @for (clash of said.clashes; track clash) { <div class="notice">{{ clash }}</div> }
           }
           @if (studio.describeRefusal(); as refused) {
-            <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+            <app-refusal [refusal]="refused" />
           }
         </form>
 
@@ -156,7 +157,7 @@ import { StudioService } from '../../core/studio.service';
             </button>
           }
           @if (albumRefusal(); as refused) {
-            <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+            <app-refusal [refusal]="refused" />
           }
         } @else {
         @if (studio.page()?.instrumental !== false) {
@@ -223,7 +224,7 @@ import { StudioService } from '../../core/studio.service';
           <p class="hint center">Seeds {{ studio.seed() }}, {{ +studio.seed() + 1 }}, …</p>
         }
         @if (studio.generateRefusal(); as refused) {
-          <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+          <app-refusal [refusal]="refused" />
         }
         @if (jobs.generating()) {
           <a class="making" [routerLink]="makingIn() ? ['/library', makingIn()] : '/'"><span class="kicker">Making now</span><span>{{ makingCount() }} in {{ makingIn() ? singlesName : 'the playing list' }}</span><app-icon name="chevron" [size]="16" /></a>

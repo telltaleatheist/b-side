@@ -11,6 +11,7 @@ import { PlayerService } from '../../core/player.service';
 import { LibraryService } from '../../core/library.service';
 import { HubPickerComponent } from '../../components/hub-picker/hub-picker.component';
 import { ServersCardComponent } from './servers-card.component';
+import { RefusalComponent } from '../../components/refusal/refusal.component';
 
 /**
  * Settings: the Crucible servers, where the library lives, and sharing the hub
@@ -20,7 +21,7 @@ import { ServersCardComponent } from './servers-card.component';
 @Component({
   selector: 'app-settings-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ServersCardComponent, HubPickerComponent],
+  imports: [RefusalComponent, ServersCardComponent, HubPickerComponent],
   template: `
     <div class="page">
       <h1 class="page-title">Settings</h1>
@@ -115,7 +116,7 @@ import { ServersCardComponent } from './servers-card.component';
           <p class="hint">Albums kept only on this phone may take this much; past it, Make asks you to save some to your cloud or delete one first. An hour of MP3 is about 85 MB.</p>
         }
         @if (formatRefusal(); as refused) {
-          <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+          <app-refusal [refusal]="refused" />
         }
       </div>
 
@@ -186,7 +187,7 @@ import { ServersCardComponent } from './servers-card.component';
               }
             }
             @if (firewallRefusal(); as refused) {
-              <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+              <app-refusal [refusal]="refused" />
             }
             <label class="toggle">
               <input type="checkbox" [checked]="view.requireKey" [disabled]="busy()" (change)="requireKey($any($event.target).checked)" />
@@ -227,7 +228,7 @@ import { ServersCardComponent } from './servers-card.component';
       </div>
 
       @if (refusal(); as refused) {
-        <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+        <app-refusal [refusal]="refused" />
       }
     </div>
   `,

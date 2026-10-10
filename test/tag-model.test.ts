@@ -10,37 +10,31 @@ function row(id: string, memoryGib: number | null, installed: boolean, backendSu
   return { id, installed, backendSupported, memoryBytesEstimate: memoryGib === null ? null : memoryGib * GIB } as unknown as ModelInfo;
 }
 
-const FULL = 'qwen3.5-4b-bside';
-const FOUR = 'qwen3.5-4b-bside-4bit';
+const MODEL = 'qwen3.5-4b-bside';
 
-test('a card that holds the full model gets it', () => {
-  expect(chooseTagModel([row(FULL, 12.5, true), row(FOUR, 5, false)], 24 * GIB)).toEqual({ model: FULL, reason: null });
+test('an 8 GiB card (7 GiB for models) holds the Q8_0 GGUF', () => {
+  expect(chooseTagModel([row(MODEL, 5.9, true)], 7 * GIB)).toEqual({ model: MODEL, reason: null });
 });
 
-test('an 8 GiB card gets the 4-bit model, installed or not (it installs on first use)', () => {
-  expect(chooseTagModel([row(FULL, 12.5, true), row(FOUR, 5, false)], 8 * GIB).model).toBe(FOUR);
-  expect(chooseTagModel([row(FULL, 12.5, false), row(FOUR, 5, true)], 8 * GIB).model).toBe(FOUR);
+test('not installed yet is still the choice: it installs on its first use', () => {
+  expect(chooseTagModel([row(MODEL, 5.9, false)], 7 * GIB).model).toBe(MODEL);
 });
 
-test('among models that fit, an installed one wins over a download', () => {
-  expect(chooseTagModel([row(FULL, 12.5, false), row(FOUR, 5, true)], 24 * GIB).model).toBe(FOUR);
+test('a Mac (no estimate on its row) gets it', () => {
+  expect(chooseTagModel([row(MODEL, null, true)], 64 * GIB).model).toBe(MODEL);
 });
 
-test('a Mac (no 4-bit build for its backend) keeps the full model', () => {
-  expect(chooseTagModel([row(FULL, null, true), row(FOUR, 5, false, false)], 64 * GIB).model).toBe(FULL);
-});
-
-test('an older server without the 4-bit model still gets the full one where it fits', () => {
-  expect(chooseTagModel([row(FULL, 12.5, true)], 24 * GIB).model).toBe(FULL);
-});
-
-test('a card that holds neither says why, model by model', () => {
-  const chosen = chooseTagModel([row(FULL, 12.5, true), row(FOUR, 5, false)], 4 * GIB);
+test('a card that cannot hold it says why', () => {
+  const chosen = chooseTagModel([row(MODEL, 5.9, true)], 4 * GIB);
   expect(chosen.model).toBeNull();
-  expect(chosen.reason).toContain(`${FULL} needs 12.5 GiB and the card leaves 4.0 GiB for models`);
-  expect(chosen.reason).toContain(`${FOUR} needs 5.0 GiB`);
+  expect(chosen.reason).toContain(`${MODEL} needs 5.9 GiB and the card leaves 4.0 GiB for models`);
 });
 
-test('a server whose build has neither says so', () => {
-  expect(chooseTagModel([], 24 * GIB).reason).toContain('is not in this server\'s build');
+test('a server whose build lacks it, or lacks it for its backend, says so', () => {
+  expect(chooseTagModel([], 24 * GIB).reason).toContain("is not in this server's build");
+  expect(chooseTagModel([row(MODEL, 5.9, true, false)], 24 * GIB).reason).toContain('no build for this server');
+});
+
+test('the removed 4-bit id is ignored, never chosen', () => {
+  expect(chooseTagModel([row('qwen3.5-4b-bside-4bit', 3, true), row(MODEL, 5.9, true)], 7 * GIB).model).toBe(MODEL);
 });

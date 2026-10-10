@@ -15,6 +15,7 @@ import type { CrucibleUninstallAvailability, CrucibleUninstallPlan } from '@shar
 import { bytesText } from '../../core/format';
 import { desktop, HubService } from '../../core/hub.service';
 import { PairServerComponent } from '../pair-server/pair-server.component';
+import { RefusalComponent } from '../refusal/refusal.component';
 
 /** What the Crucible on this computer offers, flattened for the template. */
 type Face =
@@ -58,7 +59,7 @@ type Busy = 'install' | 'start' | 'use' | 'retry' | 'restart' | 'pairing' | 'uni
 @Component({
   selector: 'app-crucible-setup',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [PairServerComponent],
+  imports: [RefusalComponent, PairServerComponent],
   template: `
     <div class="setup">
       @if (isDesktop) {
@@ -247,7 +248,7 @@ type Busy = 'install' | 'start' | 'use' | 'retry' | 'restart' | 'pairing' | 'uni
       }
 
       @if (refusal(); as refused) {
-        <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+        <app-refusal [refusal]="refused" />
       }
     </div>
   `,

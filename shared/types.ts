@@ -12,11 +12,13 @@ export const SONG_MODEL = 'yue2-3b';
 
 /**
  * The chat models that turn a description into style tags and lyrics (shared/core/describe.ts),
- * best first: qwen3.5-4b fine-tuned on B-Sides' own describe answers (training/lyrics, Crucible
- * 1.0.108+), then the same fine-tune at 4 bits for a card that cannot hold it (~5.3 GB against
- * ~13.4 GB; cuda-linux only). Which one a server gets is chooseTagModel's (shared/core/crucible.ts).
+ * best first: qwen3.5-4b fine-tuned on B-Sides' own describe answers (training/lyrics). Since
+ * Crucible 1.0.124 one id serves every card: a Q8_0 GGUF on llama.cpp on a PC (~5.4-5.9 GB, so it
+ * fits an 8 GiB card whole and loads in seconds), bf16 MLX on a Mac. The 4-bit vLLM build it
+ * replaced is gone from the catalog. chooseTagModel (shared/core/crucible.ts) still says when a
+ * server's card cannot hold it.
  */
-export const TAG_MODELS = ['qwen3.5-4b-bside', 'qwen3.5-4b-bside-4bit'] as const;
+export const TAG_MODELS = ['qwen3.5-4b-bside'] as const;
 
 /** A refusal or failure, in the server's own words where it gave some. */
 export interface RefusalView {
@@ -395,8 +397,9 @@ export interface AlbumMeta {
 
 /** One step of an album before its tracks: a line to show and, when it counts, how far through. */
 export interface AlbumStep {
-  /** `install`: the server is installing the album's writer first (no count: its words say how far). */
-  readonly kind: 'openers' | 'install' | 'plan' | 'lyrics' | 'cover';
+  /** `install`: the server is installing a model the album needs first (no count: its words say how far). */
+  /** `load`: the writer is being put on the card (`detail`: its id); a first load can take minutes. */
+  readonly kind: 'openers' | 'install' | 'load' | 'plan' | 'lyrics' | 'cover';
   readonly done: number;
   readonly of: number;
   /** `install`: the server's own words for what it is doing. */

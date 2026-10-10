@@ -35,7 +35,11 @@ export function albumProgress(album: AlbumMeta): AlbumProgress {
         };
       }
       if (step?.kind === 'install') {
-        return { label: `Setting up the album's writer on the server: ${step.detail ?? 'installing'}…`, share: 0, waiting: true };
+        return { label: `Setting up a model on the server: ${step.detail ?? 'installing'}…`, share: 0, waiting: true };
+      }
+      if (step?.kind === 'load') {
+        const which = step.detail ? ` (${step.detail})` : '';
+        return { label: `Loading the album's writer${which} onto the card: the first load can take a few minutes…`, share: 0, waiting: true };
       }
       if (step?.kind === 'cover') {
         return { label: 'Painting the album art…', share: PLAN_SHARE + lyricsShare, waiting: false };

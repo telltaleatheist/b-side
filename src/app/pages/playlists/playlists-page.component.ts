@@ -18,6 +18,7 @@ import { jobCancellable, jobEnded, jobShare, jobStatus, jobTitle } from '../../c
 import { JobsService } from '../../core/jobs.service';
 import { PeersService, peerId } from '../../core/peers.service';
 import { PlayerService } from '../../core/player.service';
+import { RefusalComponent } from '../../components/refusal/refusal.component';
 
 /**
  * The library: every playlist as a cover (`/library`), and one playlist's page
@@ -28,7 +29,7 @@ import { PlayerService } from '../../core/player.service';
 @Component({
   selector: 'app-playlists-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, CoverComponent, IconComponent],
+  imports: [RefusalComponent, RouterLink, CoverComponent, IconComponent],
   template: `
     <div class="page" [attr.data-drop-playlist]="remote() ? null : (selected()?.id ?? null)">
       @if (selected(); as playlist) {
@@ -70,7 +71,7 @@ import { PlayerService } from '../../core/player.service';
               }
               @if (coverNote(album); as note) { <span class="hint">{{ note }}</span> }
               @if (album.refusal; as refused) {
-                <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+                <app-refusal [refusal]="refused" />
               }
             } @else {
               <span class="head-sub">{{ songs().length }} {{ songs().length === 1 ? 'song' : 'songs' }}{{ total() }}</span>
@@ -168,7 +169,7 @@ import { PlayerService } from '../../core/player.service';
                 }
                 <div class="meta" [class.amber]="!jobEnded(job)">{{ jobStatus(job, jobs.now()) }}</div>
                 @if (job.refusal; as refused) {
-                  <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+                  <app-refusal [refusal]="refused" />
                 }
               </div>
               <div class="actions shown">
@@ -259,7 +260,7 @@ import { PlayerService } from '../../core/player.service';
         </form>
       }
       @if (refusal(); as refused) {
-        <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+        <app-refusal [refusal]="refused" />
       }
     </div>
   `,

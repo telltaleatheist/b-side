@@ -5,6 +5,7 @@ import type { RefusalView } from '@shared/types';
 import { ConfirmService } from '../../core/confirm.service';
 import { StudioService } from '../../core/studio.service';
 import { IconComponent } from '../icon/icon.component';
+import { RefusalComponent } from '../refusal/refusal.component';
 
 /**
  * Presets kept on the server (the playground presets routes), as a row of
@@ -14,7 +15,7 @@ import { IconComponent } from '../icon/icon.component';
 @Component({
   selector: 'app-preset-bar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent],
+  imports: [RefusalComponent, IconComponent],
   template: `
     <div class="head">
       <span class="label">Presets</span>
@@ -41,7 +42,7 @@ import { IconComponent } from '../icon/icon.component';
       </div>
     }
     @if (refusal() ?? studio.presetsRefusal(); as refused) {
-      <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+      <app-refusal [refusal]="refused" />
     }
   `,
   styles: [`

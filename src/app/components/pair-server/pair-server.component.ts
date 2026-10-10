@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, inject, OnDestroy, output, signal }
 import type { PairingProgress, RefusalView } from '@shared/types';
 
 import { HubService } from '../../core/hub.service';
+import { RefusalComponent } from '../refusal/refusal.component';
 
 /**
  * Add a Crucible server by typing its address: `owens-pc`, `192.168.1.20`,
@@ -16,6 +17,7 @@ import { HubService } from '../../core/hub.service';
  */
 @Component({
   selector: 'app-pair-server',
+  imports: [RefusalComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <form class="pair" (submit)="$event.preventDefault(); begin()">
@@ -42,7 +44,7 @@ import { HubService } from '../../core/hub.service';
         <p class="ok">Connected to {{ name }}.</p>
       }
       @if (refusal(); as refused) {
-        <div class="refusal"><code>{{ refused.code }}</code><span>{{ refused.message }}</span></div>
+        <app-refusal [refusal]="refused" />
       }
     </form>
   `,
