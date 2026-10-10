@@ -10,8 +10,8 @@
  *
  * Claude is not held to the v2 contract (it was never trained on it), so its prompt is written
  * for what Victoria's first album lacked (2026-10-10): a story within the song and across the
- * album, verses longer than choruses, a final chorus that turns, and YuE2's full set of
- * sections (an intro, pre-choruses, an interlude, an outro), which keeps every section sung.
+ * album, verses longer than choruses, a final chorus that turns, and a shape that changes from
+ * track to track (SONG_SHAPES) with no section under 4 lines, which keeps every section sung.
  */
 
 /** Who writes the lyrics; a hub preference. */
@@ -60,9 +60,10 @@ export function claudeLyricsSystem(): string {
     '',
     'Form, which YuE2 needs to sing every section:',
     `- Use only these section tags, each alone on its own line, lowercase, in square brackets: ${YUE_SECTIONS.map((s) => `[${s}]`).join(', ')}.`,
-    '- A typical shape: [intro] (2 short lines, or none sung), [verse] (6-8 lines), [pre-chorus] (2 lines), [chorus] (4 lines),',
-    '  [verse] (6-8 lines), [pre-chorus], [chorus], [bridge] (4 lines), [chorus] with its last two lines changed, [outro] (2 lines).',
-    '  Vary it to suit the song; never make every song the same shape.',
+    '- Every section has at least 4 lines. YuE2 drops shorter sections, above all at the start and end of a song.',
+    '- Use an [intro] or [outro] only when it has 4 or more sung lines; otherwise start on the first verse and end on the last chorus.',
+    '- Verses 6-8 lines, pre-choruses 4, choruses 4-6, a bridge 4. The final chorus has its last two lines changed.',
+    '- Follow the shape you are given, if one is given.',
     '- Verses are longer than choruses. The chorus is the hook: singable and memorable, not the title repeated with a filler phrase.',
     '- Lines of similar length within a section so they sing well. A blank line between sections.',
     '- Sing in the language the style line names (English unless it says Chinese).',
@@ -82,8 +83,24 @@ export function claudeLyricsUser(song: SongToWrite): string {
   if (song.brief) lines.push(`The lyrics should be about: ${song.brief}`);
   lines.push(song.title ? `Song: "${song.title}"` : 'Song: not named yet');
   lines.push(`Style line: ${song.tags}`);
+  lines.push(`Shape: ${SONG_SHAPES[(song.album?.at ?? Math.floor(Math.random() * SONG_SHAPES.length)) % SONG_SHAPES.length]}`);
   return lines.join('\n');
 }
+
+/**
+ * The section orders a Claude lyricist is handed, one per song, so an album's tracks don't all
+ * share one template (Victoria, 2026-10-10). A track takes its place in the album; a single song
+ * takes one at random. No 2-line sections: YuE2's score stage dropped 2-line intros, outros and
+ * pre-choruses on Victoria's laptop (Crucible 1.0.130), while 4+-line sections were kept.
+ */
+export const SONG_SHAPES: readonly string[] = [
+  'verse, pre-chorus, chorus, verse, pre-chorus, chorus, bridge, chorus',
+  'intro (4 lines), verse, chorus, verse, chorus, bridge, chorus',
+  'verse, chorus, verse, chorus, bridge, chorus, outro (4 lines)',
+  'verse, verse, chorus, verse, chorus, bridge, chorus',
+  'intro (4 lines), verse, pre-chorus, chorus, verse, pre-chorus, chorus, outro (4 lines)',
+  'chorus, verse, chorus, verse, bridge, chorus',
+];
 
 /** The JSON a Claude lyricist answers with. */
 export const CLAUDE_LYRICS_SCHEMA = {
