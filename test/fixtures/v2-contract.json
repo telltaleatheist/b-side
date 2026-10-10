@@ -1,0 +1,1204 @@
+{
+ "page": [
+  [
+   "Language",
+   [
+    "English",
+    "Chinese"
+   ]
+  ],
+  [
+   "Genre",
+   [
+    "pop",
+    "piano pop",
+    "rock",
+    "hard rock",
+    "heavy metal",
+    "groove metal",
+    "punk rock",
+    "country",
+    "bluegrass",
+    "folk",
+    "blues",
+    "jazz",
+    "soul",
+    "R&B",
+    "funk",
+    "hip hop",
+    "trap",
+    "boom bap",
+    "EDM",
+    "house",
+    "synthwave",
+    "lo-fi",
+    "indie",
+    "reggae",
+    "latin",
+    "orchestral",
+    "cinematic",
+    "acoustic ballad",
+    "power ballad"
+   ]
+  ],
+  [
+   "Mood",
+   [
+    "emotional",
+    "melancholic",
+    "bittersweet",
+    "uplifting",
+    "energetic",
+    "aggressive",
+    "dark",
+    "dreamy",
+    "romantic",
+    "nostalgic",
+    "playful",
+    "sassy",
+    "epic",
+    "calm",
+    "hard-hitting",
+    "catchy"
+   ]
+  ],
+  [
+   "Vocal",
+   [
+    "male vocal",
+    "female vocal",
+    "deep male voice",
+    "soft female voice",
+    "raspy vocal",
+    "gritty male vocal",
+    "powerful belting vocal",
+    "breathy vocal",
+    "rap vocal",
+    "three-part harmonies",
+    "duet"
+   ]
+  ],
+  [
+   "Instruments",
+   [
+    "acoustic guitar",
+    "electric guitar",
+    "distorted guitar",
+    "palm-muted riffs",
+    "pinch harmonics",
+    "bass guitar",
+    "piano",
+    "synth",
+    "strings",
+    "fiddle",
+    "banjo",
+    "mandolin",
+    "harp",
+    "saxophone",
+    "trumpet",
+    "organ",
+    "808 bass",
+    "drums",
+    "double-kick drums",
+    "light drums"
+   ]
+  ],
+  [
+   "Tempo & sound",
+   [
+    "70 BPM",
+    "90 BPM",
+    "110 BPM",
+    "128 BPM",
+    "140 BPM",
+    "slow",
+    "mid-tempo",
+    "fast",
+    "polished production",
+    "live recording",
+    "vintage sound",
+    "wide stereo"
+   ]
+  ],
+  [
+   "Instrumental",
+   [
+    "Instrumental",
+    "no vocals",
+    "no singing"
+   ]
+  ]
+ ],
+ "lyricsPrompt": "You write song lyrics for an AI singer (YuE). Reply with JSON only: {\"lyrics\": \"...\"} for the one song asked for.\nEach lyrics uses only these section tags, each on its own line: [verse], [chorus], [bridge].\nStructure: [verse] [chorus] [verse] [chorus] [bridge] [chorus]. Four lines per section. The chorus repeats word for word.\nKeep lines a similar length (6-9 syllables) so they sing well. Put the song's title, or a phrase from it, in the chorus.\nWrite in the voice of the song's genre (soul sounds like soul, punk like punk). Concrete images, no cliches (\"heart of gold\", \"dancing in the rain\"), light rhyme, natural rhythm. Every line must make sense read aloud.\nUse a newline between lines and a blank line between sections.",
+ "titlePrompt": "You name music albums for an AI music model (YuE). Reply with JSON only: {\"title\": \"...\"}.\ntitle: a creative album title, 1-5 words, not generic, that fits the sound and what the album is about. Never repeat a title the person already has.",
+ "artistPrompt": "You name the invented band or artist for an album made with an AI music model (YuE). Reply with JSON only: {\"artist\": \"...\"}.\nartist: an invented band or artist name that fits the sound, not a real artist.",
+ "titlesPrompt5": "You name the tracks of a music album for an AI music model (YuE). Reply with JSON only: {\"titles\": [...]}, exactly 5 titles.\nEach title is a creative song name (no numbering), different from the others and from any listed to avoid; together they read like one record.",
+ "coverPrompt": "You describe album cover art for an image model. Reply with JSON only: {\"coverPrompt\": \"...\"}.\ncoverPrompt: a vivid description of the album cover art: subject, colours, style, mood. The art must carry NO writing of any kind, in any language or script: so describe no signs, neon signs, shop fronts, posters, billboards, books, newspapers, screens, labels, banners, graffiti, tattoos, logos or anything else that would show letters, numbers or symbols. Never name the album or artist in it.",
+ "schemas": {
+  "album": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "title",
+    "artist",
+    "blurb",
+    "coverPrompt",
+    "core"
+   ],
+   "properties": {
+    "title": {
+     "type": "string"
+    },
+    "artist": {
+     "type": "string"
+    },
+    "blurb": {
+     "type": "string"
+    },
+    "coverPrompt": {
+     "type": "string"
+    },
+    "core": {
+     "type": "string"
+    }
+   }
+  },
+  "lyrics": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "lyrics"
+   ],
+   "properties": {
+    "lyrics": {
+     "type": "string",
+     "maxLength": 2400
+    }
+   }
+  },
+  "title": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "title"
+   ],
+   "properties": {
+    "title": {
+     "type": "string"
+    }
+   }
+  },
+  "titles5": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "titles"
+   ],
+   "properties": {
+    "titles": {
+     "type": "array",
+     "minItems": 5,
+     "maxItems": 5,
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  }
+ },
+ "describe": {
+  "tagPrompt": "You write the style line for YuE2, a model that makes songs. A style line is short comma-separated\nphrases: language, genre, mood, vocal character, instruments, production, tempo.\n\nTurn the person's description into those fields:\n- genre, mood, instruments, sound: 1-5 word phrases a musician would use. Prefer the phrases below\n  when one fits; write your own when none does.\n- A game, film, artist or era is never named in a phrase: describe how it SOUNDS instead (its\n  instruments, its synths and chips, its production, its decade, its energy).\n- vocal: the voice (e.g. \"soft female voice\"), or nothing at all when instrumental.\n- instrumental: true only when the description asks for no vocals or is music without singing\n  (a game soundtrack, a beat, background music); then vocal is empty.\n- language: English unless the description asks for Chinese.\n- bpm: the tempo that suits the description.\n- Never pick two things that contradict each other (two tempos, two vocal genders, slow and fast).\n- lyrics: when instrumental is false, write short, GOOD song words in the voice of the genre you chose (soul sounds like soul, punk like punk): [verse], [chorus], [verse], [chorus], each section tag on its own line, four lines per section, lines of similar length (6-9 syllables). The chorus is the hook: simple, singable, repeated word for word. Concrete images from what the person described, light rhyme, no cliches, no filler. Every line must make sense read aloud; cut any line that does not. Use a newline between lines. When instrumental is true, lyrics is \"\".\n\nAn example of describing a reference by its sound. \"the music from a 90s DOS racing game\" is not\norchestral: games of that era played tracker modules and FM synth chips. So: genre \"techno\",\n\"electronic rock\"; mood \"energetic\", \"driving\"; instruments \"FM synth leads\", \"tracker drums\",\n\"slap bass\"; sound \"90s MOD tracker sound\", \"Sound Blaster FM\"; instrumental true; bpm 140.\n\nPhrases the song page offers:\n- Genre: pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad\n- Mood: emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy\n- Vocal: male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet\n- Instruments: acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums\n- Tempo & sound: 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo",
+  "tagPromptInstr": "You write the style line for YuE2, a model that makes songs. A style line is short comma-separated\nphrases: language, genre, mood, vocal character, instruments, production, tempo.\n\nTurn the person's description into those fields:\n- genre, mood, instruments, sound: 1-5 word phrases a musician would use. Prefer the phrases below\n  when one fits; write your own when none does.\n- A game, film, artist or era is never named in a phrase: describe how it SOUNDS instead (its\n  instruments, its synths and chips, its production, its decade, its energy).\n- vocal: the voice (e.g. \"soft female voice\"), or nothing at all when instrumental.\n- instrumental: true only when the description asks for no vocals or is music without singing\n  (a game soundtrack, a beat, background music); then vocal is empty.\n- language: English unless the description asks for Chinese.\n- bpm: the tempo that suits the description.\n- Never pick two things that contradict each other (two tempos, two vocal genders, slow and fast).\n- The person wants it instrumental: instrumental is true, vocal is empty, lyrics is \"\".\n\nAn example of describing a reference by its sound. \"the music from a 90s DOS racing game\" is not\norchestral: games of that era played tracker modules and FM synth chips. So: genre \"techno\",\n\"electronic rock\"; mood \"energetic\", \"driving\"; instruments \"FM synth leads\", \"tracker drums\",\n\"slap bass\"; sound \"90s MOD tracker sound\", \"Sound Blaster FM\"; instrumental true; bpm 140.\n\nPhrases the song page offers:\n- Genre: pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad\n- Mood: emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy\n- Vocal: male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet\n- Instruments: acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums\n- Tempo & sound: 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo",
+  "user": "smooth lo fi with jazz sax\nThe lyrics: a banana going brown",
+  "userInstr": "smooth lo fi with jazz sax",
+  "schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "language",
+    "genre",
+    "mood",
+    "vocal",
+    "instruments",
+    "sound",
+    "bpm",
+    "instrumental",
+    "lyrics"
+   ],
+   "properties": {
+    "language": {
+     "type": "string",
+     "enum": [
+      "English",
+      "Chinese"
+     ]
+    },
+    "genre": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 3,
+     "items": {
+      "type": "string",
+      "maxLength": 48
+     }
+    },
+    "mood": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 3,
+     "items": {
+      "type": "string",
+      "maxLength": 48
+     }
+    },
+    "vocal": {
+     "type": "array",
+     "minItems": 0,
+     "maxItems": 2,
+     "items": {
+      "type": "string",
+      "maxLength": 48
+     }
+    },
+    "instruments": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 5,
+     "items": {
+      "type": "string",
+      "maxLength": 48
+     }
+    },
+    "sound": {
+     "type": "array",
+     "minItems": 0,
+     "maxItems": 3,
+     "items": {
+      "type": "string",
+      "maxLength": 48
+     }
+    },
+    "bpm": {
+     "type": "integer",
+     "minimum": 50,
+     "maximum": 200
+    },
+    "instrumental": {
+     "type": "boolean"
+    },
+    "lyrics": {
+     "type": "string",
+     "maxLength": 2400
+    }
+   }
+  }
+ },
+ "cases": [
+  {
+   "id": "sung_desc_brief_15",
+   "ask": {
+    "description": "sad songs about bananas",
+    "tags": [],
+    "sung": true,
+    "lyrics": "a banana left on the counter too long"
+   },
+   "count": 15,
+   "album": {
+    "title": "Spotted at the Edges",
+    "artist": "The Fruit Bowl Elegies",
+    "blurb": "A slow, sweet record about ripening and letting go.",
+    "coverPrompt": "a banana on a windowsill",
+    "core": "indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums"
+   },
+   "albumPrompt": "You plan a music album for an AI music model (YuE): its title, artist, liner note, cover and core sound. Reply with JSON only.\nThe album will have 15 tracks. It is sung: every track has a singer.\nThe lyrics will be: a banana left on the counter too long. Let the title fit them.\ntitle: a creative album title, 1-5 words, not generic.\nartist: an invented band or artist name that fits the sound, not a real artist.\nblurb: one sentence about the record, like a liner note.\ncoverPrompt: a vivid description of the album cover art for an image model: subject, colours, style, mood. The art must carry NO writing of any kind, in any language or script: so describe no signs, neon signs, shop fronts, posters, billboards, books, newspapers, screens, labels, banners, graffiti, tattoos, logos or anything else that would show letters, numbers or symbols. Never name the album or artist in it.\ncore: the album's sound as 6-12 comma-separated style tags (genre, mood, instruments, production). No tempo: each track sets its own.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+   "albumUser": "sad songs about bananas",
+   "batches": [
+    [
+     1,
+     15
+    ]
+   ],
+   "tracks": [
+    {
+     "first": 1,
+     "last": 15,
+     "prompt": "You write the track list of a music album for an AI music model (YuE), up to 15 tracks at a time. Reply with JSON only: {\"tracks\": [{\"title\", \"turn\"}]}.\nWrite tracks 1-15 of 15, in order.\ntitle: a creative song name (no numbering), never one already on the album.\nturn: 2-4 comma-separated style tags ADDED to the core for that track only (a mood, one instrument or texture, its tempo), so the record hangs together without repeating itself. Never contradict the core.\nEach turn includes exactly one tempo, written \"<number> BPM\", chosen for that track.\nOn each sung track, the turn includes a vocal tag (for example soft female voice, raspy male vocal).\nShape the record: track 1 opens it, track 15 closes it, and the tracks between move through it.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+     "user": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: sad songs about bananas\nThe lyrics: a banana left on the counter too long\nCore: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums",
+     "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "tracks"
+      ],
+      "properties": {
+       "tracks": {
+        "type": "array",
+        "minItems": 15,
+        "maxItems": 15,
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "title",
+          "turn"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
+          },
+          "turn": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   ],
+   "lyricsUser": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: sad songs about bananas\nThe lyrics: a banana left on the counter too long\nSong: \"Counter Light\" (indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums, soft female voice, 68 BPM)",
+   "trackTags": "indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums, soft female voice, 68 BPM",
+   "titleUser": "About: sad songs about bananas\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: yes\nNot these: Spotted at the Edges",
+   "titleUserNoAvoid": "About: sad songs about bananas\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: yes",
+   "artistUser": "About: sad songs about bananas\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: yes\nAlbum: \"Spotted at the Edges\"",
+   "artistUserAvoid": "About: sad songs about bananas\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: yes\nAlbum: \"Spotted at the Edges\"\nNot these: The Fruit Bowl Elegies",
+   "titlesUser": "5 titles for:\nAbout: sad songs about bananas\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: yes\nAlbum: \"Spotted at the Edges\" by The Fruit Bowl Elegies\nNot these: Track 1; Track 2",
+   "coverUser": "About: sad songs about bananas\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: yes\nAlbum: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go."
+  },
+  {
+   "id": "sung_desc_brief_45",
+   "ask": {
+    "description": "sad songs about bananas",
+    "tags": [],
+    "sung": true,
+    "lyrics": "a banana left on the counter too long"
+   },
+   "count": 45,
+   "album": {
+    "title": "Spotted at the Edges",
+    "artist": "The Fruit Bowl Elegies",
+    "blurb": "A slow, sweet record about ripening and letting go.",
+    "coverPrompt": "a banana on a windowsill",
+    "core": "indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums"
+   },
+   "albumPrompt": "You plan a music album for an AI music model (YuE): its title, artist, liner note, cover and core sound. Reply with JSON only.\nThe album will have 45 tracks. It is sung: every track has a singer.\nThe lyrics will be: a banana left on the counter too long. Let the title fit them.\ntitle: a creative album title, 1-5 words, not generic.\nartist: an invented band or artist name that fits the sound, not a real artist.\nblurb: one sentence about the record, like a liner note.\ncoverPrompt: a vivid description of the album cover art for an image model: subject, colours, style, mood. The art must carry NO writing of any kind, in any language or script: so describe no signs, neon signs, shop fronts, posters, billboards, books, newspapers, screens, labels, banners, graffiti, tattoos, logos or anything else that would show letters, numbers or symbols. Never name the album or artist in it.\ncore: the album's sound as 6-12 comma-separated style tags (genre, mood, instruments, production). No tempo: each track sets its own.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+   "albumUser": "sad songs about bananas",
+   "batches": [
+    [
+     1,
+     15
+    ],
+    [
+     16,
+     30
+    ],
+    [
+     31,
+     45
+    ]
+   ],
+   "tracks": [
+    {
+     "first": 1,
+     "last": 15,
+     "prompt": "You write the track list of a music album for an AI music model (YuE), up to 15 tracks at a time. Reply with JSON only: {\"tracks\": [{\"title\", \"turn\"}]}.\nWrite tracks 1-15 of 45, in order.\ntitle: a creative song name (no numbering), never one already on the album.\nturn: 2-4 comma-separated style tags ADDED to the core for that track only (a mood, one instrument or texture, its tempo), so the record hangs together without repeating itself. Never contradict the core.\nEach turn includes exactly one tempo, written \"<number> BPM\", chosen for that track.\nOn each sung track, the turn includes a vocal tag (for example soft female voice, raspy male vocal).\nShape the record: track 1 opens it, track 45 closes it, and the tracks between move through it.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+     "user": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: sad songs about bananas\nThe lyrics: a banana left on the counter too long\nCore: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums",
+     "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "tracks"
+      ],
+      "properties": {
+       "tracks": {
+        "type": "array",
+        "minItems": 15,
+        "maxItems": 15,
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "title",
+          "turn"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
+          },
+          "turn": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "first": 16,
+     "last": 30,
+     "prompt": "You write the track list of a music album for an AI music model (YuE), up to 15 tracks at a time. Reply with JSON only: {\"tracks\": [{\"title\", \"turn\"}]}.\nWrite tracks 16-30 of 45, in order.\ntitle: a creative song name (no numbering), never one already on the album.\nturn: 2-4 comma-separated style tags ADDED to the core for that track only (a mood, one instrument or texture, its tempo), so the record hangs together without repeating itself. Never contradict the core.\nEach turn includes exactly one tempo, written \"<number> BPM\", chosen for that track.\nOn each sung track, the turn includes a vocal tag (for example soft female voice, raspy male vocal).\nShape the record: track 1 opens it, track 45 closes it, and the tracks between move through it.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+     "user": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: sad songs about bananas\nThe lyrics: a banana left on the counter too long\nCore: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nAlready on the album: 1. \"Track 1\"; 2. \"Track 2\"; 3. \"Track 3\"; 4. \"Track 4\"; 5. \"Track 5\"; 6. \"Track 6\"; 7. \"Track 7\"; 8. \"Track 8\"; 9. \"Track 9\"; 10. \"Track 10\"; 11. \"Track 11\"; 12. \"Track 12\"; 13. \"Track 13\"; 14. \"Track 14\"; 15. \"Track 15\"",
+     "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "tracks"
+      ],
+      "properties": {
+       "tracks": {
+        "type": "array",
+        "minItems": 15,
+        "maxItems": 15,
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "title",
+          "turn"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
+          },
+          "turn": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "first": 31,
+     "last": 45,
+     "prompt": "You write the track list of a music album for an AI music model (YuE), up to 15 tracks at a time. Reply with JSON only: {\"tracks\": [{\"title\", \"turn\"}]}.\nWrite tracks 31-45 of 45, in order.\ntitle: a creative song name (no numbering), never one already on the album.\nturn: 2-4 comma-separated style tags ADDED to the core for that track only (a mood, one instrument or texture, its tempo), so the record hangs together without repeating itself. Never contradict the core.\nEach turn includes exactly one tempo, written \"<number> BPM\", chosen for that track.\nOn each sung track, the turn includes a vocal tag (for example soft female voice, raspy male vocal).\nShape the record: track 1 opens it, track 45 closes it, and the tracks between move through it.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+     "user": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: sad songs about bananas\nThe lyrics: a banana left on the counter too long\nCore: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nAlready on the album: 1. \"Track 1\"; 2. \"Track 2\"; 3. \"Track 3\"; 4. \"Track 4\"; 5. \"Track 5\"; 6. \"Track 6\"; 7. \"Track 7\"; 8. \"Track 8\"; 9. \"Track 9\"; 10. \"Track 10\"; 11. \"Track 11\"; 12. \"Track 12\"; 13. \"Track 13\"; 14. \"Track 14\"; 15. \"Track 15\"; 16. \"Track 16\"; 17. \"Track 17\"; 18. \"Track 18\"; 19. \"Track 19\"; 20. \"Track 20\"; 21. \"Track 21\"; 22. \"Track 22\"; 23. \"Track 23\"; 24. \"Track 24\"; 25. \"Track 25\"; 26. \"Track 26\"; 27. \"Track 27\"; 28. \"Track 28\"; 29. \"Track 29\"; 30. \"Track 30\"",
+     "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "tracks"
+      ],
+      "properties": {
+       "tracks": {
+        "type": "array",
+        "minItems": 15,
+        "maxItems": 15,
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "title",
+          "turn"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
+          },
+          "turn": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   ],
+   "lyricsUser": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: sad songs about bananas\nThe lyrics: a banana left on the counter too long\nSong: \"Counter Light\" (indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums, soft female voice, 68 BPM)",
+   "trackTags": "indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums, soft female voice, 68 BPM",
+   "titleUser": "About: sad songs about bananas\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: yes\nNot these: Spotted at the Edges",
+   "titleUserNoAvoid": "About: sad songs about bananas\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: yes",
+   "artistUser": "About: sad songs about bananas\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: yes\nAlbum: \"Spotted at the Edges\"",
+   "artistUserAvoid": "About: sad songs about bananas\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: yes\nAlbum: \"Spotted at the Edges\"\nNot these: The Fruit Bowl Elegies",
+   "titlesUser": "5 titles for:\nAbout: sad songs about bananas\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: yes\nAlbum: \"Spotted at the Edges\" by The Fruit Bowl Elegies\nNot these: Track 1; Track 2",
+   "coverUser": "About: sad songs about bananas\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: yes\nAlbum: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go."
+  },
+  {
+   "id": "sung_tags_tempo_15",
+   "ask": {
+    "description": "",
+    "tags": [
+     "synthwave",
+     "nostalgic",
+     "analog synth bass",
+     "gated reverb drums",
+     "104 BPM"
+    ],
+    "sung": true,
+    "lyrics": ""
+   },
+   "count": 15,
+   "album": {
+    "title": "Spotted at the Edges",
+    "artist": "The Fruit Bowl Elegies",
+    "blurb": "A slow, sweet record about ripening and letting go.",
+    "coverPrompt": "a banana on a windowsill",
+    "core": "synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM"
+   },
+   "albumPrompt": "You plan a music album for an AI music model (YuE): its title, artist, liner note, cover and core sound. Reply with JSON only.\nThe album will have 15 tracks. It is sung: every track has a singer.\ntitle: a creative album title, 1-5 words, not generic.\nartist: an invented band or artist name that fits the sound, not a real artist.\nblurb: one sentence about the record, like a liner note.\ncoverPrompt: a vivid description of the album cover art for an image model: subject, colours, style, mood. The art must carry NO writing of any kind, in any language or script: so describe no signs, neon signs, shop fronts, posters, billboards, books, newspapers, screens, labels, banners, graffiti, tattoos, logos or anything else that would show letters, numbers or symbols. Never name the album or artist in it.\ncore: repeat exactly these tags, which every track keeps unchanged: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+   "albumUser": "Tags: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM",
+   "batches": [
+    [
+     1,
+     15
+    ]
+   ],
+   "tracks": [
+    {
+     "first": 1,
+     "last": 15,
+     "prompt": "You write the track list of a music album for an AI music model (YuE), up to 15 tracks at a time. Reply with JSON only: {\"tracks\": [{\"title\", \"turn\"}]}.\nWrite tracks 1-15 of 15, in order.\ntitle: a creative song name (no numbering), never one already on the album.\nturn: 2-4 comma-separated style tags ADDED to the core for that track only (a mood, one instrument or texture), so the record hangs together without repeating itself. Never contradict the core.\nThe core sets the tempo: no turn adds one.\nOn each sung track, the turn includes a vocal tag (for example soft female voice, raspy male vocal).\nShape the record: track 1 opens it, track 15 closes it, and the tracks between move through it.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+     "user": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nCore: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM",
+     "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "tracks"
+      ],
+      "properties": {
+       "tracks": {
+        "type": "array",
+        "minItems": 15,
+        "maxItems": 15,
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "title",
+          "turn"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
+          },
+          "turn": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   ],
+   "lyricsUser": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSong: \"Counter Light\" (synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM, soft female voice, 68 BPM)",
+   "trackTags": "synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM, soft female voice, 68 BPM",
+   "titleUser": "About: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSound: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSung: yes\nNot these: Spotted at the Edges",
+   "titleUserNoAvoid": "About: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSound: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSung: yes",
+   "artistUser": "About: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSound: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSung: yes\nAlbum: \"Spotted at the Edges\"",
+   "artistUserAvoid": "About: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSound: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSung: yes\nAlbum: \"Spotted at the Edges\"\nNot these: The Fruit Bowl Elegies",
+   "titlesUser": "5 titles for:\nAbout: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSound: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSung: yes\nAlbum: \"Spotted at the Edges\" by The Fruit Bowl Elegies\nNot these: Track 1; Track 2",
+   "coverUser": "About: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSound: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSung: yes\nAlbum: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go."
+  },
+  {
+   "id": "sung_tags_tempo_45",
+   "ask": {
+    "description": "",
+    "tags": [
+     "synthwave",
+     "nostalgic",
+     "analog synth bass",
+     "gated reverb drums",
+     "104 BPM"
+    ],
+    "sung": true,
+    "lyrics": ""
+   },
+   "count": 45,
+   "album": {
+    "title": "Spotted at the Edges",
+    "artist": "The Fruit Bowl Elegies",
+    "blurb": "A slow, sweet record about ripening and letting go.",
+    "coverPrompt": "a banana on a windowsill",
+    "core": "synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM"
+   },
+   "albumPrompt": "You plan a music album for an AI music model (YuE): its title, artist, liner note, cover and core sound. Reply with JSON only.\nThe album will have 45 tracks. It is sung: every track has a singer.\ntitle: a creative album title, 1-5 words, not generic.\nartist: an invented band or artist name that fits the sound, not a real artist.\nblurb: one sentence about the record, like a liner note.\ncoverPrompt: a vivid description of the album cover art for an image model: subject, colours, style, mood. The art must carry NO writing of any kind, in any language or script: so describe no signs, neon signs, shop fronts, posters, billboards, books, newspapers, screens, labels, banners, graffiti, tattoos, logos or anything else that would show letters, numbers or symbols. Never name the album or artist in it.\ncore: repeat exactly these tags, which every track keeps unchanged: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+   "albumUser": "Tags: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM",
+   "batches": [
+    [
+     1,
+     15
+    ],
+    [
+     16,
+     30
+    ],
+    [
+     31,
+     45
+    ]
+   ],
+   "tracks": [
+    {
+     "first": 1,
+     "last": 15,
+     "prompt": "You write the track list of a music album for an AI music model (YuE), up to 15 tracks at a time. Reply with JSON only: {\"tracks\": [{\"title\", \"turn\"}]}.\nWrite tracks 1-15 of 45, in order.\ntitle: a creative song name (no numbering), never one already on the album.\nturn: 2-4 comma-separated style tags ADDED to the core for that track only (a mood, one instrument or texture), so the record hangs together without repeating itself. Never contradict the core.\nThe core sets the tempo: no turn adds one.\nOn each sung track, the turn includes a vocal tag (for example soft female voice, raspy male vocal).\nShape the record: track 1 opens it, track 45 closes it, and the tracks between move through it.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+     "user": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nCore: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM",
+     "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "tracks"
+      ],
+      "properties": {
+       "tracks": {
+        "type": "array",
+        "minItems": 15,
+        "maxItems": 15,
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "title",
+          "turn"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
+          },
+          "turn": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "first": 16,
+     "last": 30,
+     "prompt": "You write the track list of a music album for an AI music model (YuE), up to 15 tracks at a time. Reply with JSON only: {\"tracks\": [{\"title\", \"turn\"}]}.\nWrite tracks 16-30 of 45, in order.\ntitle: a creative song name (no numbering), never one already on the album.\nturn: 2-4 comma-separated style tags ADDED to the core for that track only (a mood, one instrument or texture), so the record hangs together without repeating itself. Never contradict the core.\nThe core sets the tempo: no turn adds one.\nOn each sung track, the turn includes a vocal tag (for example soft female voice, raspy male vocal).\nShape the record: track 1 opens it, track 45 closes it, and the tracks between move through it.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+     "user": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nCore: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nAlready on the album: 1. \"Track 1\"; 2. \"Track 2\"; 3. \"Track 3\"; 4. \"Track 4\"; 5. \"Track 5\"; 6. \"Track 6\"; 7. \"Track 7\"; 8. \"Track 8\"; 9. \"Track 9\"; 10. \"Track 10\"; 11. \"Track 11\"; 12. \"Track 12\"; 13. \"Track 13\"; 14. \"Track 14\"; 15. \"Track 15\"",
+     "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "tracks"
+      ],
+      "properties": {
+       "tracks": {
+        "type": "array",
+        "minItems": 15,
+        "maxItems": 15,
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "title",
+          "turn"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
+          },
+          "turn": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "first": 31,
+     "last": 45,
+     "prompt": "You write the track list of a music album for an AI music model (YuE), up to 15 tracks at a time. Reply with JSON only: {\"tracks\": [{\"title\", \"turn\"}]}.\nWrite tracks 31-45 of 45, in order.\ntitle: a creative song name (no numbering), never one already on the album.\nturn: 2-4 comma-separated style tags ADDED to the core for that track only (a mood, one instrument or texture), so the record hangs together without repeating itself. Never contradict the core.\nThe core sets the tempo: no turn adds one.\nOn each sung track, the turn includes a vocal tag (for example soft female voice, raspy male vocal).\nShape the record: track 1 opens it, track 45 closes it, and the tracks between move through it.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+     "user": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nCore: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nAlready on the album: 1. \"Track 1\"; 2. \"Track 2\"; 3. \"Track 3\"; 4. \"Track 4\"; 5. \"Track 5\"; 6. \"Track 6\"; 7. \"Track 7\"; 8. \"Track 8\"; 9. \"Track 9\"; 10. \"Track 10\"; 11. \"Track 11\"; 12. \"Track 12\"; 13. \"Track 13\"; 14. \"Track 14\"; 15. \"Track 15\"; 16. \"Track 16\"; 17. \"Track 17\"; 18. \"Track 18\"; 19. \"Track 19\"; 20. \"Track 20\"; 21. \"Track 21\"; 22. \"Track 22\"; 23. \"Track 23\"; 24. \"Track 24\"; 25. \"Track 25\"; 26. \"Track 26\"; 27. \"Track 27\"; 28. \"Track 28\"; 29. \"Track 29\"; 30. \"Track 30\"",
+     "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "tracks"
+      ],
+      "properties": {
+       "tracks": {
+        "type": "array",
+        "minItems": 15,
+        "maxItems": 15,
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "title",
+          "turn"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
+          },
+          "turn": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   ],
+   "lyricsUser": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSong: \"Counter Light\" (synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM, soft female voice, 68 BPM)",
+   "trackTags": "synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM, soft female voice, 68 BPM",
+   "titleUser": "About: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSound: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSung: yes\nNot these: Spotted at the Edges",
+   "titleUserNoAvoid": "About: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSound: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSung: yes",
+   "artistUser": "About: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSound: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSung: yes\nAlbum: \"Spotted at the Edges\"",
+   "artistUserAvoid": "About: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSound: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSung: yes\nAlbum: \"Spotted at the Edges\"\nNot these: The Fruit Bowl Elegies",
+   "titlesUser": "5 titles for:\nAbout: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSound: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSung: yes\nAlbum: \"Spotted at the Edges\" by The Fruit Bowl Elegies\nNot these: Track 1; Track 2",
+   "coverUser": "About: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSound: synthwave, nostalgic, analog synth bass, gated reverb drums, 104 BPM\nSung: yes\nAlbum: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go."
+  },
+  {
+   "id": "instr_desc_tags_15",
+   "ask": {
+    "description": "driving at night through a rainy city",
+    "tags": [
+     "synthwave",
+     "nostalgic"
+    ],
+    "sung": false,
+    "lyrics": ""
+   },
+   "count": 15,
+   "album": {
+    "title": "Spotted at the Edges",
+    "artist": "The Fruit Bowl Elegies",
+    "blurb": "A slow, sweet record about ripening and letting go.",
+    "coverPrompt": "a banana on a windowsill",
+    "core": "synthwave, nostalgic"
+   },
+   "albumPrompt": "You plan a music album for an AI music model (YuE): its title, artist, liner note, cover and core sound. Reply with JSON only.\nThe album will have 15 tracks. It is instrumental: no vocals.\ntitle: a creative album title, 1-5 words, not generic.\nartist: an invented band or artist name that fits the sound, not a real artist.\nblurb: one sentence about the record, like a liner note.\ncoverPrompt: a vivid description of the album cover art for an image model: subject, colours, style, mood. The art must carry NO writing of any kind, in any language or script: so describe no signs, neon signs, shop fronts, posters, billboards, books, newspapers, screens, labels, banners, graffiti, tattoos, logos or anything else that would show letters, numbers or symbols. Never name the album or artist in it.\ncore: repeat exactly these tags, which every track keeps unchanged: synthwave, nostalgic\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+   "albumUser": "driving at night through a rainy city\nTags: synthwave, nostalgic",
+   "batches": [
+    [
+     1,
+     15
+    ]
+   ],
+   "tracks": [
+    {
+     "first": 1,
+     "last": 15,
+     "prompt": "You write the track list of a music album for an AI music model (YuE), up to 15 tracks at a time. Reply with JSON only: {\"tracks\": [{\"title\", \"turn\"}]}.\nWrite tracks 1-15 of 15, in order.\ntitle: a creative song name (no numbering), never one already on the album.\nturn: 2-4 comma-separated style tags ADDED to the core for that track only (a mood, one instrument or texture, its tempo), so the record hangs together without repeating itself. Never contradict the core.\nEach turn includes exactly one tempo, written \"<number> BPM\", chosen for that track.\nThe album is instrumental: no vocal tags in any turn.\nShape the record: track 1 opens it, track 15 closes it, and the tracks between move through it.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+     "user": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: driving at night through a rainy city\nCore: synthwave, nostalgic",
+     "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "tracks"
+      ],
+      "properties": {
+       "tracks": {
+        "type": "array",
+        "minItems": 15,
+        "maxItems": 15,
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "title",
+          "turn"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
+          },
+          "turn": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   ],
+   "lyricsUser": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: driving at night through a rainy city\nSong: \"Counter Light\" (synthwave, nostalgic, 68 BPM, instrumental)",
+   "trackTags": "synthwave, nostalgic, 68 BPM, instrumental",
+   "titleUser": "About: driving at night through a rainy city\nSound: synthwave, nostalgic\nSung: no (instrumental)\nNot these: Spotted at the Edges",
+   "titleUserNoAvoid": "About: driving at night through a rainy city\nSound: synthwave, nostalgic\nSung: no (instrumental)",
+   "artistUser": "About: driving at night through a rainy city\nSound: synthwave, nostalgic\nSung: no (instrumental)\nAlbum: \"Spotted at the Edges\"",
+   "artistUserAvoid": "About: driving at night through a rainy city\nSound: synthwave, nostalgic\nSung: no (instrumental)\nAlbum: \"Spotted at the Edges\"\nNot these: The Fruit Bowl Elegies",
+   "titlesUser": "5 titles for:\nAbout: driving at night through a rainy city\nSound: synthwave, nostalgic\nSung: no (instrumental)\nAlbum: \"Spotted at the Edges\" by The Fruit Bowl Elegies\nNot these: Track 1; Track 2",
+   "coverUser": "About: driving at night through a rainy city\nSound: synthwave, nostalgic\nSung: no (instrumental)\nAlbum: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go."
+  },
+  {
+   "id": "instr_desc_tags_45",
+   "ask": {
+    "description": "driving at night through a rainy city",
+    "tags": [
+     "synthwave",
+     "nostalgic"
+    ],
+    "sung": false,
+    "lyrics": ""
+   },
+   "count": 45,
+   "album": {
+    "title": "Spotted at the Edges",
+    "artist": "The Fruit Bowl Elegies",
+    "blurb": "A slow, sweet record about ripening and letting go.",
+    "coverPrompt": "a banana on a windowsill",
+    "core": "synthwave, nostalgic"
+   },
+   "albumPrompt": "You plan a music album for an AI music model (YuE): its title, artist, liner note, cover and core sound. Reply with JSON only.\nThe album will have 45 tracks. It is instrumental: no vocals.\ntitle: a creative album title, 1-5 words, not generic.\nartist: an invented band or artist name that fits the sound, not a real artist.\nblurb: one sentence about the record, like a liner note.\ncoverPrompt: a vivid description of the album cover art for an image model: subject, colours, style, mood. The art must carry NO writing of any kind, in any language or script: so describe no signs, neon signs, shop fronts, posters, billboards, books, newspapers, screens, labels, banners, graffiti, tattoos, logos or anything else that would show letters, numbers or symbols. Never name the album or artist in it.\ncore: repeat exactly these tags, which every track keeps unchanged: synthwave, nostalgic\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+   "albumUser": "driving at night through a rainy city\nTags: synthwave, nostalgic",
+   "batches": [
+    [
+     1,
+     15
+    ],
+    [
+     16,
+     30
+    ],
+    [
+     31,
+     45
+    ]
+   ],
+   "tracks": [
+    {
+     "first": 1,
+     "last": 15,
+     "prompt": "You write the track list of a music album for an AI music model (YuE), up to 15 tracks at a time. Reply with JSON only: {\"tracks\": [{\"title\", \"turn\"}]}.\nWrite tracks 1-15 of 45, in order.\ntitle: a creative song name (no numbering), never one already on the album.\nturn: 2-4 comma-separated style tags ADDED to the core for that track only (a mood, one instrument or texture, its tempo), so the record hangs together without repeating itself. Never contradict the core.\nEach turn includes exactly one tempo, written \"<number> BPM\", chosen for that track.\nThe album is instrumental: no vocal tags in any turn.\nShape the record: track 1 opens it, track 45 closes it, and the tracks between move through it.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+     "user": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: driving at night through a rainy city\nCore: synthwave, nostalgic",
+     "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "tracks"
+      ],
+      "properties": {
+       "tracks": {
+        "type": "array",
+        "minItems": 15,
+        "maxItems": 15,
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "title",
+          "turn"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
+          },
+          "turn": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "first": 16,
+     "last": 30,
+     "prompt": "You write the track list of a music album for an AI music model (YuE), up to 15 tracks at a time. Reply with JSON only: {\"tracks\": [{\"title\", \"turn\"}]}.\nWrite tracks 16-30 of 45, in order.\ntitle: a creative song name (no numbering), never one already on the album.\nturn: 2-4 comma-separated style tags ADDED to the core for that track only (a mood, one instrument or texture, its tempo), so the record hangs together without repeating itself. Never contradict the core.\nEach turn includes exactly one tempo, written \"<number> BPM\", chosen for that track.\nThe album is instrumental: no vocal tags in any turn.\nShape the record: track 1 opens it, track 45 closes it, and the tracks between move through it.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+     "user": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: driving at night through a rainy city\nCore: synthwave, nostalgic\nAlready on the album: 1. \"Track 1\"; 2. \"Track 2\"; 3. \"Track 3\"; 4. \"Track 4\"; 5. \"Track 5\"; 6. \"Track 6\"; 7. \"Track 7\"; 8. \"Track 8\"; 9. \"Track 9\"; 10. \"Track 10\"; 11. \"Track 11\"; 12. \"Track 12\"; 13. \"Track 13\"; 14. \"Track 14\"; 15. \"Track 15\"",
+     "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "tracks"
+      ],
+      "properties": {
+       "tracks": {
+        "type": "array",
+        "minItems": 15,
+        "maxItems": 15,
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "title",
+          "turn"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
+          },
+          "turn": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "first": 31,
+     "last": 45,
+     "prompt": "You write the track list of a music album for an AI music model (YuE), up to 15 tracks at a time. Reply with JSON only: {\"tracks\": [{\"title\", \"turn\"}]}.\nWrite tracks 31-45 of 45, in order.\ntitle: a creative song name (no numbering), never one already on the album.\nturn: 2-4 comma-separated style tags ADDED to the core for that track only (a mood, one instrument or texture, its tempo), so the record hangs together without repeating itself. Never contradict the core.\nEach turn includes exactly one tempo, written \"<number> BPM\", chosen for that track.\nThe album is instrumental: no vocal tags in any turn.\nShape the record: track 1 opens it, track 45 closes it, and the tracks between move through it.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+     "user": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: driving at night through a rainy city\nCore: synthwave, nostalgic\nAlready on the album: 1. \"Track 1\"; 2. \"Track 2\"; 3. \"Track 3\"; 4. \"Track 4\"; 5. \"Track 5\"; 6. \"Track 6\"; 7. \"Track 7\"; 8. \"Track 8\"; 9. \"Track 9\"; 10. \"Track 10\"; 11. \"Track 11\"; 12. \"Track 12\"; 13. \"Track 13\"; 14. \"Track 14\"; 15. \"Track 15\"; 16. \"Track 16\"; 17. \"Track 17\"; 18. \"Track 18\"; 19. \"Track 19\"; 20. \"Track 20\"; 21. \"Track 21\"; 22. \"Track 22\"; 23. \"Track 23\"; 24. \"Track 24\"; 25. \"Track 25\"; 26. \"Track 26\"; 27. \"Track 27\"; 28. \"Track 28\"; 29. \"Track 29\"; 30. \"Track 30\"",
+     "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "tracks"
+      ],
+      "properties": {
+       "tracks": {
+        "type": "array",
+        "minItems": 15,
+        "maxItems": 15,
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "title",
+          "turn"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
+          },
+          "turn": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   ],
+   "lyricsUser": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: driving at night through a rainy city\nSong: \"Counter Light\" (synthwave, nostalgic, 68 BPM, instrumental)",
+   "trackTags": "synthwave, nostalgic, 68 BPM, instrumental",
+   "titleUser": "About: driving at night through a rainy city\nSound: synthwave, nostalgic\nSung: no (instrumental)\nNot these: Spotted at the Edges",
+   "titleUserNoAvoid": "About: driving at night through a rainy city\nSound: synthwave, nostalgic\nSung: no (instrumental)",
+   "artistUser": "About: driving at night through a rainy city\nSound: synthwave, nostalgic\nSung: no (instrumental)\nAlbum: \"Spotted at the Edges\"",
+   "artistUserAvoid": "About: driving at night through a rainy city\nSound: synthwave, nostalgic\nSung: no (instrumental)\nAlbum: \"Spotted at the Edges\"\nNot these: The Fruit Bowl Elegies",
+   "titlesUser": "5 titles for:\nAbout: driving at night through a rainy city\nSound: synthwave, nostalgic\nSung: no (instrumental)\nAlbum: \"Spotted at the Edges\" by The Fruit Bowl Elegies\nNot these: Track 1; Track 2",
+   "coverUser": "About: driving at night through a rainy city\nSound: synthwave, nostalgic\nSung: no (instrumental)\nAlbum: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go."
+  },
+  {
+   "id": "instr_nothing_15",
+   "ask": {
+    "description": "",
+    "tags": [],
+    "sung": false,
+    "lyrics": "a brief that an instrumental album ignores"
+   },
+   "count": 15,
+   "album": {
+    "title": "Spotted at the Edges",
+    "artist": "The Fruit Bowl Elegies",
+    "blurb": "A slow, sweet record about ripening and letting go.",
+    "coverPrompt": "a banana on a windowsill",
+    "core": "indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums"
+   },
+   "albumPrompt": "You plan a music album for an AI music model (YuE): its title, artist, liner note, cover and core sound. Reply with JSON only.\nThe album will have 15 tracks. It is instrumental: no vocals.\ntitle: a creative album title, 1-5 words, not generic.\nartist: an invented band or artist name that fits the sound, not a real artist.\nblurb: one sentence about the record, like a liner note.\ncoverPrompt: a vivid description of the album cover art for an image model: subject, colours, style, mood. The art must carry NO writing of any kind, in any language or script: so describe no signs, neon signs, shop fronts, posters, billboards, books, newspapers, screens, labels, banners, graffiti, tattoos, logos or anything else that would show letters, numbers or symbols. Never name the album or artist in it.\ncore: the album's sound as 6-12 comma-separated style tags (genre, mood, instruments, production). No tempo: each track sets its own.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+   "albumUser": "Surprise me.",
+   "batches": [
+    [
+     1,
+     15
+    ]
+   ],
+   "tracks": [
+    {
+     "first": 1,
+     "last": 15,
+     "prompt": "You write the track list of a music album for an AI music model (YuE), up to 15 tracks at a time. Reply with JSON only: {\"tracks\": [{\"title\", \"turn\"}]}.\nWrite tracks 1-15 of 15, in order.\ntitle: a creative song name (no numbering), never one already on the album.\nturn: 2-4 comma-separated style tags ADDED to the core for that track only (a mood, one instrument or texture, its tempo), so the record hangs together without repeating itself. Never contradict the core.\nEach turn includes exactly one tempo, written \"<number> BPM\", chosen for that track.\nThe album is instrumental: no vocal tags in any turn.\nShape the record: track 1 opens it, track 15 closes it, and the tracks between move through it.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+     "user": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: (none)\nCore: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums",
+     "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "tracks"
+      ],
+      "properties": {
+       "tracks": {
+        "type": "array",
+        "minItems": 15,
+        "maxItems": 15,
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "title",
+          "turn"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
+          },
+          "turn": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   ],
+   "lyricsUser": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: (none)\nSong: \"Counter Light\" (indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums, 68 BPM, instrumental)",
+   "trackTags": "indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums, 68 BPM, instrumental",
+   "titleUser": "About: (no description)\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: no (instrumental)\nNot these: Spotted at the Edges",
+   "titleUserNoAvoid": "About: (no description)\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: no (instrumental)",
+   "artistUser": "About: (no description)\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: no (instrumental)\nAlbum: \"Spotted at the Edges\"",
+   "artistUserAvoid": "About: (no description)\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: no (instrumental)\nAlbum: \"Spotted at the Edges\"\nNot these: The Fruit Bowl Elegies",
+   "titlesUser": "5 titles for:\nAbout: (no description)\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: no (instrumental)\nAlbum: \"Spotted at the Edges\" by The Fruit Bowl Elegies\nNot these: Track 1; Track 2",
+   "coverUser": "About: (no description)\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: no (instrumental)\nAlbum: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go."
+  },
+  {
+   "id": "instr_nothing_45",
+   "ask": {
+    "description": "",
+    "tags": [],
+    "sung": false,
+    "lyrics": "a brief that an instrumental album ignores"
+   },
+   "count": 45,
+   "album": {
+    "title": "Spotted at the Edges",
+    "artist": "The Fruit Bowl Elegies",
+    "blurb": "A slow, sweet record about ripening and letting go.",
+    "coverPrompt": "a banana on a windowsill",
+    "core": "indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums"
+   },
+   "albumPrompt": "You plan a music album for an AI music model (YuE): its title, artist, liner note, cover and core sound. Reply with JSON only.\nThe album will have 45 tracks. It is instrumental: no vocals.\ntitle: a creative album title, 1-5 words, not generic.\nartist: an invented band or artist name that fits the sound, not a real artist.\nblurb: one sentence about the record, like a liner note.\ncoverPrompt: a vivid description of the album cover art for an image model: subject, colours, style, mood. The art must carry NO writing of any kind, in any language or script: so describe no signs, neon signs, shop fronts, posters, billboards, books, newspapers, screens, labels, banners, graffiti, tattoos, logos or anything else that would show letters, numbers or symbols. Never name the album or artist in it.\ncore: the album's sound as 6-12 comma-separated style tags (genre, mood, instruments, production). No tempo: each track sets its own.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+   "albumUser": "Surprise me.",
+   "batches": [
+    [
+     1,
+     15
+    ],
+    [
+     16,
+     30
+    ],
+    [
+     31,
+     45
+    ]
+   ],
+   "tracks": [
+    {
+     "first": 1,
+     "last": 15,
+     "prompt": "You write the track list of a music album for an AI music model (YuE), up to 15 tracks at a time. Reply with JSON only: {\"tracks\": [{\"title\", \"turn\"}]}.\nWrite tracks 1-15 of 45, in order.\ntitle: a creative song name (no numbering), never one already on the album.\nturn: 2-4 comma-separated style tags ADDED to the core for that track only (a mood, one instrument or texture, its tempo), so the record hangs together without repeating itself. Never contradict the core.\nEach turn includes exactly one tempo, written \"<number> BPM\", chosen for that track.\nThe album is instrumental: no vocal tags in any turn.\nShape the record: track 1 opens it, track 45 closes it, and the tracks between move through it.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+     "user": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: (none)\nCore: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums",
+     "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "tracks"
+      ],
+      "properties": {
+       "tracks": {
+        "type": "array",
+        "minItems": 15,
+        "maxItems": 15,
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "title",
+          "turn"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
+          },
+          "turn": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "first": 16,
+     "last": 30,
+     "prompt": "You write the track list of a music album for an AI music model (YuE), up to 15 tracks at a time. Reply with JSON only: {\"tracks\": [{\"title\", \"turn\"}]}.\nWrite tracks 16-30 of 45, in order.\ntitle: a creative song name (no numbering), never one already on the album.\nturn: 2-4 comma-separated style tags ADDED to the core for that track only (a mood, one instrument or texture, its tempo), so the record hangs together without repeating itself. Never contradict the core.\nEach turn includes exactly one tempo, written \"<number> BPM\", chosen for that track.\nThe album is instrumental: no vocal tags in any turn.\nShape the record: track 1 opens it, track 45 closes it, and the tracks between move through it.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+     "user": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: (none)\nCore: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nAlready on the album: 1. \"Track 1\"; 2. \"Track 2\"; 3. \"Track 3\"; 4. \"Track 4\"; 5. \"Track 5\"; 6. \"Track 6\"; 7. \"Track 7\"; 8. \"Track 8\"; 9. \"Track 9\"; 10. \"Track 10\"; 11. \"Track 11\"; 12. \"Track 12\"; 13. \"Track 13\"; 14. \"Track 14\"; 15. \"Track 15\"",
+     "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "tracks"
+      ],
+      "properties": {
+       "tracks": {
+        "type": "array",
+        "minItems": 15,
+        "maxItems": 15,
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "title",
+          "turn"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
+          },
+          "turn": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "first": 31,
+     "last": 45,
+     "prompt": "You write the track list of a music album for an AI music model (YuE), up to 15 tracks at a time. Reply with JSON only: {\"tracks\": [{\"title\", \"turn\"}]}.\nWrite tracks 31-45 of 45, in order.\ntitle: a creative song name (no numbering), never one already on the album.\nturn: 2-4 comma-separated style tags ADDED to the core for that track only (a mood, one instrument or texture, its tempo), so the record hangs together without repeating itself. Never contradict the core.\nEach turn includes exactly one tempo, written \"<number> BPM\", chosen for that track.\nThe album is instrumental: no vocal tags in any turn.\nShape the record: track 1 opens it, track 45 closes it, and the tracks between move through it.\nStyle words the singer model knows (examples, not a closed list): English, Chinese, pop, piano pop, rock, hard rock, heavy metal, groove metal, punk rock, country, bluegrass, folk, blues, jazz, soul, R&B, funk, hip hop, trap, boom bap, EDM, house, synthwave, lo-fi, indie, reggae, latin, orchestral, cinematic, acoustic ballad, power ballad, emotional, melancholic, bittersweet, uplifting, energetic, aggressive, dark, dreamy, romantic, nostalgic, playful, sassy, epic, calm, hard-hitting, catchy, male vocal, female vocal, deep male voice, soft female voice, raspy vocal, gritty male vocal, powerful belting vocal, breathy vocal, rap vocal, three-part harmonies, duet, acoustic guitar, electric guitar, distorted guitar, palm-muted riffs, pinch harmonics, bass guitar, piano, synth, strings, fiddle, banjo, mandolin, harp, saxophone, trumpet, organ, 808 bass, drums, double-kick drums, light drums, 70 BPM, 90 BPM, 110 BPM, 128 BPM, 140 BPM, slow, mid-tempo, fast, polished production, live recording, vintage sound, wide stereo, Instrumental, no vocals, no singing.",
+     "user": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: (none)\nCore: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nAlready on the album: 1. \"Track 1\"; 2. \"Track 2\"; 3. \"Track 3\"; 4. \"Track 4\"; 5. \"Track 5\"; 6. \"Track 6\"; 7. \"Track 7\"; 8. \"Track 8\"; 9. \"Track 9\"; 10. \"Track 10\"; 11. \"Track 11\"; 12. \"Track 12\"; 13. \"Track 13\"; 14. \"Track 14\"; 15. \"Track 15\"; 16. \"Track 16\"; 17. \"Track 17\"; 18. \"Track 18\"; 19. \"Track 19\"; 20. \"Track 20\"; 21. \"Track 21\"; 22. \"Track 22\"; 23. \"Track 23\"; 24. \"Track 24\"; 25. \"Track 25\"; 26. \"Track 26\"; 27. \"Track 27\"; 28. \"Track 28\"; 29. \"Track 29\"; 30. \"Track 30\"",
+     "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "tracks"
+      ],
+      "properties": {
+       "tracks": {
+        "type": "array",
+        "minItems": 15,
+        "maxItems": 15,
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "title",
+          "turn"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
+          },
+          "turn": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   ],
+   "lyricsUser": "Album: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go.\nAbout: (none)\nSong: \"Counter Light\" (indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums, 68 BPM, instrumental)",
+   "trackTags": "indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums, 68 BPM, instrumental",
+   "titleUser": "About: (no description)\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: no (instrumental)\nNot these: Spotted at the Edges",
+   "titleUserNoAvoid": "About: (no description)\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: no (instrumental)",
+   "artistUser": "About: (no description)\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: no (instrumental)\nAlbum: \"Spotted at the Edges\"",
+   "artistUserAvoid": "About: (no description)\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: no (instrumental)\nAlbum: \"Spotted at the Edges\"\nNot these: The Fruit Bowl Elegies",
+   "titlesUser": "5 titles for:\nAbout: (no description)\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: no (instrumental)\nAlbum: \"Spotted at the Edges\" by The Fruit Bowl Elegies\nNot these: Track 1; Track 2",
+   "coverUser": "About: (no description)\nSound: indie folk, melancholic, fingerpicked acoustic guitar, upright bass, soft brushed drums\nSung: no (instrumental)\nAlbum: \"Spotted at the Edges\" by The Fruit Bowl Elegies. A slow, sweet record about ripening and letting go."
+  }
+ ]
+}

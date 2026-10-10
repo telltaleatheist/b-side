@@ -369,6 +369,11 @@ export class Library {
     return join(this.dir, name);
   }
 
+  /** Remove a cover file a newer one replaced. */
+  async removeCover(file: string): Promise<void> {
+    await this.disk.remove(this.coverPath(file));
+  }
+
   async renamePlaylist(id: string, name: string): Promise<void> {
     await this.serial(async () => {
       const clean = cleanName(name);

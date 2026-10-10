@@ -21,7 +21,7 @@
 import type { CrucibleClient } from '@crucible/client';
 
 import { AlbumMaker } from './albums';
-import { clientFor, deletePreset, listPresets, probe, savePreset, setClientName, songPage } from './crucible';
+import { clientFor, clientName, deletePreset, listPresets, probe, savePreset, setClientName, songPage } from './crucible';
 import { describe, MAX_LYRICS_BRIEF } from './describe';
 import { join, type Disk } from './disk';
 import { JobRunner, type AudioFetcher } from './jobs';
@@ -231,8 +231,13 @@ export class HubCore {
         await this.libraryChanged();
       },
       server: (name) => this.registry.get(name),
+      // Its own client name: Crucible counts every request from the session's name as one of its
+      // items, and removes the ones still waiting when it closes. Under the install's own name, a song
+      // made meanwhile would join the album's session and be dropped with it.
+      client: (server, album) => (album ? clientFor(server, `${clientName()}/album`) : clientFor(server)),
       page: (server) => songPage(server).catch(() => null),
       paint: (id, server, client, model, prompt) => this.paintCover(id, server, client, model, prompt),
+      removeCover: (file) => this.library.removeCover(file),
       render: (id, track, server, params) => {
         this.jobs.generate(server, { id: albumClient(id), kind: 'desktop' }, { params, count: 1 }, this.preferences.songFormat, { id, track });
       },
@@ -254,6 +259,15 @@ export class HubCore {
           const song = songs.get(songId);
           return song === undefined ? [] : [{ title: song.title, durationS: song.durationS }];
         });
+      },
+      renameSong: async (id, from, to) => {
+        const view = await this.libraryView();
+        const playlist = view.playlists.find((p) => p.id === id);
+        const songs = new Map(view.songs.map((song) => [song.id, song]));
+        const songId = playlist?.songs.find((sid) => songs.get(sid)?.title.toLowerCase() === from.toLowerCase());
+        if (songId === undefined) return;
+        await this.library.rename(songId, to);
+        await this.libraryChanged();
       },
       flyingTracks: (id) => this.jobs.list(albumClient(id))
         .filter((job) => !ENDED_PHASES.includes(job.phase) && job.album?.id === id)
@@ -411,7 +425,9 @@ export class HubCore {
       let ended = false;
       for await (const event of client.events(jobId)) {
         if (event.event === 'done') {
-          const file = `${id}.cover.png`;
+          // A name of its own each time it is painted: every client's cover URL carries the file name,
+          // so a cover painted again (the regenerate button) is never one a browser has cached.
+          const file = `${id}-${Date.now().toString(36)}.cover.png`;
           await this.options.fetchAudio(server, jobId, 'image.png', this.library.coverPath(file));
           return file;
         }
@@ -616,6 +632,20 @@ export class HubCore {
     });
     this.route('POST', '/api/albums/:id/stop', async (request) => {
       await this.albums.stop(request.params['id'] as string);
+      return this.libraryChanged();
+    });
+    // One piece written again by B-Sides' model: {piece: title | artist | cover | track, track?: its plan place}.
+    this.route('POST', '/api/albums/:id/regenerate', async (request) => {
+      const body = await request.body();
+      const piece = body['piece'];
+      if (piece !== 'title' && piece !== 'artist' && piece !== 'cover' && piece !== 'track') {
+        throw new Refusal('body_invalid', 'piece is one of title, artist, cover, track.');
+      }
+      const track = body['track'];
+      if (piece === 'track' && (typeof track !== 'number' || !Number.isInteger(track) || track < 0)) {
+        throw new Refusal('body_invalid', 'track is the plan place of the track to name again.');
+      }
+      await this.albums.regenerate(request.params['id'] as string, piece, piece === 'track' ? (track as number) : undefined);
       return this.libraryChanged();
     });
 

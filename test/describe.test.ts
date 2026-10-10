@@ -98,9 +98,10 @@ test('what the lyrics are about rides after the description, and never on an ins
     },
   } as never;
   await describeMusic(client, page, 'retro soul ballad', false, 'a banana going brown, bittersweet');
-  expect(sent[0]).toBe('retro soul ballad\nThe lyrics: a banana going brown, bittersweet');
+  // v2: the task tag is the user message's first line.
+  expect(sent[0]).toBe('[describe]\nretro soul ballad\nThe lyrics: a banana going brown, bittersweet');
   const answer = await describeMusic(client, page, 'retro soul ballad', true, 'a banana going brown');
-  expect(sent[1]).toBe('retro soul ballad');
+  expect(sent[1]).toBe('[describe]\nretro soul ballad');
   expect(answer.lyrics).toBeNull();
   expect(answer.tags.some((tag) => /voice/i.test(tag))).toBe(false);
 });

@@ -130,7 +130,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
                 <p class="hint">Every track's lyrics are written to this, and the titles fit it. Blank: the album's description leads.</p>
               </div>
             }
-            <p class="opt-note hint">The writing model {{ hub.activeServer()?.name }} picks for its card writes the name, the artist and every track{{ albumSung() ? '; ' + (studio.tagModel() ?? 'no tag model on this server, so the album's writer') + ' writes the lyrics, a song per two minutes so ' + albumLength() + ' minutes is always filled' : '' }}; its image model, when it has one, paints the cover (without one, the album gets the standard cover). All of that is done first, so the album comes out right; then the music is made, track by track, and fills in while you listen.</p>
+            <p class="opt-note hint">{{ studio.tagModel() ?? "This server's model" }} writes it all: the name, the artist and every track{{ albumSung() ? ', then the lyrics, a song per two minutes so ' + albumLength() + ' minutes is always filled' : '' }}; the server's image model, when it has one, paints the cover (without one, the album gets the standard cover). All of that is done first, so the album comes out right; then the music is made, track by track, and fills in while you listen.</p>
           </div>
           @if (spaceFull()) {
             <div class="room-card">

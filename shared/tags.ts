@@ -41,8 +41,12 @@ export function toggleTag(tags: readonly string[], tag: string): string[] {
   return tags.filter((_, index) => index !== at);
 }
 
-/** A tag that asks for a voice: a singer, a choir, rapping. An instrumental never carries one. */
-export const VOICE_TAG = /\b(vocals?|voices?|vocalists?|singing|sung|singers?|choir|choral|rap|rapping|a cappella|crooner)\b/i;
+/**
+ * A tag that asks for a voice: a singer, a choir, rapping, a duet, sung harmonies ("three-part
+ * harmonies", the song page's own Vocal tag). An instrumental never carries one. Harmonies count
+ * only as "<n>-part harmonies": "guitar harmonies" is an instrument's.
+ */
+export const VOICE_TAG = /\b(vocals?|voices?|vocalists?|singing|sung|singers?|choir|choral|rap|rapping|a cappella|crooner|duets?|[a-z]+-part harmon(?:y|ies))\b/i;
 
 /**
  * The tags without any that asks for a voice (Owen, 2026-10-08: instrumental

@@ -52,10 +52,13 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
                      (keydown.escape)="renaming.set(null)"
                      (blur)="renamePlaylist(playlist, $any($event.target).value)" />
             } @else {
-              <h1 class="head-title">{{ playlist.name }}</h1>
+              <h1 class="head-title">{{ playlist.name }}@if (canRewrite(playlist)) {<button type="button" class="icon-btn reroll" aria-label="A new album title" title="A new title, written by the album's model" [disabled]="rewriting() !== null" (click)="rewrite(playlist, 'title')"><app-icon name="reroll" [size]="18" /></button>}</h1>
             }
             @if (playlist.album; as album) {
-              @if (album.artist) { <span class="head-artist">{{ album.artist }}</span> }
+              @if (album.artist) {
+                <span class="head-artist">{{ album.artist }}@if (canRewrite(playlist)) {<button type="button" class="icon-btn reroll" aria-label="A new artist" title="A new artist, written by the album's model" [disabled]="rewriting() !== null" (click)="rewrite(playlist, 'artist')"><app-icon name="reroll" [size]="14" /></button>}</span>
+              }
+              @if (rewriting(); as what) { <span class="hint">Writing {{ what }} again…</span> }
               @if (album.blurb) { <span class="head-blurb">{{ album.blurb }}</span> }
               @if (album.plan?.core || album.ask.tags.length) {
                 <span class="head-sound"><span class="kicker">Sound</span> {{ album.plan?.core || album.ask.tags.join(', ') }}</span>
@@ -92,6 +95,9 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
               }
               @if (!remote() && playlist.album && busy(playlist.album.stage) && !interrupted(playlist.album)) {
                 <button type="button" class="ghost stop" (click)="stopAlbum(playlist)"><app-icon name="close" [size]="16" />Stop making it</button>
+              }
+              @if (canRewrite(playlist)) {
+                <button type="button" class="ghost" [disabled]="rewriting() !== null" title="The album's model describes the cover again; the image model, when the server has one, paints it" (click)="rewrite(playlist, 'cover')"><app-icon name="reroll" [size]="16" />New cover</button>
               }
               @if (!remote()) {
                 <button type="button" class="icon-btn outlined" aria-label="Rename" title="Rename" (click)="renaming.set('playlist')"><app-icon name="edit" [size]="18" /></button>
@@ -144,6 +150,9 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
                 <button type="button" class="icon-btn" aria-label="Move up" title="Move up" [disabled]="at === 0" (click)="move(playlist, at, -1)"><app-icon name="down" [size]="18" class="flip-v" /></button>
                 <button type="button" class="icon-btn" aria-label="Move down" title="Move down" [disabled]="at === songs().length - 1" (click)="move(playlist, at, 1)"><app-icon name="down" [size]="18" /></button>
                 <button type="button" class="icon-btn" aria-label="Rename" title="Rename" (click)="renaming.set(song.id)"><app-icon name="edit" [size]="16" /></button>
+                @if (canRewrite(playlist) && trackPlace(playlist, song.title) !== null) {
+                  <button type="button" class="icon-btn" aria-label="A new name" title="A new name, written by the album's model" [disabled]="rewriting() !== null" (click)="rewrite(playlist, 'track', trackPlace(playlist, song.title)!)"><app-icon name="reroll" [size]="16" /></button>
+                }
                 @if (!playlist.album && moveTargets(playlist).length > 0) {
                   <button type="button" class="icon-btn" aria-label="Move to another playlist" title="Move to another playlist" (click)="moving.set(moving() === song.id ? null : song.id)"><app-icon name="library" [size]="17" /></button>
                 }
@@ -189,6 +198,11 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
                 <div class="sub">{{ row.tags }}</div>
               </div>
               <span class="mono time">{{ row.state }}</span>
+              @if (canRewrite(playlist)) {
+                <div class="actions shown">
+                  <button type="button" class="icon-btn" aria-label="A new name" title="A new name, written by the album's model" [disabled]="rewriting() !== null" (click)="rewrite(playlist, 'track', row.index)"><app-icon name="reroll" [size]="16" /></button>
+                </div>
+              }
             </div>
           }
           @if (playlist.album?.stage === 'planning') {
@@ -282,6 +296,8 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
     .head-title { font-family: var(--font-display); font-weight: 900; font-size: 44px; line-height: .92; margin: 0; overflow-wrap: anywhere; }
     .head-sub { font-size: 13px; color: var(--text-tertiary); }
     .head-artist { font-size: 16px; color: var(--text-primary); }
+    .reroll { display: inline-flex; vertical-align: middle; margin-left: 6px; opacity: .55; }
+    .reroll:hover:not(:disabled) { opacity: 1; }
     .head-sound { font-size: 13px; color: var(--text-secondary); }
     .ghost.stop { border-color: var(--audio); color: var(--audio); }
     .head-blurb { font-size: 14px; color: var(--text-secondary); font-style: italic; }
@@ -359,6 +375,8 @@ export class PlaylistsPageComponent {
   protected readonly peerId = peerId;
   protected readonly newName = signal('');
   protected readonly renaming = signal<string | null>(null);
+  /** Which piece of the album its model is writing again (a sentence's noun), or null. */
+  protected readonly rewriting = signal<string | null>(null);
   protected readonly refusal = signal<RefusalView | null>(null);
 
   protected readonly selected = computed<Playlist | null>(() => {
@@ -521,6 +539,28 @@ export class PlaylistsPageComponent {
     this.refusal.set(null);
     this.newName.set('');
     void this.router.navigate(['/library', made.id]);
+  }
+
+  /** An album on this computer, planned, and not being written: its pieces can be written again. */
+  protected canRewrite(playlist: Playlist): boolean {
+    const album = playlist.album;
+    if (this.remote() || album == null || album.plan === null) return false;
+    if (album.plan.tracks.length < (album.plan.trackCount ?? 0)) return false;
+    return album.stage !== 'planning' || this.interrupted(album);
+  }
+
+  /** A song's place in its album's plan, by its name; null when the plan has no track by that name. */
+  protected trackPlace(playlist: Playlist, title: string): number | null {
+    const at = playlist.album?.plan?.tracks.findIndex((track) => track.title.toLowerCase() === title.toLowerCase()) ?? -1;
+    return at < 0 ? null : at;
+  }
+
+  /** Have the album's model write one piece again: its title, its artist, its cover, or a track's name. */
+  protected async rewrite(playlist: Playlist, piece: 'title' | 'artist' | 'cover' | 'track', track?: number): Promise<void> {
+    this.rewriting.set(piece === 'title' ? 'the title' : piece === 'artist' ? 'the artist' : piece === 'cover' ? 'the cover' : "a track's name");
+    const outcome = await this.hub.call<unknown>('POST', `/api/albums/${encodeURIComponent(playlist.id)}/regenerate`, { piece, ...(track === undefined ? {} : { track }) });
+    this.rewriting.set(null);
+    this.refusal.set(outcome.ok ? null : outcome.refusal);
   }
 
   protected async renamePlaylist(playlist: Playlist, name: string): Promise<void> {

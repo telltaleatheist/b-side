@@ -4,7 +4,7 @@ export type IconName =
   | 'listen' | 'make' | 'library' | 'settings'
   | 'play' | 'pause' | 'next' | 'prev' | 'shuffle' | 'queue'
   | 'plus' | 'more' | 'down' | 'close' | 'trash' | 'save' | 'bookmark'
-  | 'cloud' | 'download' | 'phone' | 'infinite' | 'chevron' | 'back' | 'edit' | 'repeat' | 'repeat-one' | 'grip' | 'queue-add' | 'play-next';
+  | 'cloud' | 'download' | 'phone' | 'infinite' | 'chevron' | 'back' | 'edit' | 'repeat' | 'repeat-one' | 'grip' | 'queue-add' | 'play-next' | 'reroll';
 
 /** Night Deck's icons: stroke drawings on a 24 grid, in the text colour. Decorative unless the button names itself. */
 @Component({
@@ -34,6 +34,7 @@ export type IconName =
         @case ('grip') { <circle cx="9" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.3" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.3" fill="currentColor" stroke="none"/> }
         @case ('queue-add') { <path d="M4 6h12M4 12h8M4 18h8M17 13v8M13 17h8"/> }
         @case ('play-next') { <path d="M4 6h9M4 12h9M4 18h6"/><path d="M15 9v9l6-4.5z" fill="currentColor"/> }
+        @case ('reroll') { <path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/> }
         @case ('edit') { <path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/> }
         @case ('close') { <path d="M6 6l12 12M18 6L6 18"/> }
         @case ('trash') { <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/> }

@@ -1,27 +1,12 @@
 import { expect, test } from 'bun:test';
 import { CrucibleRefused, type CrucibleClient } from '@crucible/client';
 
-import { chooseWriter } from '../shared/core/albums';
 import { installModel } from '../shared/core/crucible';
 
 /** A stand-in client: only what each function under test calls. */
 function fake(parts: Record<string, unknown>): CrucibleClient {
   return parts as unknown as CrucibleClient;
 }
-
-const record = (row: Record<string, unknown> | null) => ({ classes: row === null ? [] : [{ capability: 'generate', route: 'local', ...row }] });
-
-test("the writer is Crucible's own pick for generate", async () => {
-  let asked: unknown;
-  const client = fake({ capability: async (_o: unknown, sizing: unknown) => { asked = sizing; return record({ enabled: true, selected: 'qwen3.5-0.8b', reason: 'fits' }); } });
-  expect(await chooseWriter(client)).toBe('qwen3.5-0.8b');
-  expect(asked).toEqual({ class: 'generate' });
-});
-
-test('a server with no writer says why, in its words', async () => {
-  const client = fake({ capability: async () => record({ enabled: false, selected: '', reason: 'no model fits a 2 GiB card' }) });
-  await expect(chooseWriter(client)).rejects.toThrow('no model fits a 2 GiB card');
-});
 
 test('an installed writer needs nothing', async () => {
   let loads = 0;

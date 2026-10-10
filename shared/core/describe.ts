@@ -206,7 +206,8 @@ export async function describe(client: CrucibleClient, page: SongPage, descripti
       messages: [
         { role: 'system', content: tagPrompt(page, wantsInstrumental) },
         // What the words should be about (Owen, 2026-10-09), said after the music, as a person would.
-        { role: 'user', content: brief === '' ? text : `${text}\nThe lyrics: ${brief}` },
+        // v2: the task tag is the first line (album-text.ts, the one-model contract).
+        { role: 'user', content: `[describe]\n${brief === '' ? text : `${text}\nThe lyrics: ${brief}`}` },
       ],
     });
     if (answer.finishReason === 'length') {

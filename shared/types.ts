@@ -353,6 +353,12 @@ export interface AlbumPlan {
   /** The album's sound: the person's own tags when they gave any, else the writer's. Every track keeps it. */
   readonly core?: string;
   readonly tracks: readonly AlbumTrack[];
+  /**
+   * How many tracks the plan is being written to (v2 writes them fifteen at a time, so `tracks`
+   * may be short of it while it plans). Absent on a plan written in one call before v2: then
+   * `tracks` is the whole list.
+   */
+  readonly trackCount?: number;
 }
 
 export type AlbumStage = 'planning' | 'cover' | 'making' | 'done' | 'stopped' | 'failed';

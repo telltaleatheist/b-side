@@ -57,3 +57,7 @@ test('instrumental means no voice: every tag that asks for a singer goes, the re
   expect(withoutVoice(['English', 'soul', 'warm male vocal', 'soft female voice', 'gospel choir', 'Hammond organ', 'instrumental', 'no vocals', '66 BPM']))
     .toEqual(['English', 'soul', 'Hammond organ', 'instrumental', 'no vocals', '66 BPM']);
 });
+
+test("a duet and sung harmonies are voices; an instrument's harmonies are not", () => {
+  expect(withoutVoice(['folk', 'duet', 'three-part harmonies', 'twin guitar harmonies', 'banjo'])).toEqual(['folk', 'twin guitar harmonies', 'banjo']);
+});

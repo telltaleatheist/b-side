@@ -57,14 +57,17 @@ function fakeAlbum(meta: Partial<AlbumMeta>, songs: { title: string; durationS: 
     meta: async () => stored,
     update: async (_id, next) => { stored = next; },
     server: () => ({ name: 'pc', url: 'http://pc:7100', token: 't' }) as never,
+    client: () => { throw new Error('no server in this test'); },
     page: async () => null,
     paint: async () => 'c.png',
+    removeCover: async () => undefined,
     render: (_id, track) => { rendered.push(track); },
     inFlight: () => flying.length + rendered.length,
     retitle: async () => undefined,
     cancelInFlight: async () => undefined,
     made: async () => songs,
     flyingTracks: () => flying,
+    renameSong: async () => undefined,
   };
   return { maker: new AlbumMaker(hooks), rendered, meta: () => stored };
 }
