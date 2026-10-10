@@ -37,7 +37,7 @@ test('an older server without the 4-bit model still gets the full one where it f
 test('a card that holds neither says why, model by model', () => {
   const chosen = chooseTagModel([row(FULL, 12.5, true), row(FOUR, 5, false)], 4 * GIB);
   expect(chosen.model).toBeNull();
-  expect(chosen.reason).toContain(`${FULL} needs 12.5 GiB and the card has 4.0 GiB`);
+  expect(chosen.reason).toContain(`${FULL} needs 12.5 GiB and the card leaves 4.0 GiB for models`);
   expect(chosen.reason).toContain(`${FOUR} needs 5.0 GiB`);
 });
 

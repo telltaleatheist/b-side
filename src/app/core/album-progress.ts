@@ -34,6 +34,9 @@ export function albumProgress(album: AlbumMeta): AlbumProgress {
           waiting: false,
         };
       }
+      if (step?.kind === 'install') {
+        return { label: `Setting up the album's writer on the server: ${step.detail ?? 'installing'}…`, share: 0, waiting: true };
+      }
       if (step?.kind === 'cover') {
         return { label: 'Painting the album art…', share: PLAN_SHARE + lyricsShare, waiting: false };
       }

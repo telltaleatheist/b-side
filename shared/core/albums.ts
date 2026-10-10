@@ -20,7 +20,7 @@
  * is written to the playlist, so an album being made when the hub stops carries
  * on when it starts again.
  */
-import type { CrucibleClient, CrucibleSession, ModelInfo } from '@crucible/client';
+import { CrucibleRefused, type CapabilityRecord, type CrucibleClient, type CrucibleSession, type InstallingDetails } from '@crucible/client';
 
 import { chatSeed, clientFor, clientName } from './crucible';
 import { Refusal, refusalOf } from './refusal';
@@ -42,22 +42,67 @@ const LYRICS_PER_CALL = 4;
 const AHEAD = 2;
 /** This many failed tracks in a row stops the album. */
 const FAILURES_TO_STOP = 3;
-/** The chat model to write with: the biggest text model the server has and can load. */
+/** How long the server may take to install the album's writer (a download of up to tens of GB). */
+const WRITER_INSTALL_MS = 90 * 60_000;
+const WRITER_INSTALL_POLL_MS = 3000;
+
+/**
+ * The chat model to write an album with: Crucible's own pick for the `generate` class,
+ * the largest model up to its goal that fits this card, down to 0.8B (Crucible 1.0.117,
+ * VERB-SIZING). B-Sides does not size it: that is the server's to know. A server that
+ * offers none says why, in its words.
+ */
 export async function chooseWriter(client: CrucibleClient): Promise<string> {
-  let models: ModelInfo[];
+  let record: CapabilityRecord;
   try {
-    models = await client.models();
+    record = await client.capability({ timeoutMs: 15_000 }, { class: 'generate' });
   } catch (error) {
-    throw new Refusal('writer_unknown', `Could not ask the server which chat models it has: ${refusalOf(error).message}`);
+    throw new Refusal('writer_unknown', `Could not ask the server which model writes: ${refusalOf(error).message}`);
   }
-  const usable = models
-    .filter((m) => m.installed && m.loadable && m.family.startsWith('qwen') && !/ocr|embed|rerank/i.test(m.id))
-    .sort((a, b) => b.paramsB - a.paramsB);
-  const best = usable[0];
-  if (best === undefined) {
-    throw new Refusal('no_writer', 'This server has no chat model installed to write an album with (it needs a qwen model).');
+  const row = record.classes.find((entry) => entry.capability === 'generate');
+  if (row === undefined || !row.enabled || row.selected === '') {
+    throw new Refusal('no_writer', `This server has no model to write an album with: ${row?.reason ?? 'it offers no generate class'}`);
   }
-  return best.id;
+  return row.selected;
+}
+
+/**
+ * Have the writer installed before the album asks it anything: a chat loads a model
+ * that is installed (it waits in the server's line while it loads) but never installs
+ * one. A load job on a model the server lacks is refused `installing` and starts the
+ * install (install-on-submit); that task is followed to its end, each step shown, then
+ * the chat that follows loads it. Another task holding the install lane (`task_busy`)
+ * is waited out and the load asked again. All within WRITER_INSTALL_MS.
+ */
+export async function installWriter(client: CrucibleClient, model: string, step: (detail: string) => Promise<void>): Promise<void> {
+  const row = (await client.models()).find((entry) => entry.id === model);
+  // A model the server routes elsewhere (an upstream account) or already has needs nothing here.
+  if (row === undefined || row.installed) return;
+  const until = Date.now() + WRITER_INSTALL_MS;
+  for (;;) {
+    let details: InstallingDetails;
+    try {
+      await client.loadModel(model);
+      return;
+    } catch (error) {
+      if (!(error instanceof CrucibleRefused) || error.code !== 'installing') throw error;
+      details = error.details as InstallingDetails;
+    }
+    for (;;) {
+      if (Date.now() > until) {
+        throw new Refusal('writer_install_slow', `The server is still installing ${model} after ${WRITER_INSTALL_MS / 60_000} minutes; make the album again once it is done.`);
+      }
+      const task = await client.task(details.task_id);
+      if (task.state === 'done') break;
+      if (task.state !== 'running') {
+        throw new Refusal('writer_install_failed', `The server could not install ${model}: ${task.error?.message ?? task.state}`);
+      }
+      await step(task.message ?? details.message);
+      await new Promise((rest) => setTimeout(rest, WRITER_INSTALL_POLL_MS));
+    }
+    // Its own install done: the load goes through. Another task's done: ask again, which may start ours.
+    if (details.reason === 'installing') return;
+  }
 }
 
 /** The image model to paint the cover with, or null when the server has none ready. */
@@ -452,6 +497,14 @@ export class AlbumMaker {
         await this.hooks.update(id, meta);
       }
       const writer = meta.writer ?? (await chooseWriter(client));
+      if (meta.plan == null) {
+        await installWriter(client, writer, async (detail) => {
+          meta = { ...(await this.hooks.meta(id) ?? meta), step: { kind: 'install', done: 0, of: 0, detail } };
+          await this.hooks.update(id, meta);
+        });
+        meta = { ...(await this.hooks.meta(id) ?? meta), step: { kind: 'plan', done: 0, of: 1 } };
+        await this.hooks.update(id, meta);
+      }
       let plan = meta.plan ?? (await writePlan(client, writer, meta.ask, await this.hooks.page(server)));
       meta = { ...(await this.hooks.meta(id) ?? meta), writer, plan, artist: plan.artist, blurb: plan.blurb };
       await this.hooks.update(id, meta, plan.title);

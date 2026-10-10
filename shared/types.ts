@@ -395,9 +395,12 @@ export interface AlbumMeta {
 
 /** One step of an album before its tracks: a line to show and, when it counts, how far through. */
 export interface AlbumStep {
-  readonly kind: 'openers' | 'plan' | 'lyrics' | 'cover';
+  /** `install`: the server is installing the album's writer first (no count: its words say how far). */
+  readonly kind: 'openers' | 'install' | 'plan' | 'lyrics' | 'cover';
   readonly done: number;
   readonly of: number;
+  /** `install`: the server's own words for what it is doing. */
+  readonly detail?: string;
 }
 
 /** Make → Album: what the person picks. */

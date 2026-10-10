@@ -74,10 +74,14 @@ function numberField(field: PlaygroundField | undefined): NumberField | null {
 /** `GET /v1/playground`, read down to the `yue2-3b` audio page. */
 /**
  * Which tag model (TAG_MODELS, best first) this server gets, from what it publishes: its
- * models' memory estimates against its card's total, the same test the server itself
- * refuses a load by. Among the ones that fit, one already installed wins (no download
- * on the first describe); else the best that fits, which installs on its first use.
- * A model the server's build does not have, or not for its backend, is not a choice.
+ * models' memory estimates against what its card leaves for models (`/v1/capability`'s
+ * total less the desktop's allowance), the gate a load actually meets (Crucible 1.0.117).
+ * Among the ones that fit, one already installed wins (no download on the first
+ * describe); else the best that fits, which installs on its first use. A model the
+ * server's build does not have, or not for its backend, is not a choice.
+ *
+ * Until Crucible picks the size itself (its `lyrics` verb, VERB-SIZING phase 2), this is
+ * the one place B-Sides decides it.
  */
 export function chooseTagModel(models: readonly ModelInfo[], cardBytes: number): { model: string | null; reason: string | null } {
   const gib = (bytes: number): string => `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
@@ -88,7 +92,7 @@ export function chooseTagModel(models: readonly ModelInfo[], cardBytes: number):
     if (row === undefined) why.push(`${id} is not in this server's build`);
     else if (!row.backendSupported) why.push(`${id} has no build for this server's backend`);
     else if (row.memoryBytesEstimate !== null && row.memoryBytesEstimate > cardBytes) {
-      why.push(`${id} needs ${gib(row.memoryBytesEstimate)} and the card has ${gib(cardBytes)}`);
+      why.push(`${id} needs ${gib(row.memoryBytesEstimate)} and the card leaves ${gib(cardBytes)} for models`);
     } else fitting.push(row);
   }
   const chosen = fitting.find((row) => row.installed) ?? fitting[0];
@@ -98,8 +102,8 @@ export function chooseTagModel(models: readonly ModelInfo[], cardBytes: number):
 
 export async function songPage(server: StoredServer): Promise<SongPage> {
   const client = clientFor(server);
-  const [pages, models, info] = await Promise.all([client.playground(), client.models(), client.info({ timeoutMs: INFO_MS })]);
-  const tagModel = chooseTagModel(models, info.host.gpu.vramBytes);
+  const [pages, models, card] = await Promise.all([client.playground(), client.models(), client.capability({ timeoutMs: INFO_MS })]);
+  const tagModel = chooseTagModel(models, card.totalBytes - card.desktopAllowanceBytes);
   const page = pages.find((p) => p.id === SONG_MODEL && p.jobType === 'audio');
   if (page === undefined) {
     throw new Refusal('unknown_model', `${server.name} has no ${SONG_MODEL} song model (its build does not declare one).`);
