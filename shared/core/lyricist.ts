@@ -92,6 +92,9 @@ export function claudeLyricsUser(song: SongToWrite): string {
  * share one template (Victoria, 2026-10-10). A track takes its place in the album; a single song
  * takes one at random. No 2-line sections: YuE2's score stage dropped 2-line intros, outros and
  * pre-choruses on Victoria's laptop (Crucible 1.0.130), while 4+-line sections were kept.
+ *
+ * Frozen: the B-Sides model's v3 is trained on these six strings verbatim, sent as "Shape: ..."
+ * at the end of its [lyrics] message (Training pc 1, 2026-10-10). Changing one means retraining.
  */
 export const SONG_SHAPES: readonly string[] = [
   'verse, pre-chorus, chorus, verse, pre-chorus, chorus, bridge, chorus',
