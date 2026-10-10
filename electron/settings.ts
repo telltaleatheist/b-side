@@ -2,7 +2,9 @@
  * settings — B-Sides' own preferences, `<userData>/settings.json`.
  *
  *   libraryDir  where saved songs and playlists live; absent means `<Music>/B-Sides`
- *   sharing     whether the hub listens beyond this computer (default: no)
+ *   sharing     whether the hub listens beyond this computer (default: yes, Owen
+ *               2026-10-10: libraries on the home network find each other without a
+ *               setting to remember; turned off, it stays off)
  *   requireKey  whether a device on the network needs the key (default: no, as Ollama:
  *               sharing on, the address is enough; Owen, 2026-10-06)
  *   hubPort     the hub's port (default DEFAULT_HUB_PORT); edit the file to change it
@@ -80,7 +82,7 @@ export class AppSettings {
     return {
       libraryDir: typeof stored === 'string' && stored !== '' ? stored : this.defaultLibraryDir,
       defaultLibraryDir: this.defaultLibraryDir,
-      sharing: document['sharing'] === true,
+      sharing: document['sharing'] !== false,
       requireKey: document['requireKey'] === true,
       port: typeof port === 'number' ? port : DEFAULT_HUB_PORT,
       key,

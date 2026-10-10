@@ -24,7 +24,8 @@ beforeAll(async () => {
   fs.writeFileSync(path.join(appRoot, 'index.html'), '<!doctype html><title>B-Side</title>');
   fs.writeFileSync(path.join(appRoot, 'main-ABCDEFGH.js'), 'console.log(1)');
   const port = 20000 + Math.floor(Math.random() * 20000);
-  fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ hubPort: port }));
+  // Turned off by hand: the default is shared, and these tests stay on this computer.
+  fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ hubPort: port, sharing: false }));
   // Forward slashes, as a caller on Windows may well pass it: the root check must still hold.
   hub = new Hub({ userData, defaultLibraryDir: path.join(root, 'library'), appRoot: appRoot.replace(/\\/g, '/'), version: '0.0.0-test' });
   await hub.start();
@@ -102,7 +103,7 @@ test('no key by default (as Ollama); once required, every /api request needs it 
   }
 });
 
-test('settings: this computer is local, not shared, and has no links until sharing is on', async () => {
+test('settings: sharing turned off stays off: this computer only, no links', async () => {
   const settings = (await (await api('/api/settings')).json()) as Record<string, unknown>;
   expect(settings).toMatchObject({ sharing: false, requireKey: false, local: true, links: [] });
 });
