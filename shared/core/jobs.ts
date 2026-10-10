@@ -74,6 +74,8 @@ interface Job {
   gone: boolean;
   /** Times sent again after the server lost it through no fault of the song's (at most RESENDS). */
   resends?: number;
+  /** Sent again, with a new seed, after its worker crashed on it (at most once). */
+  retried?: boolean;
 }
 
 /**
@@ -99,6 +101,14 @@ const RESEND_REASONS: readonly string[] = ['session_closed', 'server_restart'];
  * the album ended two short); the budget stops a song that brings the server down every time.
  */
 const RESENDS = 2;
+
+/**
+ * A song whose worker crashed on it (`worker_failed`: Victoria's laptop, 2026-10-10, a CUDA
+ * out-of-memory while synthesizing after a composition that ran to its cap) is sent once more
+ * with a new seed, since the same seed would likely run away the same way. Only once: a song
+ * that crashes its worker twice is a failure, said by name, for "Make the missing tracks".
+ */
+const RETRY_CODES: readonly string[] = ['worker_failed'];
 
 /**
  * Fetch a finished job's artifact into `file` and answer its size. A server that
@@ -498,6 +508,7 @@ export class JobRunner {
               await this.land(job, event.data);
               return;
             case 'failed':
+              if (this.retry(job, event.data.error.code)) return;
               this.finish(job, 'failed', { code: event.data.error.code, message: event.data.error.message });
               return;
             case 'cancelled':
@@ -545,6 +556,21 @@ export class JobRunner {
     return true;
   }
 
+  /** Send a song its worker crashed on again, once, with a new seed (RETRY_CODES). */
+  private retry(job: Job, code: string): boolean {
+    if (!RETRY_CODES.includes(code) || job.retried === true) return false;
+    job.retried = true;
+    const { seed: _crashed, ...params } = job.view.params;
+    job.view.params = params;
+    job.view.seed = null;
+    job.view.jobId = null;
+    job.view.phase = 'submitting';
+    job.view.message = `${job.view.server} crashed making it; trying once more with a new seed`;
+    this.publish(job);
+    void this.submit(job);
+    return true;
+  }
+
   /**
    * The stream dropped: ask the job itself before following it again. A server
    * that restarted mid-job (a deploy) marks it failed or interrupted but may
@@ -571,6 +597,7 @@ export class JobRunner {
         });
         return true;
       case 'failed':
+        if (status.error !== null && this.retry(job, status.error.code)) return true;
         this.finish(job, 'failed', status.error ?? {
           code: 'job_failed',
           message: `${job.view.server} stopped while making this song (it failed). Generate again.`,
