@@ -105,10 +105,16 @@ export async function installWriter(client: CrucibleClient, model: string, step:
   }
 }
 
-/** The image model to paint the cover with, or null when the server has none ready. */
+/**
+ * The image model to paint the cover with, or null when the server has none installed
+ * and able to run: then the album keeps its standard (drawn) cover, as a normal case
+ * (Owen, 2026-10-10: "configure b-sides to function even if it doesnt have an album
+ * cover generator"). A model the server could install (`download`) is not used: a cover
+ * never starts a multi-GB download on someone's server.
+ */
 export async function chooseCoverModel(client: CrucibleClient): Promise<string | null> {
   const pages = await client.playground();
-  return pages.find((page) => page.jobType === 'image' && page.available)?.id ?? null;
+  return pages.find((page) => page.jobType === 'image' && page.standing === 'ready')?.id ?? null;
 }
 
 function trackCount(minutes: number): number {

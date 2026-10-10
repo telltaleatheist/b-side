@@ -56,3 +56,13 @@ test('a failed install is a refusal with the server\'s reason', async () => {
   });
   await expect(installWriter(client, 'w', async () => undefined)).rejects.toThrow('disk full');
 });
+
+test('a cover is painted only by an image model the server has ready', async () => {
+  const { chooseCoverModel } = await import('../shared/core/albums');
+  const pages = (standing: string) => fake({ playground: async () => [{ jobType: 'audio', standing: 'ready', id: 'yue2-3b' }, { jobType: 'image', standing, id: 'img' }] });
+  expect(await chooseCoverModel(pages('ready'))).toBe('img');
+  // Installable but not installed: no multi-GB download for a cover; the standard cover stands.
+  expect(await chooseCoverModel(pages('download'))).toBeNull();
+  expect(await chooseCoverModel(pages('unavailable'))).toBeNull();
+  expect(await chooseCoverModel(fake({ playground: async () => [{ jobType: 'audio', standing: 'ready', id: 'yue2-3b' }] }))).toBeNull();
+});

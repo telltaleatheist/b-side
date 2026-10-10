@@ -58,10 +58,12 @@ export function albumProgress(album: AlbumMeta): AlbumProgress {
   }
 }
 
-/** Why an album has no painted cover, when that is worth saying. */
+/**
+ * Why an album has no painted cover, when that is worth saying. A server with no image
+ * model is not worth saying: its albums have the standard cover, as they should.
+ */
 export function coverNote(album: AlbumMeta): string | null {
   if (album.cover !== null) return null;
-  if (album.coverState === 'no_model') return 'No cover: this server has no image model installed.';
   if (album.coverState === 'failed') return 'The cover did not paint; the drawn one stands in.';
   return null;
 }
