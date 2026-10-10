@@ -95,6 +95,21 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
         </div>
       }
 
+      @if (!hub.onPhone()) {
+        <div class="card">
+          <h2 class="card-title">Lyrics</h2>
+          <p class="detail">Who writes the words for sung songs and albums. The tags, names and track lists are always B-Sides' own model.</p>
+          <label class="toggle">
+            <input type="radio" name="lyrics" [checked]="preferences()?.lyricsWriter !== 'claude'" (change)="setLyricsWriter('bside')" />
+            <span><strong>B-Sides' model</strong>, on the Crucible server.</span>
+          </label>
+          <label class="toggle">
+            <input type="radio" name="lyrics" [checked]="preferences()?.lyricsWriter === 'claude'" (change)="setLyricsWriter('claude')" />
+            <span><strong>Claude Sonnet 5.5</strong>, through Claude Code on this computer (its sign-in pays). A stand-in while B-Sides' model is retrained.</span>
+          </label>
+        </div>
+      }
+
       <div class="card">
         <h2 class="card-title">Song format</h2>
         <p class="detail">How new songs are made and kept{{ hub.onPhone() ? ' on this phone' : '' }}. Songs already made keep their format.</p>
@@ -327,6 +342,12 @@ export class SettingsPageComponent {
 
   protected async setSpace(albumSpaceGb: number): Promise<void> {
     const outcome = await this.hub.call<HubPreferences>('PUT', '/api/preferences', { albumSpaceGb });
+    this.formatRefusal.set(outcome.ok ? null : outcome.refusal);
+    if (outcome.ok) this.preferences.set(outcome.value);
+  }
+
+  protected async setLyricsWriter(lyricsWriter: 'bside' | 'claude'): Promise<void> {
+    const outcome = await this.hub.call<HubPreferences>('PUT', '/api/preferences', { lyricsWriter });
     this.formatRefusal.set(outcome.ok ? null : outcome.refusal);
     if (outcome.ok) this.preferences.set(outcome.value);
   }

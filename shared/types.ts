@@ -167,6 +167,8 @@ export interface HubPreferences {
   readonly singlesPlaylist?: string | null;
   /** The phone's own hub: how much its albums may take before a new one waits (GB). */
   readonly albumSpaceGb: number;
+  /** Who writes sung lyrics: B-Sides' own model, or Claude through Claude Code (desktop only). */
+  readonly lyricsWriter: 'bside' | 'claude';
 }
 
 /**
@@ -264,6 +266,8 @@ export interface DescribeResult {
   /** Clashes the tags hold, by the server's conflict map, each with why: shown, never dropped. */
   readonly clashes: readonly string[];
   readonly model: string;
+  /** Who wrote the lyrics when not `model` (Claude, the stand-in lyricist). */
+  readonly lyricsModel?: string;
   readonly seconds: number;
 }
 
@@ -391,6 +395,8 @@ export interface AlbumMeta {
   /** Which server makes it, and which chat model wrote it. */
   readonly server: string;
   readonly writer: string | null;
+  /** Who wrote the lyrics when not the writer (Claude, the stand-in lyricist). */
+  readonly lyricsBy?: string | null;
   /** Once saved to a B-Sides computer (the phone's cloud): which, and when. Absent while it lives only here. */
   readonly cloud?: { readonly host: string; readonly at: string } | null;
   /** What the maker is doing before the tracks (planning, writing lyrics), for the progress line; null once making. */

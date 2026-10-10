@@ -23,9 +23,10 @@
 import type { CrucibleClient, CrucibleSession } from '@crucible/client';
 
 import {
-  batches, newAlbumTitle, newArtist, newCoverPrompt, newTrackTitles, writeAlbum, writeSongLyrics, writeTracks, type AlbumConcept,
+  aboutOf, batches, newAlbumTitle, newArtist, newCoverPrompt, newTrackTitles, writeAlbum, writeSongLyrics, writeTracks, type AlbumConcept,
 } from './album-text';
 import { installModel, startInstall } from './crucible';
+import type { Lyricist } from './lyricist';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { layLyrics } from './describe';
@@ -139,6 +140,8 @@ export interface AlbumHooks {
   made(id: string): Promise<readonly { readonly title: string; readonly durationS: number | null }[]>;
   /** Which of the album's tracks (plan places) are on the server now. */
   flyingTracks(id: string): readonly number[];
+  /** Who writes sung lyrics instead of the album's model (the stand-in Claude lyricist), or null. */
+  lyricist(): Lyricist | null;
   /** A made track was named again: rename its song (the first of the album's songs with the old name). */
   renameSong(id: string, from: string, to: string): Promise<void>;
 }
@@ -421,15 +424,26 @@ export class AlbumMaker {
       if (meta.ask.sung) {
         const early = meta.openers ?? 0;
         const sungAt = plan.tracks.map((_, at) => at).filter((at) => at >= early);
-        // [lyrics], one call per track, each kept as it comes (a restart carries on).
+        // [lyrics], one call per track, each kept as it comes (a restart carries on). The stand-in
+        // lyricist, when chosen, writes them instead, told the whole track list for a through-line.
+        const lyricist = this.hooks.lyricist();
         for (const [done, at] of sungAt.entries()) {
           const track = plan.tracks[at] as AlbumTrack;
           if (track.lyrics !== null) continue;
           if (await this.halted(id)) return meta;
           await show({ kind: 'lyrics', done, of: sungAt.length });
-          const lyrics = layLyrics(await writeSongLyrics(client, model, meta.ask, concept, track.title, track.tags));
+          const written = lyricist === null
+            ? await writeSongLyrics(client, model, meta.ask, concept, track.title, track.tags)
+            : await lyricist.write({
+              title: track.title,
+              tags: track.tags,
+              about: aboutOf(meta.ask),
+              brief: meta.ask.lyrics ?? '',
+              album: { title: concept.title, artist: concept.artist, blurb: concept.blurb, tracks: plan.tracks.map((t) => t.title), at },
+            });
+          const lyrics = layLyrics(written);
           plan = { ...plan, tracks: plan.tracks.map((t, i) => (i === at ? { ...t, lyrics } : t)) };
-          meta = { ...(await this.hooks.meta(id) ?? meta), plan };
+          meta = { ...(await this.hooks.meta(id) ?? meta), plan, lyricsBy: lyricist?.name ?? null };
           await this.hooks.update(id, meta);
         }
         if (await this.halted(id)) return meta;

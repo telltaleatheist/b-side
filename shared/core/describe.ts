@@ -146,7 +146,7 @@ export function layLyrics(raw: string): string {
   const lines = raw
     .replace(/\r/g, '')
     .replace(/ {2,}/g, '\n')
-    .replace(/\s*(\[(?:verse|chorus|bridge|outro|intro)[^\]]*\])\s*/gi, '\n$1\n')
+    .replace(/\s*(\[(?:verse|pre-chorus|chorus|bridge|interlude|outro|intro|instrumental)[^\]]*\])\s*/gi, '\n$1\n')
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line !== '');

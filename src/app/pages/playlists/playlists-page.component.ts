@@ -63,7 +63,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
               @if (album.plan?.core || album.ask.tags.length) {
                 <span class="head-sound"><span class="kicker">Sound</span> {{ album.plan?.core || album.ask.tags.join(', ') }}</span>
               }
-              <span class="head-sub">{{ album.ask.sung ? 'Sung' : 'Instrumental' }} · {{ songs().length }} {{ songs().length === 1 ? 'track' : 'tracks' }}@if (album.stage === 'done') { · <strong class="runtime">runs {{ runtime() }}</strong> (asked for {{ album.ask.minutes }} min)} @else { · {{ runtime() }} of {{ album.ask.minutes }} min}@if (album.writer) { · written by {{ album.writer }}}</span>
+              <span class="head-sub">{{ album.ask.sung ? 'Sung' : 'Instrumental' }} · {{ songs().length }} {{ songs().length === 1 ? 'track' : 'tracks' }}@if (album.stage === 'done') { · <strong class="runtime">runs {{ runtime() }}</strong> (asked for {{ album.ask.minutes }} min)} @else { · {{ runtime() }} of {{ album.ask.minutes }} min}@if (album.writer) { · written by {{ album.writer }}}@if (album.lyricsBy) {, lyrics by {{ album.lyricsBy }}}</span>
               @if (busy(album.stage) && !interrupted(album)) {
                 @let progress = albumProgress(album);
                 <div class="progress-line">

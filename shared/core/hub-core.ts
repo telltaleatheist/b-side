@@ -22,7 +22,8 @@ import type { CrucibleClient } from '@crucible/client';
 
 import { AlbumMaker } from './albums';
 import { clientFor, clientName, deletePreset, listPresets, probe, savePreset, setClientName, songPage } from './crucible';
-import { describe, MAX_LYRICS_BRIEF } from './describe';
+import { describe, layLyrics, MAX_LYRICS_BRIEF } from './describe';
+import { LYRICS_WRITERS, type Lyricist, type LyricsWriter } from './lyricist';
 import { join, type Disk } from './disk';
 import { JobRunner, type AudioFetcher } from './jobs';
 import { Library, type ImportedAlbum } from './library';
@@ -98,6 +99,8 @@ export interface HubCoreOptions {
   readonly sink: EventSink;
   /** Set on the phone: albums kept here only may take `albumSpaceGb`; past it a new album is refused. */
   readonly limitsAlbumSpace?: boolean;
+  /** The desktop's Claude lyricist (Claude Code on this computer); absent on the phone. */
+  readonly claudeLyricist?: Lyricist;
 }
 
 /** The pseudo-client an album's tracks are made for: their jobs and takes never show in anyone's playing list. */
@@ -106,7 +109,7 @@ function albumClient(id: string): string {
 }
 
 /** MP3 unless the person chose lossless: about an eighth the size, the same sound on a phone. */
-const DEFAULT_PREFERENCES: HubPreferences = { songFormat: 'mp3', albumSpaceGb: 2 };
+const DEFAULT_PREFERENCES: HubPreferences = { songFormat: 'mp3', albumSpaceGb: 2, lyricsWriter: 'bside' };
 
 
 export function text(value: unknown, what: string): string {
@@ -260,6 +263,7 @@ export class HubCore {
           return song === undefined ? [] : [{ title: song.title, durationS: song.durationS }];
         });
       },
+      lyricist: () => this.lyricist(),
       renameSong: async (id, from, to) => {
         const view = await this.libraryView();
         const playlist = view.playlists.find((p) => p.id === id);
@@ -503,6 +507,15 @@ export class HubCore {
     };
   }
 
+  /** The stand-in lyricist when the person chose it, else null (B-Sides' own model writes). */
+  private lyricist(): Lyricist | null {
+    if (this.preferences.lyricsWriter !== 'claude') return null;
+    if (this.options.claudeLyricist === undefined) {
+      throw new Refusal('claude_unavailable', 'Claude writes lyrics only on a B-Sides computer, through its Claude Code.');
+    }
+    return this.options.claudeLyricist;
+  }
+
   // ── preferences ─────────────────────────────────────────────────────────────
 
   private get preferencesFile(): string {
@@ -519,6 +532,7 @@ export class HubCore {
         songFormat: SONG_FORMATS.includes(stored.songFormat as never) ? (stored.songFormat as HubPreferences['songFormat']) : DEFAULT_PREFERENCES.songFormat,
         albumSpaceGb: ALBUM_SPACE_GB.includes(stored.albumSpaceGb as never) ? (stored.albumSpaceGb as number) : DEFAULT_PREFERENCES.albumSpaceGb,
         singlesPlaylist: typeof stored.singlesPlaylist === 'string' ? stored.singlesPlaylist : null,
+        lyricsWriter: LYRICS_WRITERS.includes(stored.lyricsWriter as never) ? (stored.lyricsWriter as LyricsWriter) : DEFAULT_PREFERENCES.lyricsWriter,
       };
     } catch (err) {
       console.error(`[hub] ${this.preferencesFile} could not be read; using the defaults:`, err);
@@ -534,10 +548,18 @@ export class HubCore {
     if (space !== undefined && !ALBUM_SPACE_GB.includes(space as never)) {
       throw new Refusal('body_invalid', `albumSpaceGb is one of ${ALBUM_SPACE_GB.join(', ')}.`);
     }
+    const writer = change['lyricsWriter'];
+    if (writer !== undefined && !LYRICS_WRITERS.includes(writer as never)) {
+      throw new Refusal('body_invalid', `lyricsWriter is one of ${LYRICS_WRITERS.join(', ')}.`);
+    }
+    if (writer === 'claude' && this.options.claudeLyricist === undefined) {
+      throw new Refusal('claude_unavailable', 'Claude writes lyrics only on a B-Sides computer, through its Claude Code.');
+    }
     const next: HubPreferences = {
       ...this.preferences,
       ...(format === undefined ? {} : { songFormat: format as HubPreferences['songFormat'] }),
       ...(space === undefined ? {} : { albumSpaceGb: space as number }),
+      ...(writer === undefined ? {} : { lyricsWriter: writer as LyricsWriter }),
     };
     await this.options.disk.mkdir(this.options.dataDir);
     await this.options.disk.writeText(this.preferencesFile, `${JSON.stringify(next, null, 2)}\n`);
@@ -584,7 +606,12 @@ export class HubCore {
       const server = this.registry.active();
       const body = await request.body();
       const brief = typeof body['lyrics'] === 'string' ? body['lyrics'] : '';
-      return describe(clientFor(server), await songPage(server), text(body['text'], 'text'), body['instrumental'] === true, brief);
+      const described = await describe(clientFor(server), await songPage(server), text(body['text'], 'text'), body['instrumental'] === true, brief);
+      // The stand-in lyricist writes the words for the tags B-Sides' model chose.
+      const lyricist = this.lyricist();
+      if (lyricist === null || described.instrumental) return described;
+      const lyrics = layLyrics(await lyricist.write({ title: null, tags: described.tags.join(', '), about: text(body['text'], 'text'), brief }));
+      return { ...described, lyrics, lyricsModel: lyricist.name };
     });
     this.route('PUT', '/api/presets/:name', async (request) =>
       savePreset(this.registry.active(), request.params['name'] as string, (await request.body()) as unknown as SongForm));
