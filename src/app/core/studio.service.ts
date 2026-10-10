@@ -43,7 +43,7 @@ export class StudioService {
 
   // ── describe the music ─────────────────────────────────────────────────────
   /** The chat model the hub asks on this server (the full one, or 4-bit on a small card), named in the hint. */
-  readonly tagModel = computed(() => this.page()?.tagModel ?? null);
+  readonly tagModel = computed(() => this.page()?.writer ?? this.page()?.tagModel ?? null);
   readonly description = signal('');
   readonly describing = signal(false);
   readonly described = signal<DescribeResult | null>(null);

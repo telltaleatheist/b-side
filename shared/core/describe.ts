@@ -21,10 +21,8 @@
  * Crucible holds one model per card, so on a card the song model fills,
  * describing swaps YuE2 out and the next song swaps it back. The studio says so.
  */
-import { CrucibleRefused, type CrucibleClient } from '@crucible/client';
-
-import { chatSeed, startInstall } from './crucible';
 import { Refusal } from './refusal';
+import type { TextModel } from './text-model';
 import { clashesWith, clashText, indexOfTag, withoutVoice } from '../tags';
 import type { DescribeResult, SongPage } from '../types';
 
@@ -176,51 +174,30 @@ export function clashesIn(tags: readonly string[], page: SongPage): string[] {
 /** How long a lyrics brief may be ("about a banana going brown, bittersweet, a little funny"). */
 export const MAX_LYRICS_BRIEF = 400;
 
-export async function describe(client: CrucibleClient, page: SongPage, description: string, wantsInstrumental = false, lyricsBrief = ''): Promise<DescribeResult> {
+export async function describe(writer: TextModel, page: SongPage, description: string, wantsInstrumental = false, lyricsBrief = ''): Promise<DescribeResult> {
   const text = typeof description === 'string' ? description.trim() : '';
   if (text === '') throw new Refusal('describe_empty', 'Describe the music first, e.g. "smooth lo-fi with jazz sax".');
   if (text.length > MAX_DESCRIPTION) {
     throw new Refusal('describe_too_long', `A description is at most ${MAX_DESCRIPTION} characters.`);
   }
   const brief = wantsInstrumental ? '' : lyricsBrief.trim().slice(0, MAX_LYRICS_BRIEF);
-  const model = page.tagModel;
-  if (model === null) throw new Refusal('no_tag_model', page.tagModelReason ?? 'This server has no tag model.');
-  // A chat never installs a model: a server without the tag model starts installing it here, and
-  // the person is told so (the Studio says to describe again once it is done).
-  const installing = await startInstall(client, model);
-  if (installing !== null) {
-    throw new Refusal('describe_installing', `The tag model is being set up on the server first: ${installing.message}`, 409);
-  }
   const started = Date.now();
-  let content: string;
-  try {
-    const answer = await client.chat({
-      model,
-      thinking: false,
-      temperature: 0.5,
-      seed: chatSeed(),
-      // The tags take ~150 tokens; a song's words up to ~700 more.
-      maxTokens: wantsInstrumental ? 400 : 1100,
-      act: 'generate',
-      responseFormat: { type: 'json_schema', json_schema: { name: 'song_tags', schema: SCHEMA, strict: true } },
-      messages: [
-        { role: 'system', content: tagPrompt(page, wantsInstrumental) },
-        // What the words should be about (Owen, 2026-10-09), said after the music, as a person would.
-        // v2: the task tag is the first line (album-text.ts, the one-model contract).
-        { role: 'user', content: `[describe]\n${brief === '' ? text : `${text}\nThe lyrics: ${brief}`}` },
-      ],
-    });
-    if (answer.finishReason === 'length') {
-      throw new Refusal('describe_truncated', `${model} ran out of room before it finished the tags; describe it again.`);
-    }
-    content = answer.content;
-  } catch (error) {
-    if (error instanceof CrucibleRefused && error.code === 'installing') {
-      // The model's first use: the server is downloading it. Say how far along, in its words.
-      throw new Refusal('describe_installing', `The tag model is being set up on the server first: ${error.serverMessage}`, 409);
-    }
-    throw error;
+  const answer = await writer.ask({
+    tag: '[describe]',
+    name: 'song_tags',
+    system: tagPrompt(page, wantsInstrumental),
+    // What the words should be about (Owen, 2026-10-09), said after the music, as a person would.
+    user: brief === '' ? text : `${text}\nThe lyrics: ${brief}`,
+    schema: SCHEMA,
+    temperature: 0.5,
+    // The tags take ~150 tokens; a song's words up to ~700 more.
+    maxTokens: wantsInstrumental ? 400 : 1100,
+  });
+  if (answer.truncated) {
+    throw new Refusal('describe_truncated', `${writer.name} ran out of room before it finished the tags; describe it again.`);
   }
+  const model = writer.name;
+  const content = answer.content;
   const fields = readFields(content, model);
   // Asked for instrumental, it is instrumental whatever the model answered: no singer among the tags.
   const instrumental = wantsInstrumental || fields.instrumental;

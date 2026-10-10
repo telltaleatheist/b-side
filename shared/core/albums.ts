@@ -27,6 +27,7 @@ import {
 } from './album-text';
 import { installModel, startInstall } from './crucible';
 import type { Lyricist } from './lyricist';
+import { crucibleText, type TextModel } from './text-model';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { layLyrics } from './describe';
@@ -140,8 +141,11 @@ export interface AlbumHooks {
   made(id: string): Promise<readonly { readonly title: string; readonly durationS: number | null }[]>;
   /** Which of the album's tracks (plan places) are on the server now. */
   flyingTracks(id: string): readonly number[];
-  /** Who writes sung lyrics instead of the album's model (the stand-in Claude lyricist), or null. */
-  lyricist(): Lyricist | null;
+  /**
+   * Claude writing everything instead of B-Sides' model (the Settings choice, while that model is
+   * retrained): its text calls and its lyricist. Null: B-Sides' model on the server writes.
+   */
+  claude(): { readonly text: TextModel; readonly lyricist: Lyricist } | null;
   /** A made track was named again: rename its song (the first of the album's songs with the old name). */
   renameSong(id: string, from: string, to: string): Promise<void>;
 }
@@ -261,14 +265,20 @@ export class AlbumMaker {
       throw new Refusal('album_unplanned', 'This album is not planned yet; write a piece again once it is.', 409);
     }
     const server = this.hooks.server(meta.server);
-    const page = await this.hooks.page(server);
-    if (page === null) throw new Refusal('page_unreadable', `Could not read ${server.name}'s song page, so B-Sides cannot tell which model writes.`);
-    if (page.tagModel === null) throw new Refusal('no_tag_model', page.tagModelReason ?? 'This server has no model to write with.');
-    const model = page.tagModel;
     const client = this.hooks.client(server, true);
-    // A chat never installs a model: a server without it starts installing and says so.
-    const installing = await startInstall(client, model);
-    if (installing !== null) throw new Refusal('model_installing', `The writing model is being set up on the server first: ${installing.message}`, 409);
+    const claude = this.hooks.claude();
+    let writer: TextModel;
+    if (claude !== null) {
+      writer = claude.text;
+    } else {
+      const page = await this.hooks.page(server);
+      if (page === null) throw new Refusal('page_unreadable', `Could not read ${server.name}'s song page, so B-Sides cannot tell which model writes.`);
+      if (page.tagModel === null) throw new Refusal('no_tag_model', page.tagModelReason ?? 'This server has no model to write with.');
+      // A chat never installs a model: a server without it starts installing and says so.
+      const installing = await startInstall(client, page.tagModel);
+      if (installing !== null) throw new Refusal('model_installing', `The writing model is being set up on the server first: ${installing.message}`, 409);
+      writer = crucibleText(client, page.tagModel);
+    }
     const concept: AlbumConcept = { title: plan.title, artist: plan.artist, blurb: plan.blurb, coverPrompt: plan.coverPrompt, core: plan.core ?? '' };
     const fresh = async (): Promise<AlbumMeta> => {
       const now = await this.hooks.meta(id);
@@ -277,21 +287,21 @@ export class AlbumMaker {
     };
     switch (piece) {
       case 'title': {
-        const title = await newAlbumTitle(client, model, meta.ask, concept, [plan.title]);
+        const title = await newAlbumTitle(writer, meta.ask, concept, [plan.title]);
         const now = await fresh();
         const next = { ...now, plan: { ...(now.plan as AlbumPlan), title } };
         await this.hooks.update(id, next, title);
         return next;
       }
       case 'artist': {
-        const artist = await newArtist(client, model, meta.ask, concept, [meta.artist]);
+        const artist = await newArtist(writer, meta.ask, concept, [meta.artist]);
         const now = await fresh();
         const next = { ...now, artist, plan: { ...(now.plan as AlbumPlan), artist } };
         await this.hooks.update(id, next);
         return next;
       }
       case 'cover': {
-        const coverPrompt = await newCoverPrompt(client, model, meta.ask, concept);
+        const coverPrompt = await newCoverPrompt(writer, meta.ask, concept);
         const now = await fresh();
         await this.hooks.update(id, { ...now, plan: { ...(now.plan as AlbumPlan), coverPrompt } });
         // The text model goes off the card first, as before an album's first cover: the painter needs it.
@@ -301,7 +311,7 @@ export class AlbumMaker {
       case 'track': {
         const track = at === undefined ? undefined : plan.tracks[at];
         if (at === undefined || track === undefined) throw new Refusal('track_missing', 'That album has no such track.', 404);
-        const [title] = await newTrackTitles(client, model, meta.ask, concept, 1, plan.tracks.map((t) => t.title));
+        const [title] = await newTrackTitles(writer, meta.ask, concept, 1, plan.tracks.map((t) => t.title));
         const now = await fresh();
         const tracks = (now.plan as AlbumPlan).tracks.map((t, i) => (i === at ? { ...t, title: title as string } : t));
         const next = { ...now, plan: { ...(now.plan as AlbumPlan), tracks } };
@@ -362,16 +372,20 @@ export class AlbumMaker {
       meta = { ...meta, session: null };
       await this.hooks.update(id, meta);
     }
+    // Claude writing: nothing of the server is held while it writes (no text model to keep loaded).
+    const claude = this.hooks.claude();
     // Its own client name: Crucible counts every request from the session's name as one of its
     // items, and removes the ones still waiting when it closes. Under the install's own name, a song
     // made meanwhile would join the album's session and be dropped with it.
-    const session = await this.hooks.client(server, true).session({ act: 'generate', idleS: SESSION_IDLE_S });
-    this.sessions.set(id, session);
-    meta = { ...(await this.hooks.meta(id) ?? meta), session: session.id };
-    await this.hooks.update(id, meta);
-    let open = true;
+    const session = claude !== null ? null : await this.hooks.client(server, true).session({ act: 'generate', idleS: SESSION_IDLE_S });
+    if (session !== null) {
+      this.sessions.set(id, session);
+      meta = { ...(await this.hooks.meta(id) ?? meta), session: session.id };
+      await this.hooks.update(id, meta);
+    }
+    let open = session !== null;
     const release = async (): Promise<void> => {
-      if (!open) return;
+      if (!open || session === null) return;
       open = false;
       this.sessions.delete(id);
       await session.close().catch((err: unknown) => console.error(`[albums] could not close the session for ${id}:`, err));
@@ -379,28 +393,33 @@ export class AlbumMaker {
       if (now !== null && now.session === session.id) await this.hooks.update(id, { ...now, session: null });
     };
     try {
-      // The plan and the lyrics ride the session, so the text model stays loaded between calls.
-      const client = session;
       const page = await this.hooks.page(server);
-      if (page === null) throw new Refusal('page_unreadable', `Could not read ${server.name}'s song page, so B-Sides cannot tell which model writes.`);
-      if (page.tagModel === null) throw new Refusal('no_tag_model', page.tagModelReason ?? 'This server has no tag model to write an album with.');
-      const model = page.tagModel;
       // A plan from before v2 was written whole, in one call: its own length is its count.
       const count = meta.plan == null ? trackCount(meta.ask.minutes) : (meta.plan.trackCount ?? meta.plan.tracks.length);
       const show = async (step: AlbumMeta['step']): Promise<void> => {
         meta = { ...(await this.hooks.meta(id) ?? meta), step };
         await this.hooks.update(id, meta);
       };
-      await installModel(client, model, (detail) => show({ kind: 'install', done: 0, of: 0, detail }));
-      await loadWriter(client, model, () => show({ kind: 'load', done: 0, of: 0, detail: model }));
+      let writer: TextModel;
+      if (claude !== null || session === null) {
+        writer = (claude as NonNullable<typeof claude>).text;
+      } else {
+        // The plan and the lyrics ride the session, so the text model stays loaded between calls.
+        if (page === null) throw new Refusal('page_unreadable', `Could not read ${server.name}'s song page, so B-Sides cannot tell which model writes.`);
+        if (page.tagModel === null) throw new Refusal('no_tag_model', page.tagModelReason ?? 'This server has no tag model to write an album with.');
+        const model = page.tagModel;
+        await installModel(session, model, (detail) => show({ kind: 'install', done: 0, of: 0, detail }));
+        await loadWriter(session, model, () => show({ kind: 'load', done: 0, of: 0, detail: model }));
+        writer = crucibleText(session, model);
+      }
       const plans = batches(count);
       // [album]: the concept, kept at once (a restart carries on from it).
       let plan: AlbumPlan;
       if (meta.plan == null) {
         await show({ kind: 'plan', done: 0, of: plans.length + 1 });
-        const concept = await writeAlbum(client, model, meta.ask, count, page);
+        const concept = await writeAlbum(writer, meta.ask, count, page);
         plan = { ...concept, tracks: [], trackCount: count };
-        meta = { ...(await this.hooks.meta(id) ?? meta), writer: model, plan, artist: plan.artist, blurb: plan.blurb };
+        meta = { ...(await this.hooks.meta(id) ?? meta), writer: writer.name, plan, artist: plan.artist, blurb: plan.blurb };
         await this.hooks.update(id, meta, plan.title);
       } else {
         plan = meta.plan;
@@ -412,10 +431,10 @@ export class AlbumMaker {
         if (await this.halted(id)) return meta;
         await show({ kind: 'plan', done: at + 1, of: plans.length + 1 });
         const from = plan.tracks.length + 1;
-        const turns = await writeTracks(client, model, meta.ask, concept, from, last, count, page, plan.tracks.map((track) => track.title));
+        const turns = await writeTracks(writer, meta.ask, concept, from, last, count, page, plan.tracks.map((track) => track.title));
         const written = turns.map((track): AlbumTrack => ({ title: track.title, tags: trackTags(concept.core, track.turn, meta.ask.sung), lyrics: null }));
         plan = { ...plan, tracks: [...plan.tracks, ...written] };
-        meta = { ...(await this.hooks.meta(id) ?? meta), writer: model, plan };
+        meta = { ...(await this.hooks.meta(id) ?? meta), writer: writer.name, plan };
         await this.hooks.update(id, meta);
         // An album begun before this order made its first tracks before the plan: they take its first names.
         const early = meta.openers ?? 0;
@@ -426,14 +445,14 @@ export class AlbumMaker {
         const sungAt = plan.tracks.map((_, at) => at).filter((at) => at >= early);
         // [lyrics], one call per track, each kept as it comes (a restart carries on). The stand-in
         // lyricist, when chosen, writes them instead, told the whole track list for a through-line.
-        const lyricist = this.hooks.lyricist();
+        const lyricist = claude?.lyricist ?? null;
         for (const [done, at] of sungAt.entries()) {
           const track = plan.tracks[at] as AlbumTrack;
           if (track.lyrics !== null) continue;
           if (await this.halted(id)) return meta;
           await show({ kind: 'lyrics', done, of: sungAt.length });
           const written = lyricist === null
-            ? await writeSongLyrics(client, model, meta.ask, concept, track.title, track.tags)
+            ? await writeSongLyrics(writer, meta.ask, concept, track.title, track.tags)
             : await lyricist.write({
               title: track.title,
               tags: track.tags,

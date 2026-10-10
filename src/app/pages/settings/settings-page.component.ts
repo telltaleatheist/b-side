@@ -12,6 +12,7 @@ import { LibraryService } from '../../core/library.service';
 import { HubPickerComponent } from '../../components/hub-picker/hub-picker.component';
 import { ServersCardComponent } from './servers-card.component';
 import { RefusalComponent } from '../../components/refusal/refusal.component';
+import { StudioService } from '../../core/studio.service';
 
 /**
  * Settings: the Crucible servers, where the library lives, and sharing the hub
@@ -97,16 +98,19 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
 
       @if (!hub.onPhone()) {
         <div class="card">
-          <h2 class="card-title">Lyrics</h2>
-          <p class="detail">Who writes the words for sung songs and albums. The tags, names and track lists are always B-Sides' own model.</p>
+          <h2 class="card-title">Writing</h2>
+          <p class="detail">Who writes everything that is words: a song's tags and lyrics, and an album's name, artist, track list, lyrics and cover description. The music is always the Crucible server's.</p>
           <label class="toggle">
-            <input type="radio" name="lyrics" [checked]="preferences()?.lyricsWriter !== 'claude'" (change)="setLyricsWriter('bside')" />
+            <input type="radio" name="writer" [checked]="preferences()?.writer !== 'claude'" (change)="setWriter('bside')" />
             <span><strong>B-Sides' model</strong>, on the Crucible server.</span>
           </label>
           <label class="toggle">
-            <input type="radio" name="lyrics" [checked]="preferences()?.lyricsWriter === 'claude'" (change)="setLyricsWriter('claude')" />
-            <span><strong>Claude Sonnet 5.5</strong>, through Claude Code on this computer (its sign-in pays). A stand-in while B-Sides' model is retrained.</span>
+            <input type="radio" name="writer" [checked]="preferences()?.writer === 'claude'" (change)="setWriter('claude')" />
+            <span><strong>Claude Sonnet 5.5</strong> (<span class="mono">claude -p</span>), through Claude Code on this computer; its sign-in pays. A stand-in while B-Sides' model is retrained.</span>
           </label>
+          @if (writerRefusal(); as refused) {
+            <app-refusal [refusal]="refused" />
+          }
         </div>
       }
 
@@ -346,10 +350,20 @@ export class SettingsPageComponent {
     if (outcome.ok) this.preferences.set(outcome.value);
   }
 
-  protected async setLyricsWriter(lyricsWriter: 'bside' | 'claude'): Promise<void> {
-    const outcome = await this.hub.call<HubPreferences>('PUT', '/api/preferences', { lyricsWriter });
-    this.formatRefusal.set(outcome.ok ? null : outcome.refusal);
-    if (outcome.ok) this.preferences.set(outcome.value);
+  protected readonly writerRefusal = signal<RefusalView | null>(null);
+  private readonly studio = inject(StudioService);
+
+  protected async setWriter(writer: 'bside' | 'claude'): Promise<void> {
+    const outcome = await this.hub.call<HubPreferences>('PUT', '/api/preferences', { writer });
+    this.writerRefusal.set(outcome.ok ? null : outcome.refusal);
+    if (outcome.ok) {
+      this.preferences.set(outcome.value);
+      // The Studio names who writes: read again, so it says the new writer.
+      void this.studio.reload();
+    } else {
+      // The radio shows what is in force, not what was refused.
+      this.preferences.set({ ...(this.preferences() as HubPreferences) });
+    }
   }
 
   protected async setFormat(songFormat: SongFormat): Promise<void> {

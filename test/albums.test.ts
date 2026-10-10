@@ -68,7 +68,7 @@ function fakeAlbum(meta: Partial<AlbumMeta>, songs: { title: string; durationS: 
     made: async () => songs,
     flyingTracks: () => flying,
     renameSong: async () => undefined,
-    lyricist: () => null,
+    claude: () => null,
   };
   return { maker: new AlbumMaker(hooks), rendered, meta: () => stored };
 }

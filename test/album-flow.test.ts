@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { AlbumMaker, type AlbumHooks } from '../shared/core/albums';
 import type { Lyricist, SongToWrite } from '../shared/core/lyricist';
+import type { TextModel } from '../shared/core/text-model';
 import type { AlbumAsk, AlbumMeta, SongPage } from '../shared/types';
 
 const MODEL = 'qwen3.5-4b-bside';
@@ -52,7 +53,7 @@ function fakeServer(failLyricsAt: number | null = null) {
   return { sent, client };
 }
 
-function fakeAlbum(ask: AlbumAsk, server: ReturnType<typeof fakeServer>, lyricist: Lyricist | null = null) {
+function fakeAlbum(ask: AlbumAsk, server: ReturnType<typeof fakeServer>, claude: { text: TextModel; lyricist: Lyricist } | null = null) {
   let stored: AlbumMeta = {
     artist: '', blurb: '', cover: null, ask, plan: null, stage: 'planning', sent: 0, madeS: 0,
     refusal: null, server: 'pc', writer: null,
@@ -74,7 +75,7 @@ function fakeAlbum(ask: AlbumAsk, server: ReturnType<typeof fakeServer>, lyricis
     made: async () => [],
     flyingTracks: () => [],
     renameSong: async (_id, from, to) => { renamed.push([from, to]); },
-    lyricist: () => lyricist,
+    claude: () => claude,
   };
   return { maker: new AlbumMaker(hooks), meta: () => stored, names, renamed, set: (change: Partial<AlbumMeta>) => { stored = { ...stored, ...change }; } };
 }
@@ -177,15 +178,29 @@ test('regenerate refuses while the album is still being written', async () => {
   await settle(album.maker, 'e');
 });
 
-test('with the stand-in lyricist chosen, it writes every track, told the whole track list and its place', async () => {
+test('with Claude writing, every text call is Claude\'s and the server is never asked to write or hold anything', async () => {
   const server = fakeServer();
+  let sessions = 0;
+  (server.client as { session: () => Promise<unknown> }).session = async () => { sessions += 1; return {}; };
+  const texts: string[] = [];
   const asked: SongToWrite[] = [];
-  const claude: Lyricist = { name: 'claude-sonnet-5-5', write: async (song) => { asked.push(song); return '[intro]\noh\n[verse]\nla la\n[pre-chorus]\nhey\n[chorus]\nyeah'; } };
-  const album = fakeAlbum({ description: 'sad songs about bananas', tags: [], minutes: 30, sung: true, lyrics: 'a banana going brown' }, server, claude);
+  // Claude answers the same calls B-Sides' model does: replay the fake server's own answers.
+  const text: TextModel = {
+    name: 'claude-sonnet-5-5',
+    ask: async (request) => {
+      texts.push(request.tag);
+      const answer = await (server.client as unknown as { chat: (o: unknown) => Promise<{ content: string }> }).chat({
+        model: 'x', responseFormat: { json_schema: { schema: request.schema } }, messages: [{ content: request.system }, { content: `${request.tag}\n${request.user}` }],
+      });
+      return { content: answer.content, truncated: false };
+    },
+  };
+  const lyricist: Lyricist = { name: 'claude-sonnet-5-5', write: async (song) => { asked.push(song); return '[intro]\noh\n[verse]\nla la\n[pre-chorus]\nhey\n[chorus]\nyeah'; } };
+  const album = fakeAlbum({ description: 'sad songs about bananas', tags: [], minutes: 30, sung: true, lyrics: 'a banana going brown' }, server, { text, lyricist });
   album.maker.start('f');
   await settle(album.maker, 'f');
-  // B-Sides' model still writes the concept and the list; no [lyrics] call goes to it.
-  expect(server.sent.map((call) => call.tag)).toEqual(['[album]', '[tracks]']);
+  expect(texts).toEqual(['[album]', '[tracks]']);
+  expect(sessions).toBe(0);
   expect(asked.length).toBe(15);
   expect(asked[2]!.album!.at).toBe(2);
   expect(asked[2]!.album!.tracks.length).toBe(15);
@@ -193,5 +208,7 @@ test('with the stand-in lyricist chosen, it writes every track, told the whole t
   expect(asked[0]!.tags).toBe('indie folk, melancholic, soft female voice, 80 BPM');
   // Laid out for YuE: every section on its own line, a blank line before each after the first.
   expect(album.meta().plan!.tracks[0]!.lyrics).toBe('[intro]\noh\n\n[verse]\nla la\n\n[pre-chorus]\nhey\n\n[chorus]\nyeah');
+  expect(album.meta().writer).toBe('claude-sonnet-5-5');
   expect(album.meta().lyricsBy).toBe('claude-sonnet-5-5');
+  expect(album.meta().stage).toBe('making');
 });

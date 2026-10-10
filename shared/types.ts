@@ -129,6 +129,8 @@ export interface SongPage {
   readonly tagModel: string | null;
   /** Why there is no tag model on this server, in a sentence; null when there is one. */
   readonly tagModelReason: string | null;
+  /** Who writes on this hub when not the tag model (Settings → Writing: Claude); set by the hub. */
+  readonly writer?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -167,8 +169,11 @@ export interface HubPreferences {
   readonly singlesPlaylist?: string | null;
   /** The phone's own hub: how much its albums may take before a new one waits (GB). */
   readonly albumSpaceGb: number;
-  /** Who writes sung lyrics: B-Sides' own model, or Claude through Claude Code (desktop only). */
-  readonly lyricsWriter: 'bside' | 'claude';
+  /**
+   * Who writes every text B-Sides makes (tags, lyrics, albums): B-Sides' own model on the server,
+   * or Claude through Claude Code on this computer (desktop only), while that model is retrained.
+   */
+  readonly writer: 'bside' | 'claude';
 }
 
 /**

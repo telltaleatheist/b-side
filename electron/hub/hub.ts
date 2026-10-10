@@ -37,7 +37,7 @@ import type { ImportedAlbum } from '../../shared/core/library';
 import type { ServerRegistry } from '../../shared/core/servers';
 import type { TakeStore } from '../../shared/core/takes';
 import { fileVault, nodeDisk } from '../node-disk';
-import { claudeLyricist } from '../claude-lyricist';
+import { claudeWriter } from '../claude-writer';
 import { Refusal } from '../refusal';
 import { AppSettings, type StoredSettings } from '../settings';
 import { ClientTracker, clientName, type ClientName } from './clients';
@@ -112,7 +112,7 @@ export class Hub {
     });
     this.core = new HubCore({
       disk: nodeDisk,
-      claudeLyricist: claudeLyricist(),
+      claude: claudeWriter(),
       vault: fileVault(path.join(options.userData, 'servers.json')),
       dataDir: options.userData,
       takeLimits: { perClient: TAKES_PER_CLIENT, bytes: TAKE_CACHE_BYTES },

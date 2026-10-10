@@ -87,6 +87,7 @@ test('lyrics with double spaces for line breaks come out one line per line, sect
 });
 
 import { describe as describeMusic } from '../shared/core/describe';
+import { crucibleText, type TextModel } from '../shared/core/text-model';
 
 test('what the lyrics are about rides after the description, and never on an instrumental', async () => {
   const sent: string[] = [];
@@ -97,25 +98,26 @@ test('what the lyrics are about rides after the description, and never on an ins
       return { content: JSON.stringify(fields), finishReason: 'stop' };
     },
   } as never;
-  await describeMusic(client, page, 'retro soul ballad', false, 'a banana going brown, bittersweet');
+  const writer = crucibleText(client, 'qwen3.5-4b-bside');
+  await describeMusic(writer, page, 'retro soul ballad', false, 'a banana going brown, bittersweet');
   // v2: the task tag is the user message's first line.
   expect(sent[0]).toBe('[describe]\nretro soul ballad\nThe lyrics: a banana going brown, bittersweet');
-  const answer = await describeMusic(client, page, 'retro soul ballad', true, 'a banana going brown');
+  const answer = await describeMusic(writer, page, 'retro soul ballad', true, 'a banana going brown');
   expect(sent[1]).toBe('[describe]\nretro soul ballad');
   expect(answer.lyrics).toBeNull();
   expect(answer.tags.some((tag) => /voice/i.test(tag))).toBe(false);
 });
 
-test('a server without the tag model starts installing it and says so, instead of a chat that cannot run', async () => {
-  let chats = 0;
-  const client = {
-    models: async () => [{ id: 'qwen3.5-4b-bside', installed: false }],
-    loadModel: async () => {
-      const { CrucibleRefused } = await import('@crucible/client');
-      throw new CrucibleRefused(409, 'installing', 'x', { task_id: 't', reason: 'installing', message: 'pulling qwen3.5-4b-bside (4.6 GB)', progress: null });
-    },
-    chat: async () => { chats += 1; return { content: '{}', finishReason: 'stop' }; },
-  } as never;
-  await expect(describeMusic(client, page, 'retro soul ballad')).rejects.toThrow('being set up on the server first: pulling qwen3.5-4b-bside (4.6 GB)');
-  expect(chats).toBe(0);
+test('any writer answers describe: Claude gets the content and the prompt, without the task tag', async () => {
+  const asked: { tag: string; user: string; system: string }[] = [];
+  const claude: TextModel = {
+    name: 'claude-sonnet-5-5',
+    ask: async (request) => { asked.push(request); return { content: JSON.stringify(fields), truncated: false }; },
+  };
+  const answer = await describeMusic(claude, page, 'retro soul ballad', false, 'a banana going brown');
+  expect(asked[0]!.tag).toBe('[describe]');
+  expect(asked[0]!.user).toBe('retro soul ballad\nThe lyrics: a banana going brown');
+  expect(answer.model).toBe('claude-sonnet-5-5');
+  const cut: TextModel = { name: 'w', ask: async () => ({ content: '{', truncated: true }) };
+  await expect(describeMusic(cut, page, 'retro soul ballad')).rejects.toThrow('ran out of room');
 });

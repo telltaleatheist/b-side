@@ -16,10 +16,8 @@
  * The task tag is the first line of the user message. Every call: thinking off, json_schema
  * strict, a fresh seed; temperature 0.9 (describe, in describe.ts, is 0.5).
  */
-import type { CrucibleClient } from '@crucible/client';
-
-import { chatSeed } from './crucible';
 import { Refusal } from './refusal';
+import type { TextModel } from './text-model';
 import type { AlbumAsk, SongPage } from '../types';
 
 /** Tracks per [tracks] call; 30/60/90 minutes are 15/30/45 tracks. */
@@ -249,8 +247,7 @@ export function titlesSchema(n: number): object {
 
 /** One tagged call; its answer parsed, or a refusal naming the task (truncated, or not the JSON asked for). */
 async function call(
-  client: CrucibleClient,
-  model: string,
+  writer: TextModel,
   tag: string,
   name: string,
   system: string,
@@ -258,24 +255,12 @@ async function call(
   schema: object,
   maxTokens: number,
 ): Promise<Record<string, unknown>> {
-  const answer = await client.chat({
-    model,
-    thinking: false,
-    temperature: TEMPERATURE,
-    seed: chatSeed(),
-    maxTokens,
-    act: 'generate',
-    responseFormat: { type: 'json_schema', json_schema: { name, schema: schema as Record<string, unknown>, strict: true } },
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: `${tag}\n${user}` },
-    ],
-  });
-  if (answer.finishReason === 'length') throw new Refusal('album_text_truncated', `${model} ran out of room on ${tag}; try again.`);
+  const answer = await writer.ask({ tag, name, system, user, schema, temperature: TEMPERATURE, maxTokens });
+  if (answer.truncated) throw new Refusal('album_text_truncated', `${writer.name} ran out of room on ${tag}; try again.`);
   try {
     return JSON.parse(answer.content) as Record<string, unknown>;
   } catch {
-    throw new Refusal('album_text_unreadable', `${model} answered ${tag} with something that is not its JSON: ${answer.content.slice(0, 160)}`);
+    throw new Refusal('album_text_unreadable', `${writer.name} answered ${tag} with something that is not its JSON: ${answer.content.slice(0, 160)}`);
   }
 }
 
@@ -285,8 +270,8 @@ function text(value: unknown, tag: string, field: string): string {
 }
 
 /** [album]: the concept. With the person's tags, the core IS their tags, whatever the model repeated. */
-export async function writeAlbum(client: CrucibleClient, model: string, ask: AlbumAsk, count: number, page: SongPage | null): Promise<AlbumConcept> {
-  const got = await call(client, model, '[album]', 'album', albumPrompt(ask, count, page), albumUser(ask), ALBUM_SCHEMA, MAX_TOKENS.album);
+export async function writeAlbum(writer: TextModel, ask: AlbumAsk, count: number, page: SongPage | null): Promise<AlbumConcept> {
+  const got = await call(writer, '[album]', 'album', albumPrompt(ask, count, page), albumUser(ask), ALBUM_SCHEMA, MAX_TOKENS.album);
   return {
     title: text(got['title'], '[album]', 'title') || 'Untitled',
     artist: text(got['artist'], '[album]', 'artist') || 'Unknown Artist',
@@ -298,8 +283,7 @@ export async function writeAlbum(client: CrucibleClient, model: string, ask: Alb
 
 /** [tracks] for places first..last of count, told every title already on the album. */
 export async function writeTracks(
-  client: CrucibleClient,
-  model: string,
+  writer: TextModel,
   ask: AlbumAsk,
   album: AlbumConcept,
   first: number,
@@ -309,45 +293,45 @@ export async function writeTracks(
   previous: readonly string[],
 ): Promise<TrackTurn[]> {
   const n = last - first + 1;
-  const got = await call(client, model, '[tracks]', 'tracks', tracksPrompt(ask.sung, album.core, first, last, count, page), tracksUser(ask, album, previous), tracksSchema(n), MAX_TOKENS.tracks);
+  const got = await call(writer, '[tracks]', 'tracks', tracksPrompt(ask.sung, album.core, first, last, count, page), tracksUser(ask, album, previous), tracksSchema(n), MAX_TOKENS.tracks);
   const tracks = got['tracks'];
   if (!Array.isArray(tracks) || tracks.length !== n) {
-    throw new Refusal('album_text_unreadable', `${model} wrote ${Array.isArray(tracks) ? tracks.length : 'no'} tracks for ${first}-${last}, not ${n}.`);
+    throw new Refusal('album_text_unreadable', `${writer.name} wrote ${Array.isArray(tracks) ? tracks.length : 'no'} tracks for ${first}-${last}, not ${n}.`);
   }
   return tracks.map((track: Record<string, unknown>) => ({ title: text(track['title'], '[tracks]', 'title'), turn: text(track['turn'], '[tracks]', 'turn') }));
 }
 
 /** [lyrics] for one sung track. */
-export async function writeSongLyrics(client: CrucibleClient, model: string, ask: AlbumAsk, album: AlbumConcept, title: string, tags: string): Promise<string> {
+export async function writeSongLyrics(writer: TextModel, ask: AlbumAsk, album: AlbumConcept, title: string, tags: string): Promise<string> {
   const brief = ask.sung && ask.lyrics ? ask.lyrics : '';
-  const got = await call(client, model, '[lyrics]', 'lyrics', lyricsPrompt(), lyricsUser(album, title, tags, aboutOf(ask), brief), LYRICS_SCHEMA, MAX_TOKENS.lyrics);
+  const got = await call(writer, '[lyrics]', 'lyrics', lyricsPrompt(), lyricsUser(album, title, tags, aboutOf(ask), brief), LYRICS_SCHEMA, MAX_TOKENS.lyrics);
   return text(got['lyrics'], '[lyrics]', 'lyrics');
 }
 
 /** [album title]: a new title, never one in `avoid`. */
-export async function newAlbumTitle(client: CrucibleClient, model: string, ask: AlbumAsk, album: AlbumConcept, avoid: readonly string[]): Promise<string> {
-  const got = await call(client, model, '[album title]', 'album_title', titlePrompt(), titleUser(ask, album, avoid), oneSchema('title'), MAX_TOKENS.piece);
+export async function newAlbumTitle(writer: TextModel, ask: AlbumAsk, album: AlbumConcept, avoid: readonly string[]): Promise<string> {
+  const got = await call(writer, '[album title]', 'album_title', titlePrompt(), titleUser(ask, album, avoid), oneSchema('title'), MAX_TOKENS.piece);
   return text(got['title'], '[album title]', 'title');
 }
 
 /** [artist]: a new invented artist. */
-export async function newArtist(client: CrucibleClient, model: string, ask: AlbumAsk, album: AlbumConcept, avoid: readonly string[]): Promise<string> {
-  const got = await call(client, model, '[artist]', 'artist', artistPrompt(), artistUser(ask, album, avoid), oneSchema('artist'), MAX_TOKENS.piece);
+export async function newArtist(writer: TextModel, ask: AlbumAsk, album: AlbumConcept, avoid: readonly string[]): Promise<string> {
+  const got = await call(writer, '[artist]', 'artist', artistPrompt(), artistUser(ask, album, avoid), oneSchema('artist'), MAX_TOKENS.piece);
   return text(got['artist'], '[artist]', 'artist');
 }
 
 /** [track titles]: n new track names, none in `avoid`. */
-export async function newTrackTitles(client: CrucibleClient, model: string, ask: AlbumAsk, album: AlbumConcept, n: number, avoid: readonly string[]): Promise<string[]> {
-  const got = await call(client, model, '[track titles]', 'track_titles', titlesPrompt(n), titlesUser(ask, album, n, avoid), titlesSchema(n), MAX_TOKENS.piece + 20 * n);
+export async function newTrackTitles(writer: TextModel, ask: AlbumAsk, album: AlbumConcept, n: number, avoid: readonly string[]): Promise<string[]> {
+  const got = await call(writer, '[track titles]', 'track_titles', titlesPrompt(n), titlesUser(ask, album, n, avoid), titlesSchema(n), MAX_TOKENS.piece + 20 * n);
   const titles = got['titles'];
   if (!Array.isArray(titles) || titles.length !== n || !titles.every((title) => typeof title === 'string')) {
-    throw new Refusal('album_text_unreadable', `${model} did not name ${n} tracks.`);
+    throw new Refusal('album_text_unreadable', `${writer.name} did not name ${n} tracks.`);
   }
   return titles.map((title: string) => title.trim());
 }
 
 /** [cover]: a new cover description. */
-export async function newCoverPrompt(client: CrucibleClient, model: string, ask: AlbumAsk, album: AlbumConcept): Promise<string> {
-  const got = await call(client, model, '[cover]', 'cover', coverPrompt(), coverUser(ask, album), oneSchema('coverPrompt'), MAX_TOKENS.piece);
+export async function newCoverPrompt(writer: TextModel, ask: AlbumAsk, album: AlbumConcept): Promise<string> {
+  const got = await call(writer, '[cover]', 'cover', coverPrompt(), coverUser(ask, album), oneSchema('coverPrompt'), MAX_TOKENS.piece);
   return text(got['coverPrompt'], '[cover]', 'coverPrompt');
 }
