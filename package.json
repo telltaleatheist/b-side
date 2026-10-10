@@ -1,7 +1,7 @@
 {
   "name": "b-side",
   "productName": "B-Sides",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "author": "Owen Morgan",
   "description": "B-Sides — write the style and the lyrics, make songs with YuE2 on a Crucible server, and listen while more generate.",
   "private": true,

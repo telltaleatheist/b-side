@@ -72,8 +72,8 @@ interface Job {
   taskId: string | null;
   /** Cancelled or dismissed before the server had it: nothing more is sent for it. */
   gone: boolean;
-  /** Sent again once already after the server removed it through no fault of the song's. */
-  resent?: boolean;
+  /** Times sent again after the server lost it through no fault of the song's (at most RESENDS). */
+  resends?: number;
 }
 
 /**
@@ -90,8 +90,15 @@ export function songJob(params: SongParams, format: SongFormat, key: string): Jo
   return { type: 'audio', model: SONG_MODEL, params: wire, inputs: {}, clientRef: `b-sides:${key}` };
 }
 
-/** Removed by the server for a reason that is not the song's: a session closing, a restart. Sent again once. */
+/** Removed by the server for a reason that is not the song's: a session closing, a restart. */
 const RESEND_REASONS: readonly string[] = ['session_closed', 'server_restart'];
+/**
+ * How many times a song lost to the server (removed for one of RESEND_REASONS, or interrupted
+ * by a restart) is sent again before it is a failure. Weather, not the song's fault (Victoria's
+ * laptop, 2026-10-10: an out-of-memory restart took the song rendering and the one queued, and
+ * the album ended two short); the budget stops a song that brings the server down every time.
+ */
+const RESENDS = 2;
 
 /**
  * Fetch a finished job's artifact into `file` and answer its size. A server that
@@ -149,6 +156,8 @@ export class JobRunner {
     private readonly disk: Disk,
     private readonly pendingFile: string,
     private readonly fetchAudio: AudioFetcher,
+    /** A client for a server; the real one, or a test's stand-in. */
+    private readonly connect: (server: StoredServer) => CrucibleClient = clientFor,
   ) {}
 
   /** One client's jobs, oldest first. */
@@ -174,7 +183,7 @@ export class JobRunner {
     playlist: string | null = null,
   ): JobView[] {
     const seeds = batchSeeds(typeof request.params.seed === 'number' ? request.params.seed : null, request.count);
-    const client = clientFor(server);
+    const client = this.connect(server);
     const made: Job[] = seeds.map((seed, at) => {
       const params: Mutable<SongParams> = { ...request.params };
       delete params.seed;
@@ -302,7 +311,7 @@ export class JobRunner {
         continue;
       }
       // Already on the server: its format was sent then; the file's extension says which.
-      const job: Job = { server, client: clientFor(server), format: 'flac', taskId: null, gone: false, view: { ...view, message: 'Following it again after a restart' } };
+      const job: Job = { server, client: this.connect(server), format: 'flac', taskId: null, gone: false, view: { ...view, message: 'Following it again after a restart' } };
       this.jobs.set(view.key, job);
       this.publish(job);
       // It may have ended while nobody followed it (a restart on either side): ask before following.
@@ -495,17 +504,9 @@ export class JobRunner {
               this.finish(job, 'cancelled');
               return;
             case 'removed':
-              // Lost to something else (QUEUE.md: a session closing, a server restart): sent again,
-              // once, rather than gone from the playing list. Any other removal is the end of it.
-              if (!job.resent && RESEND_REASONS.includes(event.data.reason)) {
-                job.resent = true;
-                job.view.jobId = null;
-                job.view.phase = 'submitting';
-                job.view.message = 'The server dropped it from its line; sending it again';
-                this.publish(job);
-                void this.submit(job);
-                return;
-              }
+              // Lost to something else (QUEUE.md: a session closing, a server restart): sent again
+              // rather than gone from the playing list. Any other removal is the end of it.
+              if (RESEND_REASONS.includes(event.data.reason) && this.resend(job, 'The server dropped it from its line')) return;
               job.view.message = event.data.message;
               this.finish(job, 'removed', { code: `removed_${event.data.reason}`, message: event.data.message });
               return;
@@ -529,6 +530,22 @@ export class JobRunner {
   }
 
   /**
+   * Send a song the server lost (not through its own fault) again, within RESENDS. Answers
+   * whether it was sent; false once the budget is spent, and the caller ends it.
+   */
+  private resend(job: Job, why: string): boolean {
+    const resends = job.resends ?? 0;
+    if (resends >= RESENDS) return false;
+    job.resends = resends + 1;
+    job.view.jobId = null;
+    job.view.phase = 'submitting';
+    job.view.message = `${why}; sending it again`;
+    this.publish(job);
+    void this.submit(job);
+    return true;
+  }
+
+  /**
    * The stream dropped: ask the job itself before following it again. A server
    * that restarted mid-job (a deploy) marks it failed or interrupted but may
    * keep no event history to replay, so its stream would stay silent forever
@@ -545,18 +562,30 @@ export class JobRunner {
       return true;
     }
     switch (status.status) {
-      case 'failed':
       case 'interrupted':
+        // The server went down with it (a crash, an out-of-memory kill, a deploy): weather.
+        if (this.resend(job, `${job.view.server} restarted while making it`)) return true;
         this.finish(job, 'failed', status.error ?? {
-          code: `job_${status.status}`,
-          message: `${job.view.server} stopped while making this song (it ${status.status === 'interrupted' ? 'restarted' : 'failed'}). Generate again.`,
+          code: 'job_interrupted',
+          message: `${job.view.server} restarted while making this song, ${RESENDS + 1} times. Generate again.`,
+        });
+        return true;
+      case 'failed':
+        this.finish(job, 'failed', status.error ?? {
+          code: 'job_failed',
+          message: `${job.view.server} stopped while making this song (it failed). Generate again.`,
         });
         return true;
       case 'cancelled':
         this.finish(job, 'cancelled');
         return true;
       case 'removed':
-        this.finish(job, 'removed', { code: 'removed', message: `${job.view.server} removed this song before it was fetched.` });
+        // Read after the stream dropped: the same rule as the `removed` event it would have carried.
+        if (status.removal !== null && RESEND_REASONS.includes(status.removal.reason)
+          && this.resend(job, 'The server dropped it from its line')) return true;
+        this.finish(job, 'removed', status.removal === null
+          ? { code: 'removed', message: `${job.view.server} removed this song before it was fetched.` }
+          : { code: `removed_${status.removal.reason}`, message: status.removal.message });
         return true;
       default:
         return false;
