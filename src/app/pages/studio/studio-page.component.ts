@@ -73,7 +73,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
             <button type="submit" class="ghost small" [disabled]="studio.describing() || studio.description().trim() === ''">
               {{ studio.describing() ? 'Working…' : 'Fill in the tags' }}
             </button>
-            <span class="hint">@if (studio.tagModel(); as model) {{{ model }} on the server picks the tags{{ instrumentalHere() ? ', no singer: it is instrumental' : (mode() === 'album' ? '' : ' and writes the lyrics') }}; it swaps the song model out for a minute.} @else {{{ studio.page()?.tagModelReason ?? 'Reading which tag model this server has…' }}}</span>
+            <span class="hint">@if (studio.page()?.writer; as writer) {{{ writer }} (Claude Code on this computer) picks the tags{{ instrumentalHere() ? ', no singer: it is instrumental' : (mode() === 'album' ? '' : ' and writes the lyrics') }}; the server only makes the music.} @else if (studio.tagModel(); as model) {{{ model }} on the server picks the tags{{ instrumentalHere() ? ', no singer: it is instrumental' : (mode() === 'album' ? '' : ' and writes the lyrics') }}; it swaps the song model out for a minute.} @else {{{ studio.page()?.tagModelReason ?? 'Reading which tag model this server has…' }}}</span>
           </div>
           @if (studio.describing()) {
             <div class="progress-line">
