@@ -238,7 +238,7 @@ import { StudioService } from '../../core/studio.service';
         }
         <form class="link peer-add" (submit)="$event.preventDefault(); addPeer()">
           <input type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Its address"
-                 placeholder="its address, like 192.168.68.50" [value]="peerAddress()" (input)="peerAddress.set($any($event.target).value)" />
+                 placeholder="its address or name, like 192.168.68.50 or desktop-ot9rumi.local" [value]="peerAddress()" (input)="peerAddress.set($any($event.target).value)" />
           <input type="text" maxlength="40" aria-label="What to call it" placeholder="name (optional), like Victoria"
                  [value]="peerLabel()" (input)="peerLabel.set($any($event.target).value)" />
           <button type="submit" class="primary small" [disabled]="peerAddress().trim() === '' || peerAdding()">{{ peerAdding() ? 'Looking…' : 'Add' }}</button>

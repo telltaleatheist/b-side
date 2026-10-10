@@ -27,6 +27,8 @@ interface StoredPeer {
   readonly url: string;
   readonly key: string;
   readonly label: string | null;
+  /** The computer's own name, once it has answered: found again by it (`<name>.local`) when its address changes. */
+  readonly hostname?: string | null;
 }
 
 /**
@@ -34,6 +36,12 @@ interface StoredPeer {
  * by IP, it lists all of her songs"). Nothing is copied: each library stays on
  * its own computer, and is read and played from there. One that does not answer
  * (the laptop off, or away from home) is simply not listed until it does.
+ *
+ * Home routers hand out addresses that move (Victoria's laptop went from .52
+ * to .64, 2026-10-10). So each library's computer name is kept once it has
+ * answered, and when its address stops answering it is looked for by that
+ * name (`desktop-ot9rumi.local`, which macOS, iOS and Windows all answer);
+ * found there, its address becomes the name, which follows it from then on.
  */
 @Injectable({ providedIn: 'root' })
 export class PeersService {
@@ -116,13 +124,27 @@ export class PeersService {
   private async look(url: string): Promise<void> {
     const peer = this.peers().find((other) => other.url === url);
     if (peer === undefined) return;
-    const [library, info] = await Promise.all([this.get<LibraryView>(peer, '/api/library'), this.get<HubInfo>(peer, '/api/info')]);
+    let at = peer;
+    let [library, info] = await Promise.all([this.get<LibraryView>(at, '/api/library'), this.get<HubInfo>(at, '/api/info')]);
+    // Not at its address: look for it by its computer's name, and keep that if it is the same library.
+    if (library === null && peer.hostname) {
+      const byName = { ...peer, url: nameUrl(peer.url, peer.hostname) };
+      if (byName.url !== peer.url) {
+        const found = await this.get<HubInfo>(byName, '/api/info');
+        if (found !== null && found.hostname.toLowerCase() === peer.hostname.toLowerCase()) {
+          at = byName;
+          [library, info] = [await this.get<LibraryView>(at, '/api/library'), found];
+        }
+      }
+    }
     this.peers.update((peers) => peers.map((other) => other.url !== url ? other : {
       ...other,
+      url: library !== null ? at.url : other.url,
       state: library === null ? 'away' : 'ok',
       library: library ?? other.library,
       hostname: info?.hostname ?? other.hostname,
     }));
+    if (at.url !== url || (info !== null && info.hostname !== peer.hostname)) this.store();
   }
 
   private async get<T>(peer: Peer, path: string): Promise<T | null> {
@@ -138,17 +160,24 @@ export class PeersService {
   }
 
   private fresh(stored: StoredPeer): Peer {
-    return { url: stored.url, key: stored.key ?? '', label: stored.label ?? null, state: 'looking', hostname: null, library: null };
+    return { url: stored.url, key: stored.key ?? '', label: stored.label ?? null, state: 'looking', hostname: stored.hostname ?? null, library: null };
   }
 
   private store(): void {
     try {
-      const stored: StoredPeer[] = this.peers().map(({ url, key, label }) => ({ url, key, label }));
+      const stored: StoredPeer[] = this.peers().map(({ url, key, label, hostname }) => ({ url, key, label, hostname }));
       localStorage.setItem(STORED_PEERS, JSON.stringify(stored));
     } catch {
       // Kept for this run only.
     }
   }
+}
+
+/** Where a computer answers by its own name on the home network: `http://<name>.local:<port>`. */
+export function nameUrl(url: string, hostname: string): string {
+  const at = new URL(url);
+  const name = hostname.toLowerCase().replace(/\.local$/, '');
+  return `${at.protocol}//${name}.local${at.port === '' ? '' : `:${at.port}`}`;
 }
 
 /** The id a peer goes by in routes: its address's host and port. */
