@@ -21,7 +21,8 @@
 import type { CrucibleClient } from '@crucible/client';
 
 import { AlbumMaker, albumLine } from './albums';
-import { clientFor, clientName, deletePreset, listPresets, probe, savePreset, setClientName, songPage, startInstall } from './crucible';
+import { clientFor, clientName, probe, serverPresets, setClientName, songPage, startInstall } from './crucible';
+import { PresetStore } from './presets';
 import { describe, layLyrics, lyricsBrief } from './describe';
 import { describeSound, nameSong } from './split-text';
 import type { Lyricist } from './lyricist';
@@ -272,6 +273,7 @@ export class HubCore {
   private library!: Library;
   private readonly sink: EventSink;
   private preferences: HubPreferences = DEFAULT_PREFERENCES;
+  private readonly presets: PresetStore;
 
   constructor(private readonly options: HubCoreOptions) {
     this.sink = options.sink;
@@ -288,6 +290,7 @@ export class HubCore {
       return name;
     });
     this.takes = new TakeStore(options.disk, join(options.dataDir, 'takes'), options.takeLimits);
+    this.presets = new PresetStore(options.disk, options.dataDir, serverPresets);
     this.takes.onGone((take, reason) => this.sink.send(take.client, { type: 'take-gone', id: take.id, reason }));
     this.jobs = new JobRunner(
       {
@@ -946,7 +949,7 @@ export class HubCore {
       this.serversChanged(await this.registry.setActive(request.params['name'] as string)));
     this.route('POST', '/api/servers/:name/test', (request) => probe(this.registry.get(request.params['name'] as string)));
 
-    // ── the song page and presets (the active server's) ─────────────────────
+    // ── the song page (the active server's) and presets (the app's own) ─────
     this.route('GET', '/api/song-page', async () => {
       const page = await songPage(this.registry.active());
       return {
@@ -955,7 +958,7 @@ export class HubCore {
         ...(this.preferences.lyricist === 'claude' ? { lyricist: 'Claude Sonnet 5.5' } : {}),
       };
     });
-    this.route('GET', '/api/presets', () => listPresets(this.registry.active()));
+    this.route('GET', '/api/presets', () => this.presets.list(this.registry.all()));
     this.route('POST', '/api/describe', async (request) => {
       const server = this.registry.active();
       const body = await request.body();
@@ -994,10 +997,13 @@ export class HubCore {
         : { lyrics: await lyricist.write(song), title: named };
       return { ...described, lyrics: layLyrics(written.lyrics), title: written.title, lyricsModel: lyricist.name };
     });
-    this.route('PUT', '/api/presets/:name', async (request) =>
-      savePreset(this.registry.active(), request.params['name'] as string, (await request.body()) as unknown as SongForm));
+    this.route('PUT', '/api/presets/:name', async (request) => {
+      const name = (request.params['name'] as string).trim();
+      if (name === '') throw new Refusal('preset_name', 'Name the preset first.');
+      return this.presets.save(this.registry.all(), name, (await request.body()) as unknown as SongForm);
+    });
     this.route('DELETE', '/api/presets/:name', (request) =>
-      deletePreset(this.registry.active(), request.params['name'] as string));
+      this.presets.remove(this.registry.all(), request.params['name'] as string));
 
     // ── albums ────────────────────────────────────────────────────────────────
     this.route('POST', '/api/albums', async (request) => {

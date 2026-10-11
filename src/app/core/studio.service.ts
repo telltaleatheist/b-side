@@ -10,11 +10,12 @@ import { JobsService } from './jobs.service';
 import { PlayerService } from './player.service';
 
 /**
- * The studio's state: the active server's song page and presets, and the form.
+ * The studio's state: the active server's song page, the app's presets, and the form.
  *
  * It lives in a service rather than the page so a trip to Settings and back
- * keeps what was typed. The page (suggestions, conflicts, cfg limits) and the
- * presets are re-read from the server whenever the active server changes.
+ * keeps what was typed. The page (suggestions, conflicts, cfg limits) is re-read
+ * from the server whenever the active server changes. Presets are the app's own
+ * (1.0.13); they are re-read then too, since a new server's old presets come over.
  */
 @Injectable({ providedIn: 'root' })
 export class StudioService {
@@ -98,8 +99,8 @@ export class StudioService {
       untracked(() => {
         if (active === null) {
           this.page.set(null);
-          this.presets.set([]);
           this.pageRefusal.set(null);
+          void this.loadPresets();
           return;
         }
         void this.reload();

@@ -8,7 +8,7 @@ import { IconComponent } from '../icon/icon.component';
 import { RefusalComponent } from '../refusal/refusal.component';
 
 /**
- * Presets kept on the server (the playground presets routes), as a row of
+ * Presets kept by the app (shared/core/presets.ts; Crucible's own are brought over), as a row of
  * pills: tap one to fill the form; its × deletes it, once the person says so
  * in the app's own dialog (Owen, 2026-10-11). "Save as preset" names what the
  * form holds now. A preset is a sound, not a take, so the seed is never saved.

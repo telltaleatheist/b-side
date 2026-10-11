@@ -100,6 +100,11 @@ export class ServerRegistry {
     }));
   }
 
+  /** Every stored entry, tokens included — main only. */
+  all(): StoredServer[] {
+    return [...this.read().servers];
+  }
+
   /** The stored entry, token included — main only. */
   get(name: string): StoredServer {
     const found = this.read().servers.find((server) => server.name === name);

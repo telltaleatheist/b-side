@@ -11,7 +11,7 @@ import { CrucibleClient, CrucibleRefused, type InstallingDetails, type ModelInfo
 
 import { Refusal } from './refusal';
 import type { StoredServer } from './servers';
-import { SONG_MODEL, TAG_MODELS, type NumberField, type Preset, type ServerProbe, type SongForm, type SongPage } from '../types';
+import { SONG_MODEL, TAG_MODELS, type NumberField, type Preset, type ServerProbe, type SongPage } from '../types';
 
 /** The app's name; each install adds its own (`b-sides@<host>`), set by the hub that runs it. */
 export const APP_CLIENT = 'b-sides';
@@ -205,27 +205,12 @@ function presetOf(preset: PlaygroundPreset): Preset {
   return { name: preset.name, params: preset.params, savedAt: preset.savedAt };
 }
 
-export async function listPresets(server: StoredServer): Promise<Preset[]> {
-  return (await clientFor(server).playgroundPresets(SONG_MODEL)).map(presetOf);
-}
-
 /**
- * Save a preset: the form's own params, never a seed (the server refuses one —
- * a preset is a sound, not one take of it). Lyrics are left out of an
- * instrumental, as the form leaves them out of its request.
+ * The presets a server kept before 1.0.13, read once so B-Sides can keep them itself
+ * (shared/core/presets.ts). Nothing is written to or deleted from the server.
  */
-export async function savePreset(server: StoredServer, name: string, form: SongForm): Promise<Preset[]> {
-  const params: Record<string, string | number | boolean> = { instrumental: form.instrumental };
-  if (form.tags.trim() !== '') params['tags'] = form.tags;
-  if (!form.instrumental && form.lyrics.trim() !== '') params['lyrics'] = form.lyrics;
-  if (form.cfg !== null) params['cfg'] = form.cfg;
-  await clientFor(server).savePlaygroundPreset(SONG_MODEL, name.trim(), params);
-  return listPresets(server);
-}
-
-export async function deletePreset(server: StoredServer, name: string): Promise<Preset[]> {
-  await clientFor(server).deletePlaygroundPreset(SONG_MODEL, name);
-  return listPresets(server);
+export async function serverPresets(server: StoredServer): Promise<Preset[]> {
+  return (await clientFor(server).playgroundPresets(SONG_MODEL)).map(presetOf);
 }
 
 /**
