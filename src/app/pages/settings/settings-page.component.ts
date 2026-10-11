@@ -106,24 +106,26 @@ import { StudioService } from '../../core/studio.service';
       @if (!hub.onPhone()) {
         <div class="card">
           <h2 class="card-title">Writing</h2>
-          <p class="detail">Who writes a song's tags and name, and an album's name, artist, track list and cover description. The music is always the Crucible server's.</p>
+          <p class="detail">Two writers, each chosen on its own. The music is always the Crucible server's.</p>
+          <h3 class="card-sub">Words</h3>
+          <p class="detail">Everything you read or hear: the lyrics, song and album names, the artist, the liner note and the track list.</p>
+          <label class="toggle">
+            <input type="radio" name="lyricist" [checked]="preferences()?.lyricist === 'claude'" (change)="setLyricist('claude')" />
+            <span><strong>Claude Sonnet 5.5</strong> (<span class="mono">claude -p</span>), through Claude Code on this computer; its sign-in pays. A story in each song, every song standing on its own.</span>
+          </label>
+          <label class="toggle">
+            <input type="radio" name="lyricist" [checked]="preferences()?.lyricist !== 'claude'" (change)="setLyricist('bside')" />
+            <span><strong>The server's model</strong>, on the Crucible server.</span>
+          </label>
+          <h3 class="card-sub">Sound</h3>
+          <p class="detail">What YuE2 is told to make: a song's tags, an album's sound and each track's, and the cover description for the image model.</p>
           <label class="toggle">
             <input type="radio" name="writer" [checked]="preferences()?.writer !== 'claude'" (change)="setWriter('bside')" />
-            <span><strong>B-Sides' model</strong>, on the Crucible server.</span>
+            <span><strong>The server's model</strong>, on the Crucible server, told YuE2's own guidance for its tags.</span>
           </label>
           <label class="toggle">
             <input type="radio" name="writer" [checked]="preferences()?.writer === 'claude'" (change)="setWriter('claude')" />
-            <span><strong>Claude Sonnet 5.5</strong> (<span class="mono">claude -p</span>), through Claude Code on this computer; its sign-in pays. A stand-in while B-Sides' model is retrained.</span>
-          </label>
-          <h3 class="card-sub">Lyrics</h3>
-          <p class="detail">Who writes a sung song's words, chosen apart from the rest.</p>
-          <label class="toggle">
-            <input type="radio" name="lyricist" [disabled]="preferences()?.writer === 'claude'" [checked]="preferences()?.writer !== 'claude' && preferences()?.lyricist !== 'claude'" (change)="setLyricist('bside')" />
-            <span><strong>B-Sides' model</strong>, on the Crucible server{{ preferences()?.writer === 'claude' ? ': only while it writes the rest too' : '' }}.</span>
-          </label>
-          <label class="toggle">
-            <input type="radio" name="lyricist" [checked]="preferences()?.writer === 'claude' || preferences()?.lyricist === 'claude'" (change)="setLyricist('claude')" />
-            <span><strong>Claude Sonnet 5.5</strong> (<span class="mono">claude -p</span>): a story in each song, every song standing on its own, YuE2's full sections.</span>
+            <span><strong>Claude Sonnet 5.5</strong> (<span class="mono">claude -p</span>), through Claude Code on this computer.</span>
           </label>
           @if (writerRefusal(); as refused) {
             <app-refusal [refusal]="refused" />

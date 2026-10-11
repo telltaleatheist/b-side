@@ -23,13 +23,16 @@ function fakeServer(failLyricsAt: number | null = null) {
     const user = options.messages[1]!.content;
     const tag = user.split('\n')[0]!;
     sent.push({ tag, model: options.model, user, system: options.messages[0]!.content });
-    if (tag === '[album]') {
-      return { finishReason: 'stop', content: JSON.stringify({ title: 'Spotted', artist: 'The Elegies', blurb: 'Ripening.', coverPrompt: 'a banana', core: 'indie folk, melancholic' }) };
-    }
-    if (tag === '[tracks]') {
+    if (tag === '[concept]') return { finishReason: 'stop', content: JSON.stringify({ title: 'Spotted', artist: 'The Elegies', blurb: 'Ripening.' }) };
+    if (tag === '[ideas]') {
       const n = options.responseFormat.json_schema.schema.properties.tracks.minItems as number;
-      const tracks = Array.from({ length: n }, () => ({ title: `Song ${++tracksWritten}`, turn: 'soft female voice, 80 BPM' }));
+      const tracks = Array.from({ length: n }, () => ({ title: `Song ${++tracksWritten}`, idea: `idea ${tracksWritten}` }));
       return { finishReason: 'stop', content: JSON.stringify({ tracks }) };
+    }
+    if (tag === '[core]') return { finishReason: 'stop', content: JSON.stringify({ core: ['indie folk', 'melancholic'] }) };
+    if (tag === '[turns]') {
+      const n = options.responseFormat.json_schema.schema.properties.turns.minItems as number;
+      return { finishReason: 'stop', content: JSON.stringify({ turns: Array.from({ length: n }, () => ['soft female voice', '80 BPM']) }) };
     }
     if (tag === '[lyrics]') {
       lyricsCalls += 1;
@@ -53,7 +56,7 @@ function fakeServer(failLyricsAt: number | null = null) {
   return { sent, client };
 }
 
-function fakeAlbum(ask: AlbumAsk, server: ReturnType<typeof fakeServer>, claude: { text: TextModel | null; lyricist: Lyricist | null } | null = null) {
+function fakeAlbum(ask: AlbumAsk, server: ReturnType<typeof fakeServer>, claude: { text: TextModel | null; words?: TextModel | null; lyricist: Lyricist | null } | null = null) {
   let stored: AlbumMeta = {
     artist: '', blurb: '', cover: null, ask, plan: null, stage: 'planning', sent: 0, madeS: 0,
     refusal: null, server: 'pc', writer: null,
@@ -86,30 +89,32 @@ async function settle(maker: AlbumMaker, id: string): Promise<void> {
   for (let i = 0; i < 200 && maker.writing(id); i += 1) await new Promise((rest) => setTimeout(rest, 2));
 }
 
-test('a 90-minute sung album: [album], then [tracks] three times fifteen, then [lyrics] per track, all on the tag model', async () => {
+test('a 90-minute sung album on the server alone: the words, then the sound, then the cover, then [lyrics] per track', async () => {
   const server = fakeServer();
   const album = fakeAlbum({ description: 'sad songs about bananas', tags: [], minutes: 90, sung: true, lyrics: 'a banana going brown' }, server);
   album.maker.start('a');
   await settle(album.maker, 'a');
   const tags = server.sent.map((call) => call.tag);
-  expect(tags.slice(0, 4)).toEqual(['[album]', '[tracks]', '[tracks]', '[tracks]']);
-  expect(tags.slice(4).every((tag) => tag === '[lyrics]')).toBe(true);
-  expect(tags.length).toBe(4 + 45);
+  expect(tags.slice(0, 9)).toEqual(['[concept]', '[ideas]', '[ideas]', '[ideas]', '[core]', '[turns]', '[turns]', '[turns]', '[cover]']);
+  expect(tags.slice(9).every((tag) => tag === '[lyrics]')).toBe(true);
+  expect(tags.length).toBe(9 + 45);
   expect(server.sent.every((call) => call.model === MODEL)).toBe(true);
-  // Each later batch is told every title so far, numbered.
+  // Each later batch of ideas is told every title so far, numbered.
   const second = server.sent[2]!;
-  expect(second.system).toContain('Write tracks 16-30 of 45, in order.');
+  expect(second.system).toContain('tracks 16-30 of 45');
   expect(second.user).toContain('Already on the album: 1. "Song 1"; 2. "Song 2"');
-  expect(second.user).toContain('15. "Song 15"');
   expect(second.user).not.toContain('16. "');
-  expect(server.sent[1]!.user).not.toContain('Already on the album');
+  // [turns] is told each track's title and what it is about.
+  expect(server.sent[5]!.user).toContain('1. "Song 1": idea 1');
   // [lyrics] carries the track's full tags (core + turn) and the brief.
-  expect(server.sent[4]!.user).toBe('[lyrics]\nAlbum: "Spotted" by The Elegies. Ripening.\nAbout: sad songs about bananas\nThe lyrics: a banana going brown\nSong: "Song 1" (indie folk, melancholic, soft female voice, 80 BPM)');
+  expect(server.sent[9]!.user).toBe('[lyrics]\nAlbum: "Spotted" by The Elegies. Ripening.\nAbout: sad songs about bananas\nThe lyrics: a banana going brown\nSong: "Song 1" (indie folk, melancholic, soft female voice, 80 BPM)');
   const meta = album.meta();
   expect(meta.plan!.tracks.length).toBe(45);
-  expect(meta.plan!.trackCount).toBe(45);
+  expect(meta.plan!.tracks[0]!.idea).toBe('idea 1');
+  expect(meta.plan!.coverPrompt).toBe('a bowl of fruit at dusk');
   expect(meta.plan!.tracks.every((track) => track.lyrics === '[Verse]\nla\n\n[Chorus]\nla')).toBe(true);
   expect(meta.writer).toBe(MODEL);
+  expect(meta.soundBy).toBe(MODEL);
   expect(meta.stage).toBe('making');
   expect(album.names).toContain('Spotted');
 });
@@ -119,9 +124,18 @@ test('an instrumental album writes no lyrics', async () => {
   const album = fakeAlbum({ description: '', tags: [], minutes: 30, sung: false }, server);
   album.maker.start('b');
   await settle(album.maker, 'b');
-  expect(server.sent.map((call) => call.tag)).toEqual(['[album]', '[tracks]']);
-  expect(server.sent[0]!.user).toBe('[album]\nSurprise me.');
+  expect(server.sent.map((call) => call.tag)).toEqual(['[concept]', '[ideas]', '[core]', '[turns]', '[cover]']);
+  expect(server.sent[0]!.user).toBe('[concept]\nSurprise me.');
   expect(album.meta().plan!.tracks.every((track) => track.lyrics === null && track.tags.endsWith('instrumental'))).toBe(true);
+});
+
+test("the person's own tags are the core: no [core] call", async () => {
+  const server = fakeServer();
+  const album = fakeAlbum({ description: '', tags: ['lo-fi', 'jazz'], minutes: 30, sung: false }, server);
+  album.maker.start('t');
+  await settle(album.maker, 't');
+  expect(server.sent.map((call) => call.tag)).toEqual(['[concept]', '[ideas]', '[turns]', '[cover]']);
+  expect(album.meta().plan!.core).toBe('lo-fi, jazz');
 });
 
 test('a lyrics call that fails stops the album where it is; Continue writes only what is missing', async () => {
@@ -135,7 +149,7 @@ test('a lyrics call that fails stops the album where it is; Continue writes only
   await album.maker.resume('c');
   await settle(album.maker, 'c');
   const again = server.sent.slice(before).map((call) => call.tag);
-  // No new [album] or [tracks]: the concept and the list were kept; only the 13 missing lyrics.
+  // Nothing written again: the names, the sound and the cover were kept; only the 13 missing lyrics.
   expect(again).toEqual(Array(13).fill('[lyrics]'));
   expect(album.meta().stage).toBe('making');
 });
@@ -180,14 +194,9 @@ test('regenerate refuses while the album is still being written', async () => {
   await settle(album.maker, 'e');
 });
 
-test('with Claude writing, every text call is Claude\'s and the server is never asked to write or hold anything', async () => {
-  const server = fakeServer();
-  let sessions = 0;
-  (server.client as { session: () => Promise<unknown> }).session = async () => { sessions += 1; return {}; };
-  const texts: string[] = [];
-  const asked: SongToWrite[] = [];
-  // Claude answers the same calls B-Sides' model does: replay the fake server's own answers.
-  const text: TextModel = {
+/** Claude answering the same calls: the fake server's own answers, replayed, each call's tag recorded. */
+function fakeClaude(server: ReturnType<typeof fakeServer>, texts: string[]): TextModel {
+  return {
     name: 'claude-sonnet-5-5',
     ask: async (request) => {
       texts.push(request.tag);
@@ -197,15 +206,25 @@ test('with Claude writing, every text call is Claude\'s and the server is never 
       return { content: answer.content, truncated: false };
     },
   };
+}
+
+test('with Claude writing both the words and the sound, the server is never asked to write or hold anything', async () => {
+  const server = fakeServer();
+  let sessions = 0;
+  (server.client as { session: () => Promise<unknown> }).session = async () => { sessions += 1; return {}; };
+  const texts: string[] = [];
+  const asked: SongToWrite[] = [];
+  const claude = fakeClaude(server, texts);
   const lyricist: Lyricist = { name: 'claude-sonnet-5-5', write: async (song) => { asked.push(song); return '[intro]\noh\n[verse]\nla la\n[pre-chorus]\nhey\n[chorus]\nyeah'; } };
-  const album = fakeAlbum({ description: 'sad songs about bananas', tags: [], minutes: 30, sung: true, lyrics: 'a banana going brown' }, server, { text, lyricist });
+  const album = fakeAlbum({ description: 'sad songs about bananas', tags: [], minutes: 30, sung: true, lyrics: 'a banana going brown' }, server, { text: claude, words: claude, lyricist });
   album.maker.start('f');
   await settle(album.maker, 'f');
-  expect(texts).toEqual(['[album]', '[tracks]']);
+  expect(texts).toEqual(['[concept]', '[ideas]', '[core]', '[turns]', '[cover]']);
   expect(sessions).toBe(0);
   expect(asked.length).toBe(15);
   expect(asked[2]!.album!.at).toBe(2);
   expect(asked[2]!.album!.tracks.length).toBe(15);
+  expect(asked[2]!.idea).toBe('idea 3');
   expect(asked[0]!.brief).toBe('a banana going brown');
   expect(asked[0]!.tags).toBe('indie folk, melancholic, soft female voice, 80 BPM');
   // Laid out for YuE: every section on its own line, a blank line before each after the first.
@@ -215,17 +234,21 @@ test('with Claude writing, every text call is Claude\'s and the server is never 
   expect(album.meta().stage).toBe('making');
 });
 
-test("B-Sides' model plans the album and Claude writes only the lyrics (Owen, 2026-10-11)", async () => {
+test('Claude writes the words and the server the sound (Owen, 2026-10-11)', async () => {
   const server = fakeServer();
+  const texts: string[] = [];
   const asked: SongToWrite[] = [];
+  const claude = fakeClaude(server, texts);
   const lyricist: Lyricist = { name: 'claude-sonnet-5-5', write: async (song) => { asked.push(song); return '[verse]\na\nb\nc\nd\n[chorus]\ne\nf\ng\nh'; } };
-  const album = fakeAlbum({ description: 'sad songs about bananas', tags: [], minutes: 30, sung: true }, server, { text: null, lyricist });
+  const album = fakeAlbum({ description: 'sad songs about bananas', tags: [], minutes: 30, sung: true }, server, { text: null, words: claude, lyricist });
   album.maker.start('s');
   await settle(album.maker, 's');
-  expect(server.sent.map((call) => call.tag)).toEqual(['[album]', '[tracks]']);
-  expect(server.sent.every((call) => call.model === MODEL)).toBe(true);
+  expect(texts).toEqual(['[concept]', '[ideas]']);
+  // Claude's calls go through the fake too, under model "x": the server's own are the sound.
+  expect(server.sent.filter((call) => call.model === MODEL).map((call) => call.tag)).toEqual(['[core]', '[turns]', '[cover]']);
   expect(asked.length).toBe(15);
-  expect(album.meta().writer).toBe(MODEL);
+  expect(album.meta().writer).toBe('claude-sonnet-5-5');
+  expect(album.meta().soundBy).toBe(MODEL);
   expect(album.meta().lyricsBy).toBe('claude-sonnet-5-5');
   expect(album.meta().stage).toBe('making');
 });

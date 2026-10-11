@@ -18,7 +18,7 @@ export const SONG_MODEL = 'yue2-3b';
  * replaced is gone from the catalog. chooseTagModel (shared/core/crucible.ts) still says when a
  * server's card cannot hold it.
  */
-export const TAG_MODELS = ['qwen3.5-4b-bside'] as const;
+export const TAG_MODELS = ['qwen3.5-4b', 'qwen3.5-4b-8bit'] as const;
 
 /** A refusal or failure, in the server's own words where it gave some. */
 export interface RefusalView {
@@ -199,15 +199,18 @@ export interface HubPreferences {
   /** The phone's own hub: how much its albums may take before a new one waits (GB). */
   readonly albumSpaceGb: number;
   /**
-   * Who writes every text B-Sides makes (tags, lyrics, albums): B-Sides' own model on the server,
-   * or Claude through Claude Code on this computer (desktop only), while that model is retrained.
+   * Who writes the sound (split-text.ts): a song's tags, an album's core and each track's turn,
+   * and the cover description. `bside`: the server's chat model; `claude`: Claude Code on this
+   * computer (desktop only). (Owen, 2026-10-11: "a vanilla 4b model should generate the tags".)
    */
   readonly writer: 'bside' | 'claude';
   /**
-   * Who writes a sung song's words, chosen apart from `writer` (Owen, 2026-10-11: "generate the
-   * lyrics with one model (claude -p for example) and everything else with the b-sides model").
+   * Who writes the words: everything a person reads or hears (lyrics, song and album names, the
+   * artist, the liner note, track titles). `claude` on a desktop; the server's model otherwise.
    */
   readonly lyricist: 'bside' | 'claude';
+  /** 2: the choices above mean sound and words (0.1.38); before that, `writer` wrote names too. */
+  readonly textSplit?: number;
   /**
    * How albums on the same server share it (Victoria, 2026-10-11: "In some cases, it's nice to
    * complete an entire album before moving on to the next. In other cases, I want to flip back and
@@ -415,6 +418,8 @@ export interface AlbumTrack {
   readonly tags: string;
   /** Sung albums: the lyrics, in YuE's section tags. Null when instrumental. */
   readonly lyrics: string | null;
+  /** What the song is about, in a sentence, from the lyricist (split-text.ts [ideas]); absent on older plans. */
+  readonly idea?: string;
 }
 
 /** What the chat model planned in its one call. */
@@ -474,6 +479,8 @@ export interface AlbumMeta {
   /** Which server makes it, and which chat model wrote it. */
   readonly server: string;
   readonly writer: string | null;
+  /** Who wrote the sound (the tags, the cover description) when not the writer (split-text.ts). */
+  readonly soundBy?: string | null;
   /** Who wrote the lyrics when not the writer (Claude, the stand-in lyricist). */
   readonly lyricsBy?: string | null;
   /** Once saved to a B-Sides computer (the phone's cloud): which, and when. Absent while it lives only here. */

@@ -24,7 +24,7 @@
 import type { CrucibleClient, CrucibleSession } from '@crucible/client';
 
 import {
-  aboutOf, batches, BPM, newAlbumTitle, newArtist, newCoverPrompt, newTrackTitles, writeAlbum, writeSongLyrics, writeTracks, type AlbumConcept,
+  aboutOf, batches, BPM, newAlbumTitle, newArtist, newCoverPrompt, newTrackTitles, writeSongLyrics, type AlbumConcept,
 } from './album-text';
 import { installModel, startInstall } from './crucible';
 import type { Lyricist } from './lyricist';
@@ -32,6 +32,7 @@ import { crucibleText, type TextModel } from './text-model';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { layLyrics } from './describe';
+import { writeConcept, writeCore, writeIdeas, writeTurns } from './split-text';
 import { VOICE_TAG, withoutVoice } from '../tags';
 import {
   LENGTH_AIMS, type AlbumAsk, type AlbumMeta, type AlbumOrder, type AlbumPlan, type AlbumTrack, type LengthAim, type SinglesOrder, type SongPage,
@@ -175,7 +176,7 @@ export interface AlbumHooks {
    * Claude writing instead of B-Sides' model (the Settings choices): its text calls (`text`), its
    * lyrics (`lyricist`), either or both. A null one, or null for both: B-Sides' model on the server.
    */
-  claude(): { readonly text: TextModel | null; readonly lyricist: Lyricist | null } | null;
+  claude(): { readonly text: TextModel | null; readonly words?: TextModel | null; readonly lyricist: Lyricist | null } | null;
   /** A made track was named again: rename its song (the first of the album's songs with the old name). */
   renameSong(id: string, from: string, to: string): Promise<void>;
   /**
@@ -347,19 +348,20 @@ export class AlbumMaker {
     }
     const server = this.hooks.server(meta.server);
     const client = this.hooks.client(server, true);
-    const claude = this.hooks.claude()?.text ?? null;
-    let writer: TextModel;
-    if (claude !== null) {
-      writer = claude;
-    } else {
+    const claude = this.hooks.claude();
+    const serverText = async (): Promise<TextModel> => {
       const page = await this.hooks.page(server);
       if (page === null) throw new Refusal('page_unreadable', `Could not read ${server.name}'s song page, so B-Sides cannot tell which model writes.`);
       if (page.tagModel === null) throw new Refusal('no_tag_model', page.tagModelReason ?? 'This server has no model to write with.');
       // A chat never installs a model: a server without it starts installing and says so.
       const installing = await startInstall(client, page.tagModel);
       if (installing !== null) throw new Refusal('model_installing', `The writing model is being set up on the server first: ${installing.message}`, 409);
-      writer = crucibleText(client, page.tagModel);
-    }
+      return crucibleText(client, page.tagModel);
+    };
+    // The cover description is the sound writer's; the names are the words writer's (split-text.ts).
+    const writer: TextModel = piece === 'cover'
+      ? claude?.text ?? await serverText()
+      : claude?.words ?? await serverText();
     const concept: AlbumConcept = { title: plan.title, artist: plan.artist, blurb: plan.blurb, coverPrompt: plan.coverPrompt, core: plan.core ?? '' };
     const fresh = async (): Promise<AlbumMeta> => {
       const now = await this.hooks.meta(id);
@@ -516,26 +518,22 @@ export class AlbumMaker {
       meta = { ...meta, session: null };
       await this.hooks.update(id, meta);
     }
-    // Claude writing: nothing of the server is held while it writes (no text model to keep loaded).
+    // Two writers (split-text.ts; Owen, 2026-10-11): the words (names, liner note, track ideas, lyrics)
+    // and the sound (the core, each track's turn, the cover description). Either is Claude or the
+    // server's model; the server's is held in a queue session, opened only when first needed, so
+    // nothing of the server is held while Claude writes.
     const claude = this.hooks.claude();
-    const claudeText = claude?.text ?? null;
-    // Its own client name: Crucible counts every request from the session's name as one of its
-    // items, and removes the ones still waiting when it closes. Under the install's own name, a song
-    // made meanwhile would join the album's session and be dropped with it.
-    const session = claudeText !== null ? null : await this.hooks.client(server, true).session({ act: 'generate', idleS: SESSION_IDLE_S });
-    if (session !== null) {
-      this.sessions.set(id, session);
-      meta = { ...(await this.hooks.meta(id) ?? meta), session: session.id };
-      await this.hooks.update(id, meta);
-    }
-    let open = session !== null;
+    let session: CrucibleSession | null = null;
+    let serverWriter: TextModel | null = null;
     const release = async (): Promise<void> => {
-      if (!open || session === null) return;
-      open = false;
+      if (session === null) return;
+      const closing = session;
+      session = null;
+      serverWriter = null;
       this.sessions.delete(id);
-      await session.close().catch((err: unknown) => console.error(`[albums] could not close the session for ${id}:`, err));
+      await closing.close().catch((err: unknown) => console.error(`[albums] could not close the session for ${id}:`, err));
       const now = await this.hooks.meta(id);
-      if (now !== null && now.session === session.id) await this.hooks.update(id, { ...now, session: null });
+      if (now !== null && now.session === closing.id) await this.hooks.update(id, { ...now, session: null });
     };
     try {
       const page = await this.hooks.page(server);
@@ -547,54 +545,100 @@ export class AlbumMaker {
         meta = { ...(await this.hooks.meta(id) ?? meta), step };
         await this.hooks.update(id, meta);
       };
-      let writer: TextModel;
-      if (claudeText !== null || session === null) {
-        writer = claudeText as TextModel;
-      } else {
-        // The plan and the lyrics ride the session, so the text model stays loaded between calls.
+      const onServer = async (): Promise<TextModel> => {
+        if (serverWriter !== null) return serverWriter;
+        // The calls ride one session, so the text model stays loaded between them. Its own client
+        // name: Crucible counts every request from the session's name as one of its items, and
+        // removes the ones still waiting when it closes; under the install's own name, a song made
+        // meanwhile would join the album's session and be dropped with it.
         if (page === null) throw new Refusal('page_unreadable', `Could not read ${server.name}'s song page, so B-Sides cannot tell which model writes.`);
         if (page.tagModel === null) throw new Refusal('no_tag_model', page.tagModelReason ?? 'This server has no tag model to write an album with.');
+        const opened = await this.hooks.client(server, true).session({ act: 'generate', idleS: SESSION_IDLE_S });
+        session = opened;
+        this.sessions.set(id, opened);
+        meta = { ...(await this.hooks.meta(id) ?? meta), session: opened.id };
+        await this.hooks.update(id, meta);
         const model = page.tagModel;
-        await installModel(session, model, (detail) => show({ kind: 'install', done: 0, of: 0, detail }));
-        await loadWriter(session, model, () => show({ kind: 'load', done: 0, of: 0, detail: model }));
-        writer = crucibleText(session, model);
-      }
+        await installModel(opened, model, (detail) => show({ kind: 'install', done: 0, of: 0, detail }));
+        await loadWriter(opened, model, () => show({ kind: 'load', done: 0, of: 0, detail: model }));
+        serverWriter = crucibleText(opened, model);
+        return serverWriter;
+      };
+      const words = async (): Promise<TextModel> => claude?.words ?? onServer();
+      const sound = async (): Promise<TextModel> => claude?.text ?? onServer();
       const plans = batches(count);
-      // [album]: the concept, kept at once (a restart carries on from it).
+      const steps = plans.length * 2 + 3;
+      // [concept]: the album's name, artist and liner note, kept at once (a restart carries on from it).
       let plan: AlbumPlan;
       if (meta.plan == null) {
-        await show({ kind: 'plan', done: 0, of: plans.length + 1 });
-        const concept = await writeAlbum(writer, meta.ask, count, page);
-        plan = { ...concept, tracks: [], trackCount: count };
+        await show({ kind: 'plan', done: 0, of: steps });
+        const writer = await words();
+        const named = await writeConcept(writer, meta.ask, count);
+        plan = { ...named, coverPrompt: '', core: '', tracks: [], trackCount: count };
         meta = { ...(await this.hooks.meta(id) ?? meta), writer: writer.name, plan, artist: plan.artist, blurb: plan.blurb };
         await this.hooks.update(id, meta, plan.title);
       } else {
         plan = meta.plan;
       }
-      const concept: AlbumConcept = { title: plan.title, artist: plan.artist, blurb: plan.blurb, coverPrompt: plan.coverPrompt, core: plan.core ?? '' };
-      // [tracks], fifteen at a time, each batch told every title so far.
+      // [ideas]: the track list, fifteen at a time, each a title and what it is about, each batch told every title so far.
       for (const [at, [first, last]] of plans.entries()) {
         if (plan.tracks.length >= last) continue;
         if (await this.halted(id)) return meta;
-        await show({ kind: 'plan', done: at + 1, of: plans.length + 1 });
-        const from = plan.tracks.length + 1;
-        const turns = await writeTracks(writer, meta.ask, concept, from, last, count, page, plan.tracks.map((track) => track.title));
-        const written = turns.map((track): AlbumTrack => ({ title: track.title, tags: trackTags(concept.core, track.turn, meta.ask.sung, meta.ask.exactTags === true), lyrics: null }));
-        plan = { ...plan, tracks: [...plan.tracks, ...written] };
+        await show({ kind: 'plan', done: 1 + at, of: steps });
+        const writer = await words();
+        const ideas = await writeIdeas(writer, meta.ask, plan, plan.tracks.length + 1, last, count, plan.tracks.map((track) => track.title));
+        plan = { ...plan, tracks: [...plan.tracks, ...ideas.map((track): AlbumTrack => ({ title: track.title, idea: track.idea, tags: '', lyrics: null }))] };
         meta = { ...(await this.hooks.meta(id) ?? meta), writer: writer.name, plan };
         await this.hooks.update(id, meta);
         // An album begun before this order made its first tracks before the plan: they take its first names.
         const early = meta.openers ?? 0;
         if (first === 1 && early > 0) await this.hooks.retitle(id, plan.tracks.slice(0, early).map((track) => track.title));
       }
+      // [core]: the sound every track keeps (the person's own tags are it, with no call).
+      if (!plan.core) {
+        if (await this.halted(id)) return meta;
+        await show({ kind: 'plan', done: 1 + plans.length, of: steps });
+        const writer = await sound();
+        plan = { ...plan, core: await writeCore(writer, meta.ask, plan, page) };
+        meta = { ...(await this.hooks.meta(id) ?? meta), soundBy: writer.name, plan };
+        await this.hooks.update(id, meta);
+      }
+      const core = plan.core as string;
+      // [turns]: each track's own sound, fifteen at a time, for the tracks that have none yet.
+      for (const [at, [first, last]] of plans.entries()) {
+        const batch = plan.tracks.slice(first - 1, last);
+        if (batch.every((track) => track.tags !== '')) continue;
+        if (await this.halted(id)) return meta;
+        await show({ kind: 'plan', done: 2 + plans.length + at, of: steps });
+        const writer = await sound();
+        const turns = await writeTurns(writer, meta.ask.sung, core, batch, page);
+        plan = {
+          ...plan,
+          tracks: plan.tracks.map((track, i) => (i >= first - 1 && i < last && track.tags === ''
+            ? { ...track, tags: trackTags(core, turns[i - (first - 1)] ?? '', meta.ask.sung, meta.ask.exactTags === true) }
+            : track)),
+        };
+        meta = { ...(await this.hooks.meta(id) ?? meta), soundBy: writer.name, plan };
+        await this.hooks.update(id, meta);
+      }
+      // [cover]: what the image model paints.
+      if (!plan.coverPrompt) {
+        if (await this.halted(id)) return meta;
+        await show({ kind: 'plan', done: steps - 1, of: steps });
+        const writer = await sound();
+        const concept: AlbumConcept = { title: plan.title, artist: plan.artist, blurb: plan.blurb, coverPrompt: '', core };
+        plan = { ...plan, coverPrompt: await newCoverPrompt(writer, meta.ask, concept) };
+        meta = { ...(await this.hooks.meta(id) ?? meta), plan };
+        await this.hooks.update(id, meta);
+      }
+      const concept: AlbumConcept = { title: plan.title, artist: plan.artist, blurb: plan.blurb, coverPrompt: plan.coverPrompt, core };
       if (meta.ask.sung) {
         const early = meta.openers ?? 0;
         const sungAt = plan.tracks.map((_, at) => at).filter((at) => at >= early);
-        // [lyrics], one call per track, each kept as it comes (a restart carries on). The stand-in
-        // lyricist, when chosen, writes them instead, told the whole track list for a through-line.
+        // [lyrics], one call per track, each kept as it comes (a restart carries on).
         const lyricist = claude?.lyricist ?? null;
-        // Claude's lyrics with B-Sides' model's plan: the server's text model is let go first, not
-        // held on the card through minutes of Claude writing.
+        // Claude writing the words: the server's text model is let go first, not held on the card
+        // through minutes of Claude writing.
         if (lyricist !== null) await release();
         for (const [done, at] of sungAt.entries()) {
           const track = plan.tracks[at] as AlbumTrack;
@@ -602,17 +646,18 @@ export class AlbumMaker {
           if (await this.halted(id)) return meta;
           await show({ kind: 'lyrics', done, of: sungAt.length });
           const written = lyricist === null
-            ? await writeSongLyrics(writer, meta.ask, concept, track.title, track.tags)
+            ? await writeSongLyrics(await words(), meta.ask, concept, track.title, track.tags)
             : await lyricist.write({
               title: track.title,
               tags: track.tags,
               about: aboutOf(meta.ask),
               brief: meta.ask.lyrics ?? '',
+              ...(track.idea ? { idea: track.idea } : {}),
               album: { title: concept.title, artist: concept.artist, blurb: concept.blurb, tracks: plan.tracks.map((t) => t.title), at },
             });
           const lyrics = layLyrics(written);
           plan = { ...plan, tracks: plan.tracks.map((t, i) => (i === at ? { ...t, lyrics } : t)) };
-          meta = { ...(await this.hooks.meta(id) ?? meta), plan, lyricsBy: lyricist?.name ?? null };
+          meta = { ...(await this.hooks.meta(id) ?? meta), plan, lyricsBy: lyricist?.name ?? (await words()).name };
           await this.hooks.update(id, meta);
         }
         if (await this.halted(id)) return meta;

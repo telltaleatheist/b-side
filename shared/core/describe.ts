@@ -208,7 +208,20 @@ export function clashesIn(tags: readonly string[], page: SongPage): string[] {
 
 /** Ask the tag model for `description`'s tags. */
 /** How long a lyrics brief may be ("about a banana going brown, bittersweet, a little funny"). */
-export const MAX_LYRICS_BRIEF = 400;
+/**
+ * The longest "what the lyrics are about" (Victoria, 2026-10-11: at 400 her brief was cut mid-word,
+ * unseen; she writes real instructions there). Too long is refused by name, never cut.
+ */
+export const MAX_LYRICS_BRIEF = 2000;
+
+/** A lyrics brief as sent: refused by name when too long, never cut. */
+export function lyricsBrief(value: unknown): string {
+  const brief = typeof value === 'string' ? value.trim() : '';
+  if (brief.length > MAX_LYRICS_BRIEF) {
+    throw new Refusal('lyrics_brief_too_long', `"What the lyrics are about" is at most ${MAX_LYRICS_BRIEF} characters; this one is ${brief.length}. Shorten it; nothing is cut.`);
+  }
+  return brief;
+}
 
 export async function describe(
   writer: TextModel, page: SongPage, description: string, wantsInstrumental = false, lyricsBrief = '', titled = false,
@@ -218,7 +231,7 @@ export async function describe(
   if (text.length > MAX_DESCRIPTION) {
     throw new Refusal('describe_too_long', `A description is at most ${MAX_DESCRIPTION} characters.`);
   }
-  const brief = wantsInstrumental ? '' : lyricsBrief.trim().slice(0, MAX_LYRICS_BRIEF);
+  const brief = wantsInstrumental ? '' : lyricsBrief.trim();
   const started = Date.now();
   const answer = await writer.ask({
     tag: '[describe]',

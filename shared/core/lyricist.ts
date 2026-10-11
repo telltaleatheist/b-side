@@ -30,6 +30,8 @@ export interface SongToWrite {
   readonly about: string;
   /** What the words should be about, in the person's words; '' when they said nothing. */
   readonly brief: string;
+  /** What this song is about, from the album's track list (split-text.ts [ideas]). */
+  readonly idea?: string;
   /** For an album's track: the record around it. */
   readonly album?: {
     readonly title: string;
@@ -47,6 +49,8 @@ export interface Lyricist {
   /** Its model, as the album page names who wrote it. */
   readonly name: string;
   write(song: SongToWrite): Promise<string>;
+  /** The words and a name for them together, for a single song not named yet (the name fits the hook). */
+  writeTitled?(song: SongToWrite): Promise<{ readonly lyrics: string; readonly title: string | null }>;
 }
 
 /** The sections YuE2 composes (crucible/jobs/audio/yue2music/compile_score.py SECTIONS). */
@@ -90,7 +94,8 @@ export function claudeLyricsUser(song: SongToWrite): string {
   }
   lines.push(`About: ${song.about || '(the person said nothing; take it from the style)'}`);
   if (song.brief) lines.push(`The lyrics should be about: ${song.brief}`);
-  lines.push(song.title ? `Song: "${song.title}"` : 'Song: not named yet');
+  if (song.idea) lines.push(`This song is about: ${song.idea}`);
+  lines.push(song.title ? `Song: "${song.title}"` : 'Song: not named yet; name it too (title: 1-5 words that fit its hook, never its first line, never generic)');
   lines.push(`Style line: ${song.tags}`);
   lines.push(`Syllables: at most ${syllableBudget(song.tags)} per line.`);
   lines.push(`Shape: ${SONG_SHAPES[(song.album?.at ?? Math.floor(Math.random() * SONG_SHAPES.length)) % SONG_SHAPES.length]}`);
@@ -161,6 +166,14 @@ export function claudeLyricsShorter(lyrics: string, crammed: readonly string[], 
     lyrics,
   ].join('\n');
 }
+
+/** The JSON a Claude lyricist answers for a song it names too. */
+export const CLAUDE_TITLED_LYRICS_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['title', 'lyrics'],
+  properties: { title: { type: 'string', maxLength: 60 }, lyrics: { type: 'string' } },
+} as const;
 
 /** The JSON a Claude lyricist answers with. */
 export const CLAUDE_LYRICS_SCHEMA = {

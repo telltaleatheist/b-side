@@ -22,7 +22,8 @@ import type { CrucibleClient } from '@crucible/client';
 
 import { AlbumMaker, albumLine } from './albums';
 import { clientFor, clientName, deletePreset, listPresets, probe, savePreset, setClientName, songPage, startInstall } from './crucible';
-import { describe, layLyrics, MAX_LYRICS_BRIEF } from './describe';
+import { describe, layLyrics, lyricsBrief } from './describe';
+import { describeSound, nameSong } from './split-text';
 import type { Lyricist } from './lyricist';
 import { crucibleText, WRITERS, type TextModel, type Writer } from './text-model';
 import { join, type Disk } from './disk';
@@ -252,7 +253,9 @@ export class HubCore {
     this.sink = options.sink;
     // A computer with Claude Code writes everything through it until B-Sides' model is ready (Owen,
     // 2026-10-11: "just keep every call as claude -p"); the phone, without it, keeps B-Sides' model.
-    if (options.claude !== undefined) this.preferences = { ...DEFAULT_PREFERENCES, writer: 'claude', lyricist: 'claude' };
+    // On a computer with Claude Code, Claude writes the words and the server's model the sound
+    // (Owen, 2026-10-11); a phone, without it, has the server's model write both.
+    if (options.claude !== undefined) this.preferences = { ...DEFAULT_PREFERENCES, writer: 'bside', lyricist: 'claude', textSplit: 2 };
     this.registry = new ServerRegistry(options.vault);
     setClientName(options.clientName);
     this.pairing = new PairingSessions(options.clientName, async (pairing) => {
@@ -704,16 +707,18 @@ export class HubCore {
    * Claude, for what the person chose it to write in B-Sides' model's place: the text calls, the
    * lyrics, or both (each null where B-Sides' model writes); null when it writes nothing.
    */
-  private claude(): { readonly text: TextModel | null; readonly lyricist: Lyricist | null } | null {
+  private claude(): { readonly text: TextModel | null; readonly words: TextModel | null; readonly lyricist: Lyricist | null } | null {
     const { writer, lyricist } = this.preferences;
     if (writer !== 'claude' && lyricist !== 'claude') return null;
     if (this.options.claude === undefined) {
       throw new Refusal('claude_unavailable', 'Claude writes only on a B-Sides computer, through its Claude Code.');
     }
     return {
+      // The sound: the tags and the cover description.
       text: writer === 'claude' ? this.options.claude.text : null,
-      // Claude writing the rest writes the words too.
-      lyricist: writer === 'claude' || lyricist === 'claude' ? this.options.claude.lyricist : null,
+      // The words: names, the liner note, track ideas (its text calls) and the lyrics (its lyricist).
+      words: lyricist === 'claude' ? this.options.claude.text : null,
+      lyricist: lyricist === 'claude' ? this.options.claude.lyricist : null,
     };
   }
 
@@ -729,17 +734,20 @@ export class HubCore {
     if (text === null) return;
     try {
       const stored = JSON.parse(text) as Partial<HubPreferences>;
-      const writer = WRITERS.includes((stored.writer ?? (stored as { lyricsWriter?: unknown }).lyricsWriter) as never)
-        ? ((stored.writer ?? (stored as { lyricsWriter?: unknown }).lyricsWriter) as Writer)
-        : this.preferences.writer;
+      const split = stored.textSplit === 2;
+      // Before 0.1.38 `writer` wrote names as well as tags. Owen, 2026-10-11: the server's model
+      // writes the sound and Claude the words; so on moving over, that is what each hub starts with.
+      const writer = !split
+        ? this.preferences.writer
+        : WRITERS.includes(stored.writer as never) ? (stored.writer as Writer) : this.preferences.writer;
       this.preferences = {
         songFormat: SONG_FORMATS.includes(stored.songFormat as never) ? (stored.songFormat as HubPreferences['songFormat']) : DEFAULT_PREFERENCES.songFormat,
         albumSpaceGb: ALBUM_SPACE_GB.includes(stored.albumSpaceGb as never) ? (stored.albumSpaceGb as number) : DEFAULT_PREFERENCES.albumSpaceGb,
         singlesPlaylist: typeof stored.singlesPlaylist === 'string' ? stored.singlesPlaylist : null,
         // 0.1.10 stored the same choice as `lyricsWriter` (lyrics only); it carries over.
         writer,
-        // Before 0.1.31 the writer wrote the lyrics too; that carries over.
-        lyricist: WRITERS.includes(stored.lyricist as never) ? (stored.lyricist as Writer) : writer,
+        lyricist: !split || !WRITERS.includes(stored.lyricist as never) ? this.preferences.lyricist : (stored.lyricist as Writer),
+        textSplit: 2,
         albumOrder: ALBUM_ORDERS.includes(stored.albumOrder as never) ? (stored.albumOrder as AlbumOrder) : DEFAULT_PREFERENCES.albumOrder,
         singles: SINGLES_ORDERS.includes(stored.singles as never) ? (stored.singles as SinglesOrder) : DEFAULT_PREFERENCES.singles,
       };
@@ -835,38 +843,42 @@ export class HubCore {
       return {
         ...page,
         ...(this.preferences.writer === 'claude' ? { writer: 'Claude Sonnet 5.5' } : {}),
-        ...(this.preferences.writer !== 'claude' && this.preferences.lyricist === 'claude' ? { lyricist: 'Claude Sonnet 5.5' } : {}),
+        ...(this.preferences.lyricist === 'claude' ? { lyricist: 'Claude Sonnet 5.5' } : {}),
       };
     });
     this.route('GET', '/api/presets', () => listPresets(this.registry.active()));
     this.route('POST', '/api/describe', async (request) => {
       const server = this.registry.active();
       const body = await request.body();
-      const brief = typeof body['lyrics'] === 'string' ? body['lyrics'] : '';
+      const brief = lyricsBrief(body['lyrics']);
       const page = await songPage(server);
       const claude = this.claude();
       const about = text(body['text'], 'text');
       const instrumental = body['instrumental'] === true;
-      let described: DescribeResult;
-      if (claude?.text == null) {
+      const serverText = async (): Promise<TextModel> => {
         if (page.tagModel === null) throw new Refusal('no_tag_model', page.tagModelReason ?? 'This server has no tag model.');
         // A chat never installs a model: a server without the tag model starts installing it here,
         // and the person is told so (the Studio says to describe again once it is done).
         const client = clientFor(server);
         const installing = await startInstall(client, page.tagModel);
         if (installing !== null) throw new Refusal('describe_installing', `The tag model is being set up on the server first: ${installing.message}`, 409);
-        described = await describe(crucibleText(client, page.tagModel), page, about, instrumental, brief);
-      } else {
-        // Claude writing: the tags from the same call B-Sides' model answers. Claude names the song
-        // too (Owen, 2026-10-10), and its lyricist writes the words to that name.
-        described = await describe(claude.text, page, about, instrumental, brief, true);
-      }
+        return crucibleText(client, page.tagModel);
+      };
+      const sound = claude?.text ?? await serverText();
       const lyricist = claude?.lyricist ?? null;
-      if (lyricist === null || described.instrumental) return described;
-      // Claude's lyricist prompt (a story, YuE2's full sections), which the tag call's four-line form
-      // lacks, in place of the words that call wrote; with B-Sides' model's tags too (Owen, 2026-10-11).
-      const lyrics = layLyrics(await lyricist.write({ title: described.title ?? null, tags: described.tags.join(', '), about, brief }));
-      return { ...described, lyrics, lyricsModel: lyricist.name };
+      // No Claude for the words (a phone): the server's model writes the tags and the words in one call.
+      if (lyricist === null || claude?.words == null) return describe(sound, page, about, instrumental, brief);
+      // The sound from the tag model, then the words and the name from the lyricist (Owen, 2026-10-11:
+      // whoever writes the lyrics names the song, so the name fits its hook).
+      const described: DescribeResult = await describeSound(sound, page, about, instrumental, brief);
+      if (described.instrumental) {
+        return { ...described, title: await nameSong(claude.words, about, described.tags), lyricsModel: claude.words.name };
+      }
+      const song = { title: null, tags: described.tags.join(', '), about, brief };
+      const written = lyricist.writeTitled !== undefined
+        ? await lyricist.writeTitled(song)
+        : { lyrics: await lyricist.write(song), title: null };
+      return { ...described, lyrics: layLyrics(written.lyrics), title: written.title, lyricsModel: lyricist.name };
     });
     this.route('PUT', '/api/presets/:name', async (request) =>
       savePreset(this.registry.active(), request.params['name'] as string, (await request.body()) as unknown as SongForm));
@@ -884,7 +896,7 @@ export class HubCore {
       if (!Array.isArray(tags) || !tags.every((tag) => typeof tag === 'string')) throw new Refusal('body_invalid', 'tags must be a list of text.');
       const cfg = typeof body['cfg'] === 'number' && Number.isFinite(body['cfg']) ? body['cfg'] : null;
       const sung = body['sung'] === true;
-      const lyrics = sung && typeof body['lyrics'] === 'string' ? body['lyrics'].trim().slice(0, MAX_LYRICS_BRIEF) : '';
+      const lyrics = sung ? lyricsBrief(body['lyrics']) : '';
       const ask: AlbumAsk = {
         description: albumDescription(body['description']), tags: tags as string[], minutes, sung, cfg,
         ...(lyrics ? { lyrics } : {}), ...(body['exactTags'] === true ? { exactTags: true } : {}),

@@ -17,12 +17,14 @@ import { Refusal } from './refusal';
 import { STYLE_TASKS, YUE2_STYLE_GUIDE } from '../shared/core/yue2-style';
 import {
   CLAUDE_LYRICS_SCHEMA,
+  CLAUDE_TITLED_LYRICS_SCHEMA,
   claudeLyricsShorter,
   claudeLyricsSystem,
   claudeLyricsUser,
   crammedLines,
   syllableBudget,
   type Lyricist,
+  type SongToWrite,
 } from '../shared/core/lyricist';
 import type { TextModel } from '../shared/core/text-model';
 
@@ -87,21 +89,32 @@ export function claudeWriter(): { readonly text: TextModel; readonly lyricist: L
     lyricist: {
       name: CLAUDE_MODEL,
       async write(song) {
-        const ask = async (user: string): Promise<string> => {
-          const lyrics = (await runClaude(claudeLyricsSystem(), user, CLAUDE_LYRICS_SCHEMA))['lyrics'];
-          if (typeof lyrics !== 'string' || lyrics.trim() === '') throw new Refusal('claude_failed', 'Claude answered without lyrics.');
-          return lyrics.trim();
-        };
-        const lyrics = await ask(claudeLyricsUser(song));
-        // Lines YuE2 would cram are sent back once to be shortened; what comes back is kept either way.
-        const budget = syllableBudget(song.tags);
-        const crammed = crammedLines(lyrics, budget);
-        if (crammed.length === 0) return lyrics;
-        console.log(`[claude] ${crammed.length} line(s) over ${budget} syllables; asking for them shorter`);
-        return ask(claudeLyricsShorter(lyrics, crammed, budget)).catch(() => lyrics);
+        return (await writeLyrics(song, false)).lyrics;
       },
+      writeTitled: (song) => writeLyrics(song, true),
     },
   };
+}
+
+/** A song's words from Claude, named too when `titled`; lines YuE2 would cram are sent back once to be shortened. */
+async function writeLyrics(song: SongToWrite, titled: boolean): Promise<{ lyrics: string; title: string | null }> {
+  const ask = async (user: string, schema: object): Promise<Record<string, unknown>> => {
+    const answer = await runClaude(claudeLyricsSystem(), user, schema);
+    if (typeof answer['lyrics'] !== 'string' || answer['lyrics'].trim() === '') throw new Refusal('claude_failed', 'Claude answered without lyrics.');
+    return answer;
+  };
+  const first = await ask(claudeLyricsUser(titled ? { ...song, title: null } : song), titled ? CLAUDE_TITLED_LYRICS_SCHEMA : CLAUDE_LYRICS_SCHEMA);
+  const raw = typeof first['title'] === 'string' ? first['title'].replace(/\s+/g, ' ').trim().replace(/^["'“]+|["'”]+$/g, '').trim() : '';
+  const title = raw === '' ? null : raw;
+  const lyrics = (first['lyrics'] as string).trim();
+  const budget = syllableBudget(song.tags);
+  const crammed = crammedLines(lyrics, budget);
+  if (crammed.length === 0) return { lyrics, title };
+  console.log(`[claude] ${crammed.length} line(s) over ${budget} syllables; asking for them shorter`);
+  const shorter = await ask(claudeLyricsShorter(lyrics, crammed, budget), CLAUDE_LYRICS_SCHEMA)
+    .then((answer) => (answer['lyrics'] as string).trim())
+    .catch(() => lyrics);
+  return { lyrics: shorter, title };
 }
 
 /** One `claude -p` turn; its structured answer, or a refusal that says what went wrong. */

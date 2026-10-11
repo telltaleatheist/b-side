@@ -79,7 +79,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
             <button type="submit" class="ghost small" [disabled]="studio.describing() || studio.description().trim() === ''">
               {{ studio.describing() ? 'Working…' : 'Fill in the tags' }}
             </button>
-            <span class="hint">@if (studio.page()?.writer; as writer) {{{ writer }} (Claude Code on this computer) picks the tags{{ instrumentalHere() ? ', no singer: it is instrumental' : (mode() === 'album' ? '' : ' and writes the lyrics') }}; the server only makes the music.} @else if (studio.tagModel(); as model) {{{ model }} on the server picks the tags{{ instrumentalHere() ? ', no singer: it is instrumental' : (mode() === 'album' || studio.page()?.lyricist ? '' : ' and writes the lyrics') }}; it swaps the song model out for a minute.@if (studio.page()?.lyricist; as lyricist) {@if (!instrumentalHere()) { {{ lyricist }} (Claude Code on this computer) writes the lyrics.}}} @else {{{ studio.page()?.tagModelReason ?? 'Reading which tag model this server has…' }}}</span>
+            <span class="hint">@if (studio.tagModel(); as model) {{{ model }}{{ studio.page()?.writer ? ' (Claude Code on this computer)' : ' on the server' }} picks the tags{{ instrumentalHere() ? ', no singer: it is instrumental' : '' }}{{ studio.page()?.writer ? '' : '; it swaps the song model out for a minute' }}.@if (mode() !== 'album') {@if (studio.page()?.lyricist; as lyricist) { {{ lyricist }} (Claude Code on this computer) {{ instrumentalHere() ? 'names it' : 'writes the lyrics and names it' }}.} @else if (!instrumentalHere()) { It writes the lyrics too.}}} @else {{{ studio.page()?.tagModelReason ?? 'Reading which tag model this server has…' }}}</span>
           </div>
           @if (studio.describing()) {
             <div class="progress-line">
@@ -171,13 +171,16 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
             @if (albumSung()) {
               <div class="field">
                 <label class="label" for="album-lyrics">What the lyrics are about</label>
-                <textarea id="album-lyrics" appRememberHeight="album-about" rows="2" maxlength="400" spellcheck="true"
+                <textarea id="album-lyrics" appRememberHeight="album-about" rows="2" spellcheck="true" class="brief" [class.over]="studio.lyricsBrief().length > briefMax"
                           placeholder="their mood, style or story: late-night regrets, wry and tender, told by a bartender"
                           [value]="studio.lyricsBrief()" (input)="studio.lyricsBrief.set($any($event.target).value)"></textarea>
+                @if (studio.lyricsBrief().length > briefMax * 0.8) {
+                  <p class="hint" [class.warn]="studio.lyricsBrief().length > briefMax">{{ studio.lyricsBrief().length }} / {{ briefMax }}{{ studio.lyricsBrief().length > briefMax ? ': too long. Shorten it before you make it; nothing is cut.' : '' }}</p>
+                }
                 <p class="hint">Every track's lyrics are written to this, and the titles fit it. Blank: the album's description leads.</p>
               </div>
             }
-            <p class="opt-note hint">{{ studio.tagModel() ?? "This server's model" }} writes it all: the name, the artist and every track{{ albumSung() ? ', then the lyrics, a song per two minutes so ' + albumLength() + ' minutes is always filled' : '' }}; the server's image model, when it has one, paints the cover (without one, the album gets the standard cover). All of that is done first, so the album comes out right; then the music is made, track by track, and fills in while you listen.</p>
+            <p class="opt-note hint">{{ studio.page()?.lyricist ?? studio.tagModel() ?? "This server's model" }} writes the words: the name, the artist and every track{{ albumSung() ? ', then the lyrics, a song per two minutes so ' + albumLength() + ' minutes is always filled' : '' }}; {{ studio.tagModel() ?? "the server's model" }} writes the sound and the cover's description; the server's image model, when it has one, paints the cover (without one, the album gets the standard cover). All of that is done first, so the album comes out right; then the music is made, track by track, and fills in while you listen.</p>
           </div>
           @if (spaceFull()) {
             <div class="room-card">
@@ -232,9 +235,12 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
         @if (!studio.instrumental()) {
           <div class="field">
             <label class="label" for="lyrics-brief">What the lyrics are about</label>
-            <textarea id="lyrics-brief" appRememberHeight="song-about" rows="2" maxlength="400" spellcheck="true"
+            <textarea id="lyrics-brief" appRememberHeight="song-about" rows="2" spellcheck="true" class="brief" [class.over]="studio.lyricsBrief().length > briefMax"
                       placeholder="a banana going brown on the windowsill; bittersweet, a little funny"
                       [value]="studio.lyricsBrief()" (input)="studio.lyricsBrief.set($any($event.target).value)"></textarea>
+            @if (studio.lyricsBrief().length > briefMax * 0.8) {
+              <p class="hint" [class.warn]="studio.lyricsBrief().length > briefMax">{{ studio.lyricsBrief().length }} / {{ briefMax }}{{ studio.lyricsBrief().length > briefMax ? ': too long. Shorten it before you make it; nothing is cut.' : '' }}</p>
+            }
             <p class="hint">Fill in the tags writes the lyrics to this. With the Lyrics box empty, Make writes them first.</p>
           </div>
           <div class="field">
@@ -299,7 +305,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
   styles: [`
     .modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; background: var(--bg-elevated); border-radius: var(--radius-lg); }
     .hint.warn, .describe.over { color: var(--warn); }
-    .describe.over { border-color: var(--warn); }
+    .describe.over, .brief.over { border-color: var(--warn); }
     .modes button { height: 40px; border: none; border-radius: 10px; background: transparent; color: var(--text-secondary); font-size: 14px; font-weight: 600; }
     .modes button.on { background: var(--text-primary); color: var(--bg-base); }
     .options { display: flex; flex-direction: column; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
@@ -366,6 +372,8 @@ export class StudioPageComponent {
   protected readonly albumMinutes = ALBUM_MINUTES;
   protected readonly lengthAims = LENGTH_AIMS;
   protected readonly descriptionMax = DESCRIPTION_MAX;
+  /** "What the lyrics are about": counted near its limit, refused by name past it (Victoria, 2026-10-11). */
+  protected readonly briefMax = 2000;
   /** A sung song's language when it is not English or Chinese, the two YuE2 sings (Owen, 2026-10-11): said, not changed. */
   protected readonly offLanguage = computed(() => (this.instrumentalHere() ? null : undeclaredLanguage(this.studio.tagLine())));
   /** The tags as they are sent (YuE2's official form), when that differs from what is picked. */
