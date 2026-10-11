@@ -69,9 +69,7 @@ export const YUE_SECTIONS = ['Intro', 'Verse', 'Pre-Chorus', 'Chorus', 'Bridge',
 export const PHONETIC = [
   'Pronounce phonetically: YuE2 sings each word as it reads it, and gets names and rare words wrong. Write every name and',
   'uncommon word the way it sounds, syllables joined by hyphens, the stressed one in capitals: Persephone as per-SEF-oh-nee,',
-  'Odysseus as oh-DISS-ee-us, Penelope as peh-NEL-oh-pee, Achilles as uh-KILL-eez. Everyday English words stay as they are,',
-  'except a word spelled the same but said two ways that the song cannot do without: respell it as sung (winding a key: wynd;',
-  'past-tense read: red).',
+  'Odysseus as oh-DISS-ee-us, Penelope as peh-NEL-oh-pee, Achilles as uh-KILL-eez. Everyday English words stay as they are.',
 ].join(' ');
 
 export function claudeLyricsSystem(preChorus = false): string {
@@ -95,9 +93,10 @@ export function claudeLyricsSystem(preChorus = false): string {
     '  crammed or loses words. Count every line\'s syllables before you answer, and split or cut any line over the budget.',
     '- Follow the shape you are given, if one is given.',
     // Victoria, 2026-10-11: YuE2 sang "wind" (a breeze) as "wind" (a key); it reads spelling, not sense.
-    '- No word spelled the same but said two ways: YuE2 goes by spelling and picks either sound. Not wind, read, live, tear,',
-    '  bow, close, wound, dove, lead, row, minute, bass, object, present, record, desert, content: say breeze or gust, turn the',
-    '  key, looked at, a teardrop, nearby, an injury.',
+    // Victoria would rather keep the words and have them respelled than lose them.
+    '- A word spelled the same but said two ways (wind, read, live, tear, bow, close, wound, dove, lead, row, minute, bass):',
+    '  YuE2 goes by spelling and may pick the other sound. Use it freely, but write it as it is sung: wynd (winding a key),',
+    '  red (past-tense read), lyve (live music), tair (to rip), boh (a ribbon), cloze (to shut); leave the common sound as is.',
     '- Verses are longer than choruses. The chorus is the hook: singable and memorable, not the title repeated with a filler phrase.',
     '- Lines of similar length within a section so they sing well. A blank line between sections.',
     '- Sing in the language the style line names: English, or Chinese when it says Chinese (the two YuE2 sings).',

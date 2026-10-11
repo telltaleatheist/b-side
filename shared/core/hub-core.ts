@@ -215,7 +215,12 @@ function making(playlists: readonly Playlist[], server: string, order: AlbumOrde
 const COVER_TYPES: Readonly<Record<string, string>> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 const COVER_UPLOAD_MAX = 700 * 1024;
 
-/** How long a cover may take before the album goes on without it (the standard cover stands in). */
+/**
+ * How long a cover may paint, once it has started, before the album goes on without it (the standard
+ * cover stands in). Its wait in the server's line does not count (Victoria's laptop, 2026-10-11: five
+ * covers queued behind songs, and Color Party's gave up after 15 minutes without ever starting); the
+ * server ends a job that waits past its own limit, and an expired cover is asked for again.
+ */
 const COVER_WAIT_MS = 15 * 60_000;
 /** The size every cover is painted at (Owen, 2026-10-11), whichever model paints it. */
 const COVER_PAINT_PX = 1024;
@@ -614,7 +619,7 @@ export class HubCore {
     // instead, and on Victoria's laptop (2026-10-11) the Iliad's cover finished on the server at
     // 16:43:21 while B-Sides waited on, never saving it: the album sat at "planning" with no cover,
     // and each restart painted it again. A cover job is short, so a few seconds' lag costs nothing.
-    const until = Date.now() + COVER_WAIT_MS;
+    let until: number | null = null;
     let resent = 0;
     for (;;) {
       const status = await client.job(jobId).catch((error: unknown) => {
@@ -633,7 +638,12 @@ export class HubCore {
       if (status !== null && status.status !== 'queued' && status.status !== 'running') {
         throw new Refusal('cover_failed', `The server could not paint the cover (${status.status}${status.error ? `: ${status.error.message}` : ''}).`);
       }
-      if (Date.now() > until) throw new Refusal('cover_slow', `The cover did not finish within ${COVER_WAIT_MS / 60_000} minutes.`);
+      if (status?.status === 'running' && until === null) until = Date.now() + COVER_WAIT_MS;
+      if (until !== null && Date.now() > until) {
+        // Given up on, it is taken off the server too: left, it painted later for nobody.
+        await client.cancel(jobId).catch(() => undefined);
+        throw new Refusal('cover_slow', `The cover did not finish within ${COVER_WAIT_MS / 60_000} minutes of starting.`);
+      }
       await new Promise((rest) => setTimeout(rest, COVER_POLL_MS));
     }
     // A name of its own each time it is painted: every client's cover URL carries the file name,
