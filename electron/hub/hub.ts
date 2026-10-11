@@ -50,6 +50,7 @@ import {
   type HubEvent,
   type HubInfo,
   type HubSettingsView,
+  type PeerIntroduction,
   type ServerView,
 } from '../../shared/types';
 
@@ -83,6 +84,8 @@ interface Route {
 
 /** Marks a handler's answer as "already sent". */
 const SENT = Symbol('sent');
+/** At most this many offered libraries are kept waiting for an answer. */
+const MAX_INTRODUCTIONS = 20;
 
 /** Adapters that belong to virtual machines on this computer, by the name Windows gives them. */
 const VIRTUAL_ADAPTER = /^(vEthernet|VMware|VirtualBox)/i;
@@ -102,6 +105,8 @@ export class Hub {
   /** The desktop's own routes (events, audio, settings): asked before the core's. */
   private readonly routes: Route[] = [];
   private server: Server | null = null;
+  /** Other B-Sides that added this one and offer theirs back, by lower-cased computer name. */
+  private introductions = new Map<string, PeerIntroduction>();
 
   constructor(private readonly options: HubOptions) {
     const info: HubInfo = { app: 'b-side', version: options.version, hostname: os.hostname() };
@@ -143,6 +148,7 @@ export class Hub {
   /** Read what is on disk, then listen. Refuses (with the port in the sentence) when the port is taken. */
   async start(): Promise<void> {
     await this.settings.ensureKey();
+    await this.loadIntroductions();
     await this.core.open(this.settings.view().libraryDir);
     this.clients.adopt(this.core.takes.clients());
     await this.listen();
@@ -337,6 +343,23 @@ export class Hub {
     }
   }
 
+  private get introductionsFile(): string {
+    return path.join(this.options.userData, 'introductions.json');
+  }
+
+  private async loadIntroductions(): Promise<void> {
+    try {
+      const kept = JSON.parse(await fsp.readFile(this.introductionsFile, 'utf8')) as PeerIntroduction[];
+      this.introductions = new Map(kept.filter((one) => typeof one?.hostname === 'string').map((one) => [one.hostname.toLowerCase(), one]));
+    } catch {
+      this.introductions = new Map();
+    }
+  }
+
+  private async saveIntroductions(): Promise<void> {
+    await fsp.writeFile(this.introductionsFile, JSON.stringify([...this.introductions.values()], null, 2));
+  }
+
   private route(method: string, template: string, handler: Handler, raw = false): void {
     this.routes.push({ ...routeOf(method, template, handler), raw });
   }
@@ -402,6 +425,37 @@ export class Hub {
       const song = await this.core.songFile(request.params['id'] as string);
       await sendFile(request.req, request.res, song.file, 'private, max-age=86400');
     }, true);
+
+    // ── other libraries ─────────────────────────────────────────────────────────
+    // A B-Sides that adds this one offers its own library back: it says its name and port,
+    // and its address is where the request came from. This computer then adds it, or not.
+    this.route('POST', '/api/peers/introduce', async (request) => {
+      const body = await request.body();
+      const hostname = typeof body['hostname'] === 'string' ? body['hostname'].trim().slice(0, 120) : '';
+      const port = Number(body['port']);
+      if (hostname === '' || !Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new Refusal('body_invalid', 'An introduction needs the computer\'s name and its port.');
+      }
+      const address = (request.req.socket.remoteAddress ?? '').replace(/^::ffff:/, '');
+      const host = address.includes(':') ? `[${address}]` : address;
+      const name = typeof body['name'] === 'string' && body['name'].trim() !== '' ? body['name'].trim().slice(0, 40) : null;
+      const key = typeof body['key'] === 'string' ? body['key'].slice(0, 200) : '';
+      this.introductions.delete(hostname.toLowerCase());
+      this.introductions.set(hostname.toLowerCase(), { url: `http://${host}:${port}`, hostname, name, key, at: new Date().toISOString() });
+      while (this.introductions.size > MAX_INTRODUCTIONS) this.introductions.delete(this.introductions.keys().next().value as string);
+      await this.saveIntroductions();
+      return { ok: true };
+    });
+    this.route('GET', '/api/peers/introductions', (request) => {
+      this.localOnly(request, 'see who offered their library');
+      return [...this.introductions.values()];
+    });
+    this.route('DELETE', '/api/peers/introductions/:hostname', async (request) => {
+      this.localOnly(request, 'answer an offered library');
+      this.introductions.delete(String(request.params['hostname']).toLowerCase());
+      await this.saveIntroductions();
+      return [...this.introductions.values()];
+    });
 
     // ── settings ──────────────────────────────────────────────────────────────
     this.route('GET', '/api/settings', (request) => this.settingsView(this.settings.view(), request.local));

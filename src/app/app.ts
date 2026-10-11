@@ -15,6 +15,7 @@ import { HubService } from './core/hub.service';
 import { ImportService } from './core/import.service';
 import { SwipeDirective, type Swipe } from './core/swipe.directive';
 import { LibraryService } from './core/library.service';
+import { PeersService, peerId } from './core/peers.service';
 import { PlayerService } from './core/player.service';
 import { UiService } from './core/ui.service';
 
@@ -75,6 +76,31 @@ interface Room {
             }
           </div>
         }
+        @for (offer of peers.offered(); track offer.hostname) {
+          <div class="side-offer">
+            <span>{{ offer.name ?? offer.hostname.replace('.local', '') }} shared their library with you.</span>
+            <span class="side-offer-acts">
+              <button type="button" class="primary small" (click)="peers.accept(offer)">Add it</button>
+              <button type="button" class="ghost small" (click)="peers.dismiss(offer)">No thanks</button>
+            </span>
+          </div>
+        }
+        @for (peer of peers.present(); track peer.url) {
+          @if ((peer.library?.playlists?.length ?? 0) > 0) {
+            <div class="side-list">
+              <span class="kicker">{{ peers.name(peer) }}'s library</span>
+              @for (playlist of peer.library?.playlists ?? []; track playlist.id) {
+                <a class="side-item" [routerLink]="['/peer', peerId(peer), playlist.id]" routerLinkActive="on">
+                  <app-cover class="side-art" [key]="peerId(peer) + playlist.id" [src]="peers.coverUrl(peerId(peer), playlist)" />
+                  <span class="side-names">
+                    <span class="side-name">{{ playlist.name }}</span>
+                    <span class="side-sub">{{ playlist.songs.length }} {{ playlist.songs.length === 1 ? 'song' : 'songs' }}</span>
+                  </span>
+                </a>
+              }
+            </div>
+          }
+        }
         <div class="side-foot">
           <ng-container *ngTemplateOutlet="status" />
         </div>
@@ -103,7 +129,7 @@ interface Room {
                 </div>
                 <div class="choice">
                   <span class="door-name">Connect to a B-Sides computer</span>
-                  <p class="detail">Use B-Sides running on a computer: its playlists, its servers. Paste the link its Settings shows.</p>
+                  <p class="detail">Use B-Sides running on a computer: its playlists, its servers. Point the camera at the code in its Settings → Other devices, or type its address.</p>
                   <app-hub-picker />
                 </div>
                 <p class="hint">Either way, Settings switches later.</p>
@@ -114,6 +140,9 @@ interface Room {
             </div>
           </div>
         } @else {
+          @if (peers.pairNote(); as note) {
+            <div class="pair-note"><span>{{ note }}</span><button type="button" class="ghost small" (click)="peers.pairNote.set(null)">OK</button></div>
+          }
           @if (hub.state() === 'reconnecting' && hub.trouble(); as trouble) {
             <div class="trouble">{{ trouble }}</div>
           }
@@ -221,6 +250,7 @@ interface Room {
     .choice { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border-subtle); padding-top: 14px; }
     .choice button { align-self: flex-start; }
     .door-name { font-weight: 600; }
+    .pair-note { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; font-size: 13px; background: var(--accent-faint); border-bottom: 1px solid var(--border-subtle); }
     .trouble { padding: 6px 20px; font-size: 12px; color: var(--warn); background: var(--bg-sunken); border-bottom: 1px solid var(--border-subtle); }
 
     /* ── wide: the desktop window, a browser ─────────────────────────────── */
@@ -253,6 +283,8 @@ interface Room {
       .side-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .side-sub { font-size: 11px; color: var(--text-muted); }
       .side-foot { margin-top: auto; padding: 0 8px; }
+      .side-offer { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--accent-faint); font-size: 12px; color: var(--text-primary); }
+      .side-offer-acts { display: flex; gap: 6px; }
       .bar { grid-area: bar; display: grid; }
     }
     @media (min-width: 1240px) {
@@ -268,6 +300,8 @@ interface Room {
 export class App {
   protected readonly hub = inject(HubService);
   protected readonly library = inject(LibraryService);
+  protected readonly peers = inject(PeersService);
+  protected readonly peerId = peerId;
   protected readonly ui = inject(UiService);
   // Built with the shell, so a song that lands while another room is open still plays.
   private readonly player = inject(PlayerService);

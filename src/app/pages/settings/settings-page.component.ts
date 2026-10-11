@@ -1,7 +1,7 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
 import type { FirewallView } from '@shared/api';
-import { ALBUM_SPACE_GB, type HubPreferences, type HubSettingsView, type RefusalView, type SongFormat } from '@shared/types';
+import { ALBUM_SPACE_GB, type HubPreferences, type HubSettingsView, type PeerIntroduction, type RefusalView, type SongFormat } from '@shared/types';
 
 import { copyText } from '../../core/clipboard';
 import { CloudService } from '../../core/cloud.service';
@@ -10,6 +10,8 @@ import { desktop, HubService, isNative, parseHubLink } from '../../core/hub.serv
 import { PlayerService } from '../../core/player.service';
 import { LibraryService } from '../../core/library.service';
 import { HubPickerComponent } from '../../components/hub-picker/hub-picker.component';
+import { QrCodeComponent } from '../../components/qr-code/qr-code.component';
+import { pairLink } from '../../core/pairing';
 import { ServersCardComponent } from './servers-card.component';
 import { RefusalComponent } from '../../components/refusal/refusal.component';
 import { StudioService } from '../../core/studio.service';
@@ -22,7 +24,7 @@ import { StudioService } from '../../core/studio.service';
 @Component({
   selector: 'app-settings-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RefusalComponent, ServersCardComponent, HubPickerComponent],
+  imports: [RefusalComponent, ServersCardComponent, HubPickerComponent, QrCodeComponent],
   template: `
     <div class="page">
       <h1 class="page-title">Settings</h1>
@@ -190,6 +192,12 @@ import { StudioService } from '../../core/studio.service';
             } @empty {
               <p class="hint">This computer has no network address right now.</p>
             }
+            @if (pairCode(); as code) {
+              <div class="pair">
+                <app-qr-code [text]="code" label="Pairing code for the B-Sides phone app" />
+                <p class="hint">Pair a phone: point the iPhone's camera at this code and open it in B-Sides. A phone can pair with several computers; each one's library shows in its Library.</p>
+              </div>
+            }
             @if (firewall(); as wall) {
               @if (!wall.reachableOnPrivate) {
                 <div class="notice">Windows Firewall is keeping other devices away from B-Sides (port {{ wall.port }}).</div>
@@ -226,6 +234,16 @@ import { StudioService } from '../../core/studio.service';
       <div class="card">
         <h2 class="card-title">Other libraries</h2>
         <p class="detail">Another B-Sides on your network, added by its address: its songs show in your Library and play from there. Nothing is copied. When it is off or away, it is simply not listed. On that computer: Settings → Other devices → turn on sharing.</p>
+        @for (offer of peers.offered(); track offer.hostname) {
+          <div class="link offer">
+            <span class="peer-names">
+              <span>{{ offer.name ?? offer.hostname.replace('.local', '') }} shared their library with you</span>
+              <span class="hint mono">{{ offer.url }} · add theirs to your Library too?</span>
+            </span>
+            <button type="button" class="primary small" (click)="acceptOffer(offer)">Add it</button>
+            <button type="button" class="ghost small" (click)="peers.dismiss(offer)">No thanks</button>
+          </div>
+        }
         @for (peer of peers.peers(); track peer.url) {
           <div class="link">
             <span class="peer-dot" [class.ok]="peer.state === 'ok'" [class.away]="peer.state === 'away'"></span>
@@ -242,6 +260,12 @@ import { StudioService } from '../../core/studio.service';
           <input type="text" maxlength="40" aria-label="What to call it" placeholder="name (optional), like Victoria"
                  [value]="peerLabel()" (input)="peerLabel.set($any($event.target).value)" />
           <button type="submit" class="primary small" [disabled]="peerAddress().trim() === '' || peerAdding()">{{ peerAdding() ? 'Looking…' : 'Add' }}</button>
+          @if (peers.canShareBack) {
+            <label class="toggle share-back">
+              <input type="checkbox" [checked]="peerShareBack()" (change)="peerShareBack.set($any($event.target).checked)" />
+              Offer my library back (they add it with one press)
+            </label>
+          }
         </form>
         @if (peerNote(); as note) { <p class="hint">{{ note }}</p> }
       </div>
@@ -257,7 +281,11 @@ import { StudioService } from '../../core/studio.service';
     .peer-dot.away { background: var(--warn); }
     .peer-names { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
     .peer-add { flex-wrap: wrap; }
-    .peer-add input { flex: 1; min-width: 160px; }
+    .peer-add input[type="text"] { flex: 1; min-width: 160px; }
+    .share-back { flex-basis: 100%; }
+    .pair { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .pair .hint { flex: 1; min-width: 180px; }
+    .offer { padding: 8px 10px; border-radius: 8px; background: var(--surface-2, rgba(127,127,127,0.1)); }
     :host { display: block; height: 100%; overflow-y: auto; }
     .page { max-width: 860px; margin: 0 auto; padding: 18px 20px 32px; display: flex; flex-direction: column; gap: 16px; }
 
@@ -312,13 +340,25 @@ export class SettingsPageComponent {
   protected readonly peerLabel = signal('');
   protected readonly peerAdding = signal(false);
   protected readonly peerNote = signal<string | null>(null);
+  protected readonly peerShareBack = signal(true);
+  /** The `bsides://pair` link this computer's QR code holds, while it shares. */
+  protected readonly pairCode = computed(() => {
+    const view = this.settings();
+    const link = view?.links[0];
+    if (!view?.sharing || !view.local || link === undefined) return null;
+    return pairLink({ link, hostname: this.hub.info()?.hostname ?? null });
+  });
+
+  protected async acceptOffer(offer: PeerIntroduction): Promise<void> {
+    this.peerNote.set(await this.peers.accept(offer));
+  }
 
   protected async addPeer(): Promise<void> {
     this.peerAdding.set(true);
-    const note = await this.peers.add(this.peerAddress(), this.peerLabel());
+    const note = await this.peers.add(this.peerAddress(), this.peerLabel(), this.peerShareBack());
     this.peerAdding.set(false);
     this.peerNote.set(note);
-    if (note === null || note.includes('stays added')) {
+    if (note === null || note.startsWith('Added.') || note.includes('stays added')) {
       this.peerAddress.set('');
       this.peerLabel.set('');
     }

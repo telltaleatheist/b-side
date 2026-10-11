@@ -10,6 +10,7 @@
     "package:ios": "bash ./package-ios.sh"
   },
   "dependencies": {
+    "@capacitor/app": "8.1.2",
     "@capacitor/core": "8.4.1",
     "@capacitor/ios": "8.4.1"
   },

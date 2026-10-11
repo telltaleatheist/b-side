@@ -494,6 +494,22 @@ export interface HubSettingsView {
   readonly local: boolean;
 }
 
+/**
+ * Another B-Sides that added this one and offers its own library back (Victoria,
+ * 2026-10-11: adding someone should share back). Kept by the hub until this
+ * computer adds it or says no.
+ */
+export interface PeerIntroduction {
+  /** Where it answers, as this hub saw it: `http://<its address>:<its port>`. */
+  readonly url: string;
+  readonly hostname: string;
+  /** What it calls itself, when it said. */
+  readonly name: string | null;
+  /** Its key, when it requires one. */
+  readonly key: string;
+  readonly at: string;
+}
+
 export interface HubInfo {
   readonly app: 'b-side';
   readonly version: string;
