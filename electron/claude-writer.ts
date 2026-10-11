@@ -14,6 +14,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { Refusal } from './refusal';
+import { STYLE_TASKS, YUE2_STYLE_GUIDE } from '../shared/core/yue2-style';
 import { CLAUDE_LYRICS_SCHEMA, claudeLyricsSystem, claudeLyricsUser, type Lyricist } from '../shared/core/lyricist';
 import type { TextModel } from '../shared/core/text-model';
 
@@ -69,7 +70,11 @@ export function claudeWriter(): { readonly text: TextModel; readonly lyricist: L
     text: {
       name: CLAUDE_MODEL,
       // The task tag is B-Sides' model's routing, not an instruction: Claude gets the content alone.
-      ask: async (request) => ({ content: JSON.stringify(await runClaude(request.system, request.user, request.schema)), truncated: false }),
+      // A call that writes a style also gets YuE2's own guidance for it, verbatim.
+      ask: async (request) => {
+        const system = STYLE_TASKS.includes(request.tag) ? `${request.system}\n\n${YUE2_STYLE_GUIDE}` : request.system;
+        return { content: JSON.stringify(await runClaude(system, request.user, request.schema)), truncated: false };
+      },
     },
     lyricist: {
       name: CLAUDE_MODEL,
