@@ -310,6 +310,110 @@ test("Make → Album's folder: the new album lands in it; a folder that is gone 
   }
 });
 
+// ── Make this track again (Victoria, 2026-10-11) ──────────────────────────────
+
+/** An album sent in, as a phone saving to its cloud does: `titles` its plan, one made song each. */
+async function albumWith(id: string, titles: string[], change: Record<string, unknown> = {}): Promise<string[]> {
+  const ids: string[] = [];
+  const songs = [];
+  for (const [at, title] of titles.entries()) {
+    const stem = `20261011-0${at}0000-${id.length}${at}`;
+    await fetch(`${base}/api/import/files/${stem}.mp3`, { method: 'PUT', body: new Uint8Array([at]), headers: { 'X-BSide-Key': key, ...desktop } });
+    ids.push(stem);
+    songs.push({
+      id: stem, title, file: `${stem}.mp3`, model: 'yue2-3b', params: { tags: 'folk', lyrics: `[Chorus]\n${title} by hand`, instrumental: false, cfg: null, seed: at },
+      server: { name: 'nowhere', url: 'http://127.0.0.1:9' }, jobId: `j-${stem}`, createdAt: new Date(Date.UTC(2026, 9, 11, at)).toISOString(), durationS: 150, batch: null, album: null, bytes: 1, effective: null,
+    });
+  }
+  const plan = { title: id, artist: 'A', blurb: '', coverPrompt: 'c', core: 'folk', tracks: titles.map((title) => ({ title, tags: 'folk', lyrics: `[Chorus]\n${title}` })) };
+  const meta = {
+    artist: 'A', blurb: '', cover: null, ask: { description: 'd', tags: [], minutes: 5, sung: true }, plan, stage: 'done',
+    sent: titles.length, madeS: 150 * titles.length, refusal: null, server: 'nowhere', writer: null, ...change,
+  };
+  const imported = await api('/api/import/albums', { method: 'POST', body: JSON.stringify({ id, name: id, createdAt: new Date().toISOString(), album: meta, songs }) });
+  expect(imported.status).toBe(200);
+  return ids;
+}
+
+async function libraryNow(): Promise<LibraryView> {
+  return (await (await api('/api/library')).json()) as LibraryView;
+}
+
+test('Make this track again: refused by name; asked for, the album makes it; failed, the album is as it was and says so', async () => {
+  // A server that takes its time, then refuses every song: long enough to see the remake under way.
+  const slow = Bun.serve({
+    port: 0,
+    fetch: async () => {
+      await new Promise((rest) => setTimeout(rest, 400));
+      return Response.json({ error: { code: 'out_of_memory', message: 'It ran out of memory.' } }, { status: 409 });
+    },
+  });
+  expect((await api('/api/servers', { method: 'POST', body: JSON.stringify({ name: 'nowhere', url: `http://127.0.0.1:${slow.port}`, token: 't' }) })).status).toBe(200);
+  try {
+    const [ships, other] = await albumWith('thousand-ships', ['A Thousand Ships', 'Hector']);
+    await albumWith('unplanned', ['Patroclus'], { plan: null });
+    const remake = (album: string, at: string, lyrics: unknown) =>
+      api(`/api/albums/${album}/tracks/${at}/remake`, { method: 'POST', body: JSON.stringify({ lyrics }) });
+    const code = async (response: Response) => ((await response.json()) as { error: { code: string } }).error.code;
+
+    const bad = await remake('thousand-ships', '0', 'maybe');
+    expect([bad.status, await code(bad)]).toEqual([400, 'body_invalid']);
+    expect(await code(await remake('thousand-ships', 'first', 'keep'))).toBe('body_invalid');
+    const gone = await remake('no-such-album', '0', 'keep');
+    expect([gone.status, await code(gone)]).toEqual([404, 'album_missing']);
+    const unplanned = await remake('unplanned', '0', 'keep');
+    expect([unplanned.status, await code(unplanned)]).toEqual([409, 'album_writing']);
+    const nowhere = await remake('thousand-ships', '5', 'keep');
+    expect([nowhere.status, await code(nowhere)]).toEqual([404, 'track_missing']);
+
+    // The same words, as they stand on the old take (corrected by hand).
+    const asked = await remake('thousand-ships', '0', 'keep');
+    expect(asked.status).toBe(200);
+    const album = ((await asked.json()) as LibraryView).playlists.find((p) => p.id === 'thousand-ships')!;
+    expect(album.album).toMatchObject({ stage: 'making', remakeOnly: 'done', remakes: [{ at: 0, song: ships, lyrics: '[Chorus]\nA Thousand Ships by hand' }] });
+    expect(album.songs).toEqual([ships, other]);
+    const again = await remake('thousand-ships', '0', 'new');
+    expect([again.status, await code(again)]).toEqual([409, 'track_remaking']);
+
+    // The server refuses it: the new take fails, the old one stays where it was.
+    let after = (await libraryNow()).playlists.find((p) => p.id === 'thousand-ships')!;
+    for (let i = 0; i < 100 && after.album?.remakeRefusal == null; i += 1) {
+      await new Promise((rest) => setTimeout(rest, 100));
+      after = (await libraryNow()).playlists.find((p) => p.id === 'thousand-ships')!;
+    }
+    expect(after.album).toMatchObject({ stage: 'done', remakeOnly: null, remakes: [], madeS: 300 });
+    expect(after.album?.remakeRefusal?.message).toStartWith('The new take of "A Thousand Ships" did not work, so the old one stays.');
+    expect(after.album?.plan?.tracks[0]?.lyrics).toBe('[Chorus]\nA Thousand Ships');
+    expect(after.songs).toEqual([ships, other]);
+  } finally {
+    await api('/api/servers/nowhere', { method: 'DELETE' });
+    slow.stop(true);
+  }
+});
+
+test('a new take lands in the old one\'s place, under its name; the old one moves to New Songs', async () => {
+  const [ships, other] = await albumWith('iliad', ['A Thousand Ships', 'Hector'], {
+    remakes: [{ at: 0, song: '20261011-000000-50', lyrics: '[Chorus]\nnew words' }],
+  });
+  expect(ships).toBe('20261011-000000-50');
+  // Renamed by hand since: the new take keeps the name it has now.
+  await api(`/api/songs/${ships}`, { method: 'PATCH', body: JSON.stringify({ title: 'a thousand ships' }) });
+  const take = await addTake('album-iliad', 'desktop', 42);
+  await (hub.core as unknown as { fileAlbumTrack(album: string, take: string, track: number): Promise<void> }).fileAlbumTrack('iliad', take.id, 0);
+  const view = await libraryNow();
+  const album = view.playlists.find((p) => p.id === 'iliad')!;
+  const fresh = album.songs[0] as string;
+  expect(fresh).not.toBe(ships);
+  expect(album.songs).toEqual([fresh, other]);
+  expect(view.songs.find((s) => s.id === fresh)?.title).toBe('a thousand ships');
+  // Its length counted in the old one's place: 300 - 150 + 12.
+  expect(album.album).toMatchObject({ madeS: 162, remakes: [], stage: 'done' });
+  expect(album.album?.plan?.tracks[0]?.lyrics).toBe('[Chorus]\nnew words');
+  const singles = view.playlists.find((p) => p.name === 'New Songs')!;
+  expect(singles.songs).toContain(ships);
+  expect(view.songs.find((s) => s.id === ships)?.title).toBe('a thousand ships (old take)');
+});
+
 test("an album's download lists its songs in order, with the cover", async () => {
   const files = await hub.albumFiles('own-cover');
   expect(files.name).toBe('Own Cover');

@@ -35,7 +35,7 @@ import { layLyrics } from './describe';
 import { writeConcept, writeCore, writeCover, writeIdeas, writeTurns } from './split-text';
 import { VOICE_TAG, withoutVoice } from '../tags';
 import {
-  LENGTH_AIMS, type AlbumAsk, type AlbumMeta, type AlbumOrder, type AlbumPlan, type AlbumTrack, type LengthAim, type SinglesOrder, type SongPage,
+  LENGTH_AIMS, type AlbumAsk, type AlbumMeta, type AlbumOrder, type AlbumPlan, type AlbumRemake, type AlbumTrack, type LengthAim, type SinglesOrder, type SongPage,
 } from '../types';
 
 /** A song is about this long: how many are counted as on their way. */
@@ -282,20 +282,34 @@ export class AlbumMaker {
     return this.running.has(id);
   }
 
-  /** A track landed in the album: count its length and send the next. */
-  async landed(id: string, seconds: number | null): Promise<void> {
+  /**
+   * A track landed in the album: count its length and send the next. `remade`: it was a remake of
+   * plan place `at`, filed in its old take's place (that take `replacedS` long, or null when it
+   * was not there to replace); the plan keeps the words it sang.
+   */
+  async landed(id: string, seconds: number | null, remade?: { readonly at: number; readonly replacedS: number | null }): Promise<void> {
     this.failures.set(id, 0);
     const meta = await this.hooks.meta(id);
     if (meta === null) return;
-    const next: AlbumMeta = { ...meta, madeS: meta.madeS + (seconds ?? 0) };
+    let next: AlbumMeta = { ...meta, madeS: Math.max(0, meta.madeS + (seconds ?? 0) - (remade?.replacedS ?? 0)) };
+    const remake = remade === undefined ? undefined : (meta.remakes ?? []).find((each) => each.at === remade.at);
+    if (remade !== undefined && remake !== undefined && meta.plan !== null) {
+      const tracks = meta.plan.tracks.map((track, i) => (i === remade.at && remake.lyrics !== null ? { ...track, lyrics: remake.lyrics } : track));
+      next = { ...next, plan: { ...meta.plan, tracks }, remakes: (meta.remakes ?? []).filter((each) => each.at !== remade.at) };
+    }
     await this.hooks.update(id, next);
     // The track landing is still its job's to finish (it is being filed): not one in flight. Counted,
     // the last track left the album at `making` for good, with nothing on the server (2026-10-06).
     await this.next(meta.server, id);
   }
 
-  /** A track failed: skip it, and stop the album when several fail in a row. */
-  async failed(id: string, refusal: { code: string; message: string } | null): Promise<void> {
+  /** A track failed: skip it, and stop the album when several fail in a row. `at`: its plan place. */
+  async failed(id: string, refusal: { code: string; message: string } | null, at?: number): Promise<void> {
+    const remake = at === undefined ? undefined : (await this.hooks.meta(id))?.remakes?.find((each) => each.at === at);
+    if (at !== undefined && remake !== undefined) {
+      await this.remakeLost(id, at, refusal ?? { code: 'remake_failed', message: 'The server did not finish it.' });
+      return;
+    }
     const count = (this.failures.get(id) ?? 0) + 1;
     this.failures.set(id, count);
     const meta = await this.hooks.meta(id);
@@ -306,6 +320,34 @@ export class AlbumMaker {
       return;
     }
     // Whichever album's turn it is sends the next track (not always this one).
+    await this.next(meta.server);
+  }
+
+  /** A track's job was cancelled (Stop, or the album deleted): a remake of it is dropped, the old take stays. */
+  async cancelled(id: string, at: number): Promise<void> {
+    const meta = await this.hooks.meta(id);
+    if (meta?.remakes?.some((each) => each.at === at) !== true) return;
+    await this.remakeLost(id, at, null);
+  }
+
+  /**
+   * A remake that will not land: the album is as it was, the old take in its place and the plan's
+   * words its own. It does not count towards stopping the album (the old take is still there),
+   * and a failure is said on the page.
+   */
+  private async remakeLost(id: string, at: number, refusal: { code: string; message: string } | null): Promise<void> {
+    const meta = await this.hooks.meta(id);
+    if (meta === null) return;
+    const title = meta.plan?.tracks[at]?.title ?? `track ${at + 1}`;
+    if (refusal !== null) console.error(`[albums] the new take of ${title} (${id}) failed: ${refusal.code}: ${refusal.message}`);
+    await this.hooks.update(id, {
+      ...meta,
+      remakes: (meta.remakes ?? []).filter((each) => each.at !== at),
+      redo: (meta.redo ?? []).filter((place) => place !== at),
+      ...(refusal === null ? {} : {
+        remakeRefusal: { code: refusal.code, message: `The new take of "${title}" did not work, so the old one stays. ${refusal.message}` },
+      }),
+    });
     await this.next(meta.server);
   }
 
@@ -335,7 +377,8 @@ export class AlbumMaker {
       || meta.plan.tracks.length < (meta.plan.trackCount ?? 0)
       || (meta.ask.sung && meta.plan.tracks.some((track) => track.lyrics === null))
       || (meta.cover === null && meta.coverState !== 'failed' && meta.coverState !== 'no_model');
-    const next = await this.recover(id, { ...meta, refusal: null, step: null });
+    // Made whole now, not only its remakes.
+    const next = await this.recover(id, { ...meta, refusal: null, step: null, remakeOnly: null });
     await this.hooks.update(id, { ...next, stage: unwritten ? 'planning' : 'making' });
     this.start(id);
   }
@@ -359,6 +402,10 @@ export class AlbumMaker {
       if (count > 0) made.set(key, count - 1);
       else if (!flying.has(at)) redo.push(at);
     }
+    // A remake is made again too: its old take is there, so it is never counted as missing.
+    for (const remake of meta.remakes ?? []) {
+      if (!flying.has(remake.at) && !redo.includes(remake.at)) redo.push(remake.at);
+    }
     const madeS = songs.reduce((sum, song) => sum + (song.durationS ?? 0), 0);
     return { ...meta, madeS, redo };
   }
@@ -380,19 +427,10 @@ export class AlbumMaker {
     const server = this.hooks.server(meta.server);
     const client = this.hooks.client(server, true);
     const claude = this.hooks.claude();
-    const serverText = async (): Promise<TextModel> => {
-      const page = await this.hooks.page(server);
-      if (page === null) throw new Refusal('page_unreadable', `Could not read ${server.name}'s song page, so B-Sides cannot tell which model writes.`);
-      if (page.tagModel === null) throw new Refusal('no_tag_model', page.tagModelReason ?? 'This server has no model to write with.');
-      // A chat never installs a model: a server without it starts installing and says so.
-      const installing = await startInstall(client, page.tagModel);
-      if (installing !== null) throw new Refusal('model_installing', `The writing model is being set up on the server first: ${installing.message}`, 409);
-      return crucibleText(client, page.tagModel);
-    };
     // The cover description is the sound writer's; the names are the words writer's (split-text.ts).
     const writer: TextModel = piece === 'cover'
-      ? claude?.text ?? await serverText()
-      : claude?.words ?? await serverText();
+      ? claude?.text ?? await this.serverText(server)
+      : claude?.words ?? await this.serverText(server);
     const concept: AlbumConcept = { title: plan.title, artist: plan.artist, blurb: plan.blurb, coverPrompt: plan.coverPrompt, core: plan.core ?? '' };
     const fresh = async (): Promise<AlbumMeta> => {
       const now = await this.hooks.meta(id);
@@ -438,6 +476,92 @@ export class AlbumMaker {
   }
 
   /**
+   * Make one made track again (Victoria, 2026-10-11: "reroll" a song, such as A Thousand Ships,
+   * whose chorus did not fit the melody, without making the whole album again): the same tags and
+   * a new seed, singing the old take's words (`keep`, as they stand on its song, corrected by hand
+   * perhaps) or new ones the lyricist writes first (`fresh`). It goes through the album's line like
+   * any track, sent before its next new one; a finished or stopped album makes only it, then goes
+   * back to as it was. The old take (`song`) stays until the new one lands in its place.
+   */
+  async remake(id: string, at: number, ask: { readonly fresh: boolean; readonly song: string | null; readonly keep: string | null }): Promise<AlbumMeta> {
+    if (this.running.has(id)) throw new Refusal('album_writing', 'This album is still being written; make a track again once it is planned.', 409);
+    const meta = await this.hooks.meta(id);
+    if (meta === null) throw new Refusal('album_missing', 'That album is gone.', 404);
+    const plan = meta.plan;
+    if (plan === null || plan.tracks.length < (plan.trackCount ?? 0) || meta.stage === 'planning' || meta.stage === 'cover') {
+      throw new Refusal('album_writing', 'This album is still being written; make a track again once its music has begun.', 409);
+    }
+    const track = plan.tracks[at];
+    if (track === undefined || at >= meta.sent) throw new Refusal('track_missing', 'That album has no such track made.', 404);
+    const key = `${id}:${at}`;
+    if (this.rewriting.has(key) || (meta.remakes ?? []).some((each) => each.at === at)) {
+      throw new Refusal('track_remaking', `"${track.title}" is already being made again.`, 409);
+    }
+    if ((meta.redo ?? []).includes(at) || this.hooks.flyingTracks(id).includes(at)) {
+      throw new Refusal('track_making', `"${track.title}" is being made now; make it again once it is in.`, 409);
+    }
+    if (ask.song === null) throw new Refusal('track_unmade', `"${track.title}" has no take to replace; Make the missing tracks makes it.`, 409);
+    const sung = meta.ask.sung && track.lyrics !== null;
+    if (ask.fresh && !sung) throw new Refusal('track_instrumental', `"${track.title}" is instrumental: it has no words to write again.`, 409);
+    this.rewriting.add(key);
+    try {
+      const lyrics = !sung ? null : ask.fresh ? await this.lyricsFor(meta, at) : (ask.keep ?? track.lyrics);
+      const now = await this.hooks.meta(id);
+      if (now === null) throw new Refusal('album_missing', 'That album is gone.', 404);
+      const remake: AlbumRemake = { at, song: ask.song, lyrics };
+      const finished = now.stage !== 'making' && now.stage !== 'planning' && now.stage !== 'cover';
+      const next: AlbumMeta = {
+        ...now,
+        remakes: [...(now.remakes ?? []), remake],
+        redo: [...(now.redo ?? []), at],
+        remakeRefusal: null,
+        // Finished, stopped or failed: back in the line for this track alone, then as it was.
+        ...(finished ? { stage: 'making' as const, remakeOnly: now.remakeOnly ?? now.stage } : {}),
+      };
+      await this.hooks.update(id, next);
+      await this.next(now.server);
+      return next;
+    } finally {
+      this.rewriting.delete(key);
+    }
+  }
+
+  /** Tracks whose new words are being written now ("<album>:<place>"): asked again meanwhile, refused. */
+  private readonly rewriting = new Set<string>();
+
+  /** One track's words written again, as the album's lyrics loop writes them (`write`), laid out for YuE. */
+  private async lyricsFor(meta: AlbumMeta, at: number): Promise<string> {
+    const plan = meta.plan as AlbumPlan;
+    const track = plan.tracks[at] as AlbumTrack;
+    const claude = this.hooks.claude();
+    const lyricist = claude?.lyricist ?? null;
+    const concept: AlbumConcept = { title: plan.title, artist: plan.artist, blurb: plan.blurb, coverPrompt: plan.coverPrompt, core: plan.core ?? '' };
+    const written = lyricist === null
+      ? await writeSongLyrics(claude?.words ?? await this.serverText(this.hooks.server(meta.server)), meta.ask, concept, track.title, track.tags)
+      : await lyricist.write({
+        title: track.title,
+        tags: track.tags,
+        about: aboutOf(meta.ask),
+        brief: meta.ask.lyrics ?? '',
+        ...(track.idea ? { idea: track.idea } : {}),
+        album: { title: concept.title, artist: concept.artist, blurb: concept.blurb, tracks: plan.tracks.map((t) => t.title), at },
+      });
+    return layLyrics(written);
+  }
+
+  /** The server's text model, for one call outside a writing session (a piece written again). */
+  private async serverText(server: StoredServer): Promise<TextModel> {
+    const client = this.hooks.client(server, true);
+    const page = await this.hooks.page(server);
+    if (page === null) throw new Refusal('page_unreadable', `Could not read ${server.name}'s song page, so B-Sides cannot tell which model writes.`);
+    if (page.tagModel === null) throw new Refusal('no_tag_model', page.tagModelReason ?? 'This server has no model to write with.');
+    // A chat never installs a model: a server without it starts installing and says so.
+    const installing = await startInstall(client, page.tagModel);
+    if (installing !== null) throw new Refusal('model_installing', `The writing model is being set up on the server first: ${installing.message}`, 409);
+    return crucibleText(client, page.tagModel);
+  }
+
+  /**
    * More like this (Victoria, 2026-10-10: "the ability to add to an album if I really like the
    * vibe, with new songs added to the bottom"): EXTEND_MINUTES more of the same album. Its plan
    * already holds tracks it never made (one per two minutes, made until the length was filled);
@@ -461,6 +585,7 @@ export class AlbumMaker {
       stage: more > 0 ? 'planning' : 'making',
       refusal: null,
       step: null,
+      remakeOnly: null,
     };
     await this.hooks.update(id, next);
     this.failures.set(id, 0);
@@ -471,7 +596,17 @@ export class AlbumMaker {
   /** Stop making it: no more tracks, and the ones on the server are cancelled. What is made stays. */
   async stop(id: string): Promise<void> {
     const meta = await this.hooks.meta(id);
-    if (meta !== null && meta.stage !== 'done') await this.hooks.update(id, { ...meta, stage: 'stopped' });
+    if (meta !== null && meta.stage !== 'done') {
+      // Its remakes are dropped (the old takes stay); one making only its remakes goes back to as it was.
+      const remade = new Set((meta.remakes ?? []).map((each) => each.at));
+      await this.hooks.update(id, {
+        ...meta,
+        stage: meta.remakeOnly ?? 'stopped',
+        remakeOnly: null,
+        remakes: [],
+        redo: (meta.redo ?? []).filter((place) => !remade.has(place)),
+      });
+    }
     await this.hooks.cancelInFlight(id);
     if (meta !== null) await this.next(meta.server);
   }
@@ -776,9 +911,14 @@ export class AlbumMaker {
       for (const id of await this.hooks.makingOn(server)) {
         const meta = await this.hooks.meta(id);
         if (meta === null || meta.stage !== 'making' || meta.plan === null) continue;
+        // Making only its remakes, and none left to send or on the server: back to as it was.
+        if (meta.remakeOnly != null && this.wants(meta, own(id)) === null && own(id) === 0) {
+          await this.hooks.update(id, { ...meta, stage: meta.remakeOnly, remakeOnly: null, remakes: [] });
+          continue;
+        }
         // Nothing left to make and nothing on the server: done, and out of the line.
         if (this.wants(meta, own(id)) === null && own(id) === 0 && (meta.redo ?? []).length === 0) {
-          await this.hooks.update(id, { ...meta, stage: 'done' });
+          await this.hooks.update(id, { ...meta, stage: 'done', remakes: [] });
           continue;
         }
         line.push({ id, meta });
@@ -803,6 +943,8 @@ export class AlbumMaker {
   private wants(meta: AlbumMeta, flying: number): number | null {
     const plan = meta.plan as AlbumPlan;
     const redo = meta.redo ?? [];
+    // Back only for its remakes (a finished or stopped album): nothing else is sent, not even a lost track.
+    if (meta.remakeOnly != null) return redo.find((at) => (meta.remakes ?? []).some((each) => each.at === at)) ?? null;
     if (redo.length > 0) return redo[0] as number;
     if (meta.sent < plan.tracks.length && meta.madeS + flying * TYPICAL_TRACK_S < meta.ask.minutes * 60) return meta.sent;
     return null;
@@ -812,21 +954,24 @@ export class AlbumMaker {
   private async send(id: string, meta: AlbumMeta, at: number): Promise<void> {
     const plan = meta.plan as AlbumPlan;
     const track = plan.tracks[at] as AlbumTrack;
-    const sung = meta.ask.sung && track.lyrics !== null;
-    const aim = trackAim(meta.ask);
     const redo = meta.redo ?? [];
-    const again = redo.length > 0;
+    const again = redo.includes(at);
+    // A remake sings its own words (new ones, or the old take's); the plan takes them once it lands.
+    const remake = again ? (meta.remakes ?? []).find((each) => each.at === at) : undefined;
+    const lyrics = remake?.lyrics ?? track.lyrics;
+    const sung = meta.ask.sung && lyrics !== null;
+    const aim = trackAim(meta.ask);
     this.hooks.render(id, at, this.hooks.server(meta.server), {
       tags: track.tags,
       instrumental: !sung,
-      ...(sung ? { lyrics: track.lyrics as string } : {}),
+      ...(sung ? { lyrics: lyrics as string } : {}),
       ...(meta.ask.cfg != null ? { cfg: meta.ask.cfg } : {}),
       ...(aim !== null ? { aim: { min: aim.min, max: aim.max } } : {}),
     });
     await this.hooks.update(id, {
       ...meta,
       sent: again ? meta.sent : meta.sent + 1,
-      redo: again ? redo.slice(1) : redo,
+      redo: again ? redo.filter((place, i) => place !== at || i !== redo.indexOf(at)) : redo,
       lastSentAt: lineStamp(),
     });
   }

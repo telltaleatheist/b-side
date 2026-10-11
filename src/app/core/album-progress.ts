@@ -24,6 +24,13 @@ export function albumProgress(album: AlbumMeta): AlbumProgress {
   const before = PLAN_SHARE + lyricsShare + COVER_SHARE;
   const music = Math.min(1, album.madeS / (album.ask.minutes * 60));
   const musicShare = before + (1 - before) * music;
+  // A finished or stopped album back only to make tracks again (Victoria, 2026-10-11): its length is not the point.
+  if (album.stage === 'making' && album.remakeOnly != null) {
+    const what = (album.remakes ?? []).length === 1 ? 'a new take of one track' : 'new takes of some tracks';
+    return album.waitingFor
+      ? { label: `Making ${what} once "${album.waitingFor}" is finished.`, share: 0, waiting: true }
+      : { label: `Making ${what}; the old ones play until they are in.`, share: 0, waiting: true };
+  }
   switch (album.stage) {
     case 'planning': {
       const step = album.step;

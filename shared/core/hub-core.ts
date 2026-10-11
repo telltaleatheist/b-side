@@ -327,7 +327,7 @@ export class HubCore {
           });
           if (album !== null) {
             // An album's track goes straight into the album; it never sits in a playing list.
-            await this.fileAlbumTrack(album.id, take.id);
+            await this.fileAlbumTrack(album.id, take.id, album.track);
             return { take, songId: null };
           }
           const into = landed.job.playlist ?? null;
@@ -340,7 +340,9 @@ export class HubCore {
           return { take, songId: null };
         },
         ended: (job) => {
-          if (job.album && job.phase !== 'cancelled') void this.albums.failed(job.album.id, job.refusal).then(() => this.libraryChanged());
+          if (job.album && job.phase !== 'cancelled') void this.albums.failed(job.album.id, job.refusal, job.album.track).then(() => this.libraryChanged());
+          // A remake cancelled (Stop, the album deleted) is dropped; its old take stays.
+          if (job.album && job.phase === 'cancelled') void this.albums.cancelled(job.album.id, job.album.track).then(() => this.libraryChanged());
           // A single song that ended without one frees the line too (it never lands).
           if (job.album == null) this.singleLeft(job.server);
         },
@@ -536,11 +538,14 @@ export class HubCore {
     return id;
   }
 
-  /** File a landed album track into its album, and send the next. */
-  private async fileAlbumTrack(albumId: string, takeId: string): Promise<void> {
+  /** File a landed album track (plan place `track`) into its album, and send the next. */
+  private async fileAlbumTrack(albumId: string, takeId: string, track: number): Promise<void> {
     const take = this.takes.get(takeId);
+    // A track made again (Victoria, 2026-10-11) takes its old take's place; any other is added at the end.
+    const remake = (await this.library.album(albumId))?.remakes?.find((each) => each.at === track) ?? null;
+    let song: Song;
     try {
-      await this.library.saveTo(albumId, null, {
+      song = await this.library.saveTo(albumId, null, {
         title: take.title,
         model: take.model,
         params: take.params,
@@ -560,7 +565,29 @@ export class HubCore {
       return;
     }
     await this.takes.remove(takeId, take.client);
-    await this.albums.landed(albumId, take.durationS);
+    const replacedS = remake === null ? null : await this.replaceTake(albumId, remake.song, song);
+    await this.albums.landed(albumId, take.durationS, remake === null ? undefined : { at: track, replacedS });
+  }
+
+  /**
+   * A new take of an album track is in: it goes in the old take's place, under the old take's name
+   * (renamed by hand, perhaps), and the old one leaves the album. The old one is kept in New Songs
+   * as "<name> (old take)", so a take Victoria liked better is not lost; she deletes it there if
+   * not. Answers the old take's length, or null when it was not in the album to replace (deleted
+   * meanwhile): then the new one stays where it was filed, at the end.
+   */
+  private async replaceTake(albumId: string, oldId: string | null, fresh: Song): Promise<number | null> {
+    if (oldId === null) return null;
+    const old = await this.library.song(oldId).catch(() => null);
+    if (old === null) return null;
+    const keepIn = await this.singlesPlaylist().catch((err: unknown) => {
+      console.error(`[albums] no New Songs to keep the old take of ${old.title} in; it is deleted:`, err);
+      return null;
+    });
+    if (!(await this.library.replaceIn(albumId, oldId, fresh.id, keepIn))) return null;
+    if (fresh.title !== old.title) await this.library.rename(fresh.id, old.title);
+    if (keepIn !== null) await this.library.rename(oldId, `${old.title} (old take)`).catch(() => undefined);
+    return old.durationS;
   }
 
   /** Paint an album's cover on the server and file it beside the album. */
@@ -1073,6 +1100,29 @@ export class HubCore {
         throw new Refusal('body_invalid', 'track is the plan place of the track to name again.');
       }
       await this.albums.regenerate(request.params['id'] as string, piece, piece === 'track' ? (track as number) : undefined);
+      return this.libraryChanged();
+    });
+
+    // Make one made track again (Victoria, 2026-10-11): {lyrics: keep | new}. `at` is its plan place.
+    this.route('POST', '/api/albums/:id/tracks/:at/remake', async (request) => {
+      const id = request.params['id'] as string;
+      const at = Number(request.params['at']);
+      if (!Number.isInteger(at) || at < 0) throw new Refusal('body_invalid', 'The track is its place in the album, from 0.');
+      const lyrics = (await request.body())['lyrics'];
+      if (lyrics !== 'keep' && lyrics !== 'new') throw new Refusal('body_invalid', 'lyrics is keep or new.');
+      // Its take now: the album's song with its plan track's name, as the album finds its songs.
+      const view = await this.library.list();
+      const playlist = view.playlists.find((p) => p.id === id);
+      const title = playlist?.album?.plan?.tracks[at]?.title.toLowerCase();
+      const songs = new Map(view.songs.map((song) => [song.id, song]));
+      const song = title === undefined ? undefined
+        : playlist?.songs.map((songId) => songs.get(songId)).find((each) => each?.title.toLowerCase() === title);
+      await this.albums.remake(id, at, {
+        fresh: lyrics === 'new',
+        song: song?.id ?? null,
+        // Same words: as they stand on the old take, so a chorus corrected by hand is sung corrected.
+        keep: song !== undefined && !song.params.instrumental ? song.params.lyrics : null,
+      });
       return this.libraryChanged();
     });
 

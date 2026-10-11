@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { AlbumMaker, type AlbumHooks } from '../shared/core/albums';
+import { AlbumMaker, type AlbumHooks, type AlbumTrackParams } from '../shared/core/albums';
 import type { Lyricist, SongToWrite } from '../shared/core/lyricist';
 import type { TextModel } from '../shared/core/text-model';
 import type { AlbumAsk, AlbumMeta, SongPage } from '../shared/types';
@@ -64,6 +64,9 @@ function fakeAlbum(ask: AlbumAsk, server: ReturnType<typeof fakeServer>, claude:
   let lastId = '';
   const names: string[] = [];
   const renamed: Array<[string, string]> = [];
+  /** Tracks sent to the server, as sent; `flying` of them not landed yet. */
+  const rendered: Array<{ track: number; params: AlbumTrackParams }> = [];
+  const flight = { flying: 0 };
   const hooks: AlbumHooks = {
     meta: async (id) => { lastId = id; return stored; },
     update: async (_id, next, name) => { stored = next; if (name) names.push(name); },
@@ -72,8 +75,8 @@ function fakeAlbum(ask: AlbumAsk, server: ReturnType<typeof fakeServer>, claude:
     page: async () => page,
     paint: async () => 'c.png',
     removeCover: async () => undefined,
-    render: () => undefined,
-    inFlight: () => 0,
+    render: (_id, track, _server, params) => { rendered.push({ track, params }); flight.flying += 1; },
+    inFlight: () => flight.flying,
     retitle: async () => undefined,
     cancelInFlight: async () => undefined,
     made: async () => [],
@@ -82,7 +85,7 @@ function fakeAlbum(ask: AlbumAsk, server: ReturnType<typeof fakeServer>, claude:
     makingOn: async () => [lastId],
     claude: () => claude,
   };
-  return { maker: new AlbumMaker(hooks), meta: () => stored, names, renamed, set: (change: Partial<AlbumMeta>) => { stored = { ...stored, ...change }; } };
+  return { maker: new AlbumMaker(hooks), meta: () => stored, names, renamed, rendered, flight, set: (change: Partial<AlbumMeta>) => { stored = { ...stored, ...change }; } };
 }
 
 async function settle(maker: AlbumMaker, id: string): Promise<void> {
@@ -251,4 +254,74 @@ test('Claude writes the words and the server the sound (Owen, 2026-10-11)', asyn
   expect(album.meta().soundBy).toBe(MODEL);
   expect(album.meta().lyricsBy).toBe('claude-sonnet-5-5');
   expect(album.meta().stage).toBe('making');
+});
+
+// ── Make this track again (Victoria, 2026-10-11) ──────────────────────────────
+
+test('a track made again with new lyrics: Claude writes them with the album around it, the new take sings them, the plan keeps them once it lands', async () => {
+  const server = fakeServer();
+  const asked: SongToWrite[] = [];
+  let calls = 0;
+  const lyricist: Lyricist = { name: 'claude-sonnet-5-5', write: async (song) => { asked.push(song); calls += 1; return `[verse]\ntake ${calls}\n[chorus]\nships`; } };
+  const claude = fakeClaude(server, []);
+  const album = fakeAlbum({ description: 'the Iliad', tags: [], minutes: 30, sung: true, lyrics: 'Troy', trackLength: '3-5' }, server, { text: null, words: claude, lyricist });
+  album.maker.start('g');
+  await settle(album.maker, 'g');
+  // Made, and done: every track on the album.
+  album.set({ stage: 'done', sent: 10, madeS: 1800, redo: [] });
+  album.flight.flying = 0;
+  const old = album.meta().plan!.tracks[2]!.lyrics;
+  const before = asked.length;
+
+  await album.maker.remake('g', 2, { fresh: true, song: 'old-take', keep: null });
+  const song = asked[before]!;
+  expect(song).toMatchObject({ title: 'Song 3', about: 'the Iliad', brief: 'Troy', idea: 'idea 3' });
+  expect(song.album).toMatchObject({ title: 'Spotted', artist: 'The Elegies', at: 2 });
+  expect(song.album!.tracks.length).toBe(10);
+  const sent = album.rendered.at(-1)!;
+  expect(sent.track).toBe(2);
+  expect(sent.params).toMatchObject({ tags: album.meta().plan!.tracks[2]!.tags, instrumental: false, lyrics: `[Verse]\ntake ${calls}\n\n[Chorus]\nships`, aim: { min: 180, max: 300 } });
+  // Not landed yet: the plan still has the old take's words.
+  expect(album.meta()).toMatchObject({ stage: 'making', remakeOnly: 'done' });
+  expect(album.meta().plan!.tracks[2]!.lyrics).toBe(old);
+
+  await album.maker.landed('g', 140, { at: 2, replacedS: 150 });
+  album.flight.flying = 0;
+  expect(album.meta().plan!.tracks[2]!.lyrics).toBe(`[Verse]\ntake ${calls}\n\n[Chorus]\nships`);
+  expect(album.meta()).toMatchObject({ stage: 'done', remakeOnly: null, remakes: [], madeS: 1790, sent: 10 });
+});
+
+test("the same lyrics, new take: the old take's words as they stand on its song (corrected by hand), nothing written", async () => {
+  const server = fakeServer();
+  const album = fakeAlbum({ description: 'x', tags: [], minutes: 30, sung: true }, server);
+  album.maker.start('h');
+  await settle(album.maker, 'h');
+  album.set({ stage: 'done', sent: 15, madeS: 1800, redo: [] });
+  album.flight.flying = 0;
+  const calls = server.sent.length;
+  await album.maker.remake('h', 0, { fresh: false, song: 'old-take', keep: '[Chorus]\nfixed by hand' });
+  expect(server.sent.length).toBe(calls);
+  expect(album.rendered.at(-1)!.params.lyrics).toBe('[Chorus]\nfixed by hand');
+});
+
+test("new lyrics with no Claude (a phone): the server's model writes them, as in the album's own lyrics loop", async () => {
+  const server = fakeServer();
+  const album = fakeAlbum({ description: 'sad songs about bananas', tags: [], minutes: 30, sung: true }, server);
+  album.maker.start('i');
+  await settle(album.maker, 'i');
+  album.set({ stage: 'done', sent: 15, madeS: 1800, redo: [] });
+  album.flight.flying = 0;
+  const calls = server.sent.length;
+  await album.maker.remake('i', 4, { fresh: true, song: 'old-take', keep: null });
+  expect(server.sent.slice(calls).map((call) => call.tag)).toEqual(['[lyrics]']);
+  expect(server.sent.at(-1)!.user).toContain('Song: "Song 5"');
+  expect(album.rendered.at(-1)!.params.lyrics).toBe('[Verse]\nla\n\n[Chorus]\nla');
+});
+
+test('a track is not made again while the album is being written', async () => {
+  const server = fakeServer();
+  const album = fakeAlbum({ description: 'x', tags: [], minutes: 30, sung: true }, server);
+  album.maker.start('j');
+  await expect(album.maker.remake('j', 0, { fresh: false, song: 's', keep: null })).rejects.toMatchObject({ code: 'album_writing' });
+  await settle(album.maker, 'j');
 });

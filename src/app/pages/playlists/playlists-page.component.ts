@@ -57,7 +57,7 @@ const COVER_PX = 768;
             } @else if (isCloud()) {
               <span class="kicker">{{ playlist.album ? 'Album' : 'Playlist' }} · in the cloud on {{ cloud.host() }}</span>
             } @else if (playlist.album; as album) {
-              <span class="kicker" [class.amber]="busy(album.stage) && !interrupted(album)">Album · {{ interrupted(album) ? 'interrupted' : stageWords(album.stage) }}{{ folderPath(playlist) }}</span>
+              <span class="kicker" [class.amber]="busy(album.stage) && !interrupted(album)">Album · {{ interrupted(album) ? 'interrupted' : album.remakeOnly ? 'making a new take' : stageWords(album.stage) }}{{ folderPath(playlist) }}</span>
             } @else {
               <span class="kicker">Playlist{{ folderPath(playlist) }}</span>
             }
@@ -78,7 +78,7 @@ const COVER_PX = 768;
               @if (album.plan?.core || album.ask.tags.length) {
                 <span class="head-sound"><span class="kicker">Sound</span> {{ album.plan?.core || album.ask.tags.join(', ') }}</span>
               }
-              <span class="head-sub">{{ album.ask.sung ? 'Sung' : 'Instrumental' }} · {{ songs().length }} {{ songs().length === 1 ? 'track' : 'tracks' }}@if (album.stage === 'done') { · <strong class="runtime">runs {{ runtime() }}</strong> (asked for {{ album.ask.minutes }} min)} @else { · {{ runtime() }} of {{ album.ask.minutes }} min}@if (album.writer) { · words by {{ album.writer }}}@if (album.soundBy) {, sound by {{ album.soundBy }}} @else if (album.lyricsBy && album.lyricsBy !== album.writer) {, lyrics by {{ album.lyricsBy }}}</span>
+              <span class="head-sub">{{ album.ask.sung ? 'Sung' : 'Instrumental' }} · {{ songs().length }} {{ songs().length === 1 ? 'track' : 'tracks' }}@if (album.stage === 'done' || album.remakeOnly === 'done') { · <strong class="runtime">runs {{ runtime() }}</strong> (asked for {{ album.ask.minutes }} min)} @else { · {{ runtime() }} of {{ album.ask.minutes }} min}@if (album.writer) { · words by {{ album.writer }}}@if (album.soundBy) {, sound by {{ album.soundBy }}} @else if (album.lyricsBy && album.lyricsBy !== album.writer) {, lyrics by {{ album.lyricsBy }}}</span>
               @if (busy(album.stage) && !interrupted(album)) {
                 @let progress = albumProgress(album);
                 <div class="progress-line">
@@ -89,6 +89,9 @@ const COVER_PX = 768;
               }
               @if (coverNote(album); as note) { <span class="hint">{{ note }}</span> }
               @if (album.refusal; as refused) {
+                <app-refusal [refusal]="refused" />
+              }
+              @if (album.remakeRefusal; as refused) {
                 <app-refusal [refusal]="refused" />
               }
             } @else {
@@ -170,6 +173,24 @@ const COVER_PX = 768;
                   <div class="title">{{ song.title }}</div>
                 }
                 <div class="sub">{{ song.params.tags ?? '' }}@if (song.structure) { · structure {{ song.structure }} }@if (aimText(song); as aimed) { · {{ aimed }} }@if (alsoIn(song, playlist); as others) { · also in {{ others }} }</div>
+                @if (remakeState(playlist, song); as remake) {
+                  @if (remake.job; as job) {
+                    <div class="bar making-bar" [class.indeterminate]="jobShare(job) === null"><span [style.width.%]="(jobShare(job) ?? 0) * 100"></span></div>
+                  }
+                  <div class="remake-note">{{ remake.text }}</div>
+                }
+                @if (remakeMenu() === song.id) {
+                  <!-- Make this track again (Victoria, 2026-10-11): a new take in this one's place. -->
+                  <div class="move-menu remake-menu">
+                    <span class="kicker">Make this track again</span>
+                    <button type="button" class="ghost small" title="The same tags and words, sung again with a new seed" (click)="remake(playlist, song, 'keep')">{{ sungTrack(playlist, song) ? 'Same lyrics, new take' : 'A new take' }}</button>
+                    @if (sungTrack(playlist, song)) {
+                      <button type="button" class="ghost small" title="The lyricist writes this track's words again, then it is made with them" (click)="remake(playlist, song, 'new')">New lyrics too</button>
+                    }
+                    <button type="button" class="ghost small" (click)="remakeMenu.set(null)">Cancel</button>
+                    <span class="hint">This take plays until the new one is in. Then the new one takes its place, and this one moves to {{ singlesName }}.</span>
+                  </div>
+                }
                 @if (moving() === song.id) {
                   <div class="move-menu">
                     <span class="kicker">Move to</span>
@@ -190,6 +211,9 @@ const COVER_PX = 768;
                 <button type="button" class="icon-btn" aria-label="Rename" title="Rename" (click)="renaming.set(song.id)"><app-icon name="edit" [size]="16" /></button>
                 @if (canRewrite(playlist) && trackPlace(playlist, song.title) !== null) {
                   <button type="button" class="icon-btn" aria-label="A new name" title="A new name, written by the album's model" [disabled]="rewriting() !== null" (click)="rewrite(playlist, 'track', trackPlace(playlist, song.title)!)"><app-icon name="reroll" [size]="16" /></button>
+                }
+                @if (canRemake(playlist, song)) {
+                  <button type="button" class="icon-btn narrow-keep" aria-label="Make this track again" title="Make this track again: a new take in this one's place" [attr.aria-expanded]="remakeMenu() === song.id" [disabled]="remakeState(playlist, song) !== null" (click)="remakeMenu.set(remakeMenu() === song.id ? null : song.id)"><app-icon name="make" [size]="17" /></button>
                 }
                 @if (!playlist.album && moveTargets(playlist).length > 0) {
                   <button type="button" class="icon-btn" aria-label="Move to another playlist" title="Move to another playlist" (click)="moving.set(moving() === song.id ? null : song.id)"><app-icon name="library" [size]="17" /></button>
@@ -406,6 +430,8 @@ const COVER_PX = 768;
     .move-menu { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: 6px; }
     .actions.shown { opacity: 1; }
     .song-making .meta { font-size: 12px; color: var(--text-tertiary); }
+    .remake-note { font-size: 12px; color: var(--audio); }
+    .remake-menu .hint { flex-basis: 100%; font-size: 12px; }
     .song-making .meta.amber { color: var(--audio); }
     .making-bar { margin-top: 6px; }
     .making-bar > span { background: var(--audio); }
@@ -489,7 +515,7 @@ const COVER_PX = 768;
     .folder-new { padding-left: 8px; }
     .folder-body { display: flex; flex-direction: column; gap: 14px; margin-left: 15px; padding: 4px 0 8px 14px; border-left: 1px solid var(--border-subtle); min-height: 32px; }
     @media (max-width: 700px) {
-      .actions .icon-btn:not(:last-child) { display: none; }
+      .actions .icon-btn:not(:last-child):not(.narrow-keep) { display: none; }
       .folder-name { font-size: 19px; }
       .folder-count { display: none; }
       .folder-body { margin-left: 8px; padding-left: 10px; }
@@ -655,7 +681,8 @@ export class PlaylistsPageComponent {
     const album = this.selected()?.album;
     if (album?.plan == null) return [];
     // Interrupted (the stage says making, but nothing is): its rows are not being made.
-    const busy = this.busy(album.stage) && !this.interrupted(album);
+    // Back only to make a track again: the rest of its plan is not being made.
+    const busy = this.busy(album.stage) && !this.interrupted(album) && album.remakeOnly == null;
     const made = new Set(this.songs().map((song) => song.title));
     const redo = new Set(album.redo ?? []);
     return album.plan.tracks
@@ -909,6 +936,53 @@ export class PlaylistsPageComponent {
   protected trackPlace(playlist: Playlist, title: string): number | null {
     const at = playlist.album?.plan?.tracks.findIndex((track) => track.title.toLowerCase() === title.toLowerCase()) ?? -1;
     return at < 0 ? null : at;
+  }
+
+  // ── Make this track again (Victoria, 2026-10-11) ────────────────────────────
+
+  /** The song whose Make this track again choices are open. */
+  protected readonly remakeMenu = signal<string | null>(null);
+  /** The track ("<album>:<place>") whose remake is being asked for now (new words take a minute to write). */
+  protected readonly asking = signal<{ readonly key: string; readonly fresh: boolean } | null>(null);
+
+  /** A made album track on this computer can be made again, once the album's music has begun. */
+  protected canRemake(playlist: Playlist, song: Song): boolean {
+    const album = playlist.album;
+    if (!this.canRewrite(playlist) || album == null || album.stage === 'planning' || album.stage === 'cover') return false;
+    const at = this.trackPlace(playlist, song.title);
+    return at !== null && at < album.sent;
+  }
+
+  /** The track is sung: it can have its words written again. */
+  protected sungTrack(playlist: Playlist, song: Song): boolean {
+    const at = this.trackPlace(playlist, song.title);
+    return playlist.album?.ask.sung === true && at !== null && playlist.album.plan?.tracks[at]?.lyrics != null;
+  }
+
+  /** What is happening to a track being made again, for its row; null when nothing is. */
+  protected remakeState(playlist: Playlist, song: Song): { readonly job: JobView | null; readonly text: string } | null {
+    const album = playlist.album;
+    const at = this.trackPlace(playlist, song.title);
+    if (album == null || at === null) return null;
+    const asking = this.asking();
+    if (asking?.key === `${playlist.id}:${at}`) return { job: null, text: asking.fresh ? 'Writing new words for a new take…' : 'Asking for a new take…' };
+    if (!(album.remakes ?? []).some((each) => each.at === at)) return null;
+    const job = this.trackJob(playlist, at);
+    if (job !== null) return { job, text: `New take: ${jobStatus(job, this.jobs.now())}. This one plays until it is in.` };
+    return {
+      job: null,
+      text: album.waitingFor ? `A new take is made once "${album.waitingFor}" is finished.` : 'A new take is waiting its turn. This one plays until it is in.',
+    };
+  }
+
+  protected async remake(playlist: Playlist, song: Song, lyrics: 'keep' | 'new'): Promise<void> {
+    const at = this.trackPlace(playlist, song.title);
+    this.remakeMenu.set(null);
+    if (at === null) return;
+    this.asking.set({ key: `${playlist.id}:${at}`, fresh: lyrics === 'new' });
+    const outcome = await this.hub.call<unknown>('POST', `/api/albums/${encodeURIComponent(playlist.id)}/tracks/${at}/remake`, { lyrics });
+    this.asking.set(null);
+    this.refusal.set(outcome.ok ? null : outcome.refusal);
   }
 
   /** Have the album's model write one piece again: its title, its artist, its cover, or a track's name. */

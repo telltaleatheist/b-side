@@ -9,8 +9,8 @@ import type { AlbumMeta, AlbumOrder, SinglesOrder } from '../shared/types';
  * back and forth between albums or back and forth between generating an album and an individual
  * song"). The fake server renders in the order tracks are sent, as Crucible's queue does.
  */
-function fakeServer(ids: string[], albums: AlbumOrder = 'one', singles: SinglesOrder = 'turn') {
-  const tracks = ['One', 'Two', 'Three', 'Four'].map((title) => ({ title, tags: 'folk', lyrics: null }));
+function fakeServer(ids: string[], albums: AlbumOrder = 'one', singles: SinglesOrder = 'turn', titles = ['One', 'Two', 'Three', 'Four']) {
+  const tracks = titles.map((title) => ({ title, tags: 'folk', lyrics: null }));
   const stored = new Map<string, AlbumMeta & { createdAt: string }>();
   ids.forEach((id, at) => stored.set(id, {
     artist: 'A', blurb: '', cover: 'c.png', ask: { description: '', tags: [], minutes: 10, sung: false },
@@ -35,7 +35,7 @@ function fakeServer(ids: string[], albums: AlbumOrder = 'one', singles: SinglesO
     retitle: async () => undefined,
     cancelInFlight: async () => undefined,
     made: async () => [],
-    flyingTracks: () => [],
+    flyingTracks: (id) => queue.filter((job) => job.startsWith(id)).map((job) => Number(job.slice(-1))),
     renameSong: async () => undefined,
     makingOn: async () => albumLine(
       [...stored.entries()].filter(([, meta]) => meta.stage === 'making').map(([id, meta]) => ({ id, createdAt: meta.createdAt, album: meta })),
@@ -47,9 +47,13 @@ function fakeServer(ids: string[], albums: AlbumOrder = 'one', singles: SinglesO
   };
   const maker = new AlbumMaker(hooks);
   /** The track at the front of the server's queue lands: still listed while it is filed, as in the hub. */
-  const land = async (): Promise<string> => {
+  const land = async (seconds = 150): Promise<string> => {
     const job = queue[0] as string;
-    await maker.landed(job.slice(0, -1), 150);
+    const id = job.slice(0, -1);
+    const at = Number(job.slice(-1));
+    // A remake lands in its old take's place (the hub's fileAlbumTrack): the old one was 150 s.
+    const remade = stored.get(id)?.remakes?.some((each) => each.at === at) === true ? { at, replacedS: 150 } : undefined;
+    await maker.landed(id, seconds, remade);
     queue.shift();
     return job;
   };
@@ -57,7 +61,8 @@ function fakeServer(ids: string[], albums: AlbumOrder = 'one', singles: SinglesO
   const drain = async (): Promise<void> => {
     for (let i = 0; i < 40 && queue.length > 0; i += 1) await land();
   };
-  return { maker, queue, sent, state, land, drain, meta: (id: string) => stored.get(id) as AlbumMeta };
+  const set = (id: string, change: Partial<AlbumMeta>): void => { stored.set(id, { ...(stored.get(id) as AlbumMeta & { createdAt: string }), ...change }); };
+  return { maker, queue, sent, state, land, drain, set, meta: (id: string) => stored.get(id) as AlbumMeta };
 }
 
 test('one album at a time: the first album keeps two tracks on the server and finishes before the next begins', async () => {
@@ -151,6 +156,106 @@ test('two fills at once never send the same track twice', async () => {
   const server = fakeServer(['a']);
   await Promise.all([server.maker.next('pc'), server.maker.next('pc'), server.maker.next('pc')]);
   expect(server.sent).toEqual(['a0', 'a1']);
+});
+
+// ── Make this track again (Victoria, 2026-10-11) ──────────────────────────────
+
+const keep = { fresh: false, song: 'old-take', keep: null };
+
+test('a finished album makes only the track asked for again, then is done again: no unmade track past its length', async () => {
+  // Six planned, four fill the ten minutes: Five and Six were never meant to be made.
+  const server = fakeServer(['a'], 'one', 'turn', ['One', 'Two', 'Three', 'Four', 'Five', 'Six']);
+  await server.maker.next('pc');
+  await server.drain();
+  expect(server.meta('a').stage).toBe('done');
+  expect(server.meta('a').sent).toBe(4);
+  await server.maker.remake('a', 1, keep);
+  expect(server.meta('a')).toMatchObject({ stage: 'making', remakeOnly: 'done', redo: [] });
+  expect(server.queue).toEqual(['a1']);
+  // The new take is 50 s shorter than the old one: the album is now short of its length, and
+  // still makes nothing else.
+  await server.land(100);
+  expect(server.queue).toEqual([]);
+  expect(server.sent.slice(4)).toEqual(['a1']);
+  expect(server.meta('a')).toMatchObject({ stage: 'done', remakeOnly: null, remakes: [], sent: 4, madeS: 550 });
+});
+
+test('a stopped album makes its remake and stays stopped; its lost tracks are not made with it', async () => {
+  const server = fakeServer(['a']);
+  await server.maker.next('pc');
+  await server.land();
+  await server.maker.stop('a');
+  server.queue.length = 0;
+  server.set('a', { redo: [1] });
+  await server.maker.remake('a', 0, keep);
+  expect(server.queue).toEqual(['a0']);
+  await server.land();
+  expect(server.meta('a')).toMatchObject({ stage: 'stopped', remakeOnly: null, redo: [1] });
+});
+
+test('a remake waits its turn behind an older album still being made', async () => {
+  const server = fakeServer(['a', 'b']);
+  server.set('b', { stage: 'done', sent: 4, madeS: 600 });
+  await server.maker.next('pc');
+  await server.maker.remake('b', 2, keep);
+  expect(server.queue).toEqual(['a0', 'a1']);
+  await server.drain();
+  expect(server.sent).toEqual(['a0', 'a1', 'a2', 'a3', 'b2']);
+  expect(server.meta('a').stage).toBe('done');
+  expect(server.meta('b')).toMatchObject({ stage: 'done', remakeOnly: null, madeS: 600 });
+});
+
+test('in an album still being made, a remake goes before its next new track', async () => {
+  const server = fakeServer(['a']);
+  await server.maker.next('pc');
+  await server.land();
+  expect(server.queue).toEqual(['a1', 'a2']);
+  await server.maker.remake('a', 0, keep);
+  await server.land();
+  expect(server.queue).toEqual(['a2', 'a0']);
+  await server.drain();
+  expect(server.sent).toEqual(['a0', 'a1', 'a2', 'a0', 'a3']);
+  expect(server.meta('a')).toMatchObject({ stage: 'done', madeS: 600, remakes: [] });
+});
+
+test('a remake that fails leaves the album as it was, and says so', async () => {
+  const server = fakeServer(['a']);
+  await server.maker.next('pc');
+  await server.drain();
+  const before = server.meta('a');
+  await server.maker.remake('a', 1, keep);
+  // The new take fails on the server: its job has ended, so it is no longer listed.
+  server.queue.length = 0;
+  await server.maker.failed('a', { code: 'worker_failed', message: 'It ran out of memory.' }, 1);
+  const after = server.meta('a');
+  expect(after).toMatchObject({ stage: 'done', remakeOnly: null, remakes: [], redo: [], madeS: before.madeS, sent: before.sent, refusal: null });
+  expect(after.remakeRefusal?.message).toBe('The new take of "Two" did not work, so the old one stays. It ran out of memory.');
+  expect(after.plan).toEqual(before.plan);
+  // Asked for again, the note goes.
+  await server.maker.remake('a', 1, keep);
+  expect(server.meta('a').remakeRefusal).toBeNull();
+});
+
+test('a remake refuses by name: a track already being made again, being made, not made, or with no take', async () => {
+  const server = fakeServer(['a']);
+  await server.maker.next('pc');
+  await server.land();
+  // a1 and a2 are on the server; a3 is not sent yet.
+  await expect(server.maker.remake('a', 1, keep)).rejects.toMatchObject({ code: 'track_making' });
+  await expect(server.maker.remake('a', 3, keep)).rejects.toMatchObject({ code: 'track_missing' });
+  await expect(server.maker.remake('a', 0, { ...keep, song: null })).rejects.toMatchObject({ code: 'track_unmade' });
+  await expect(server.maker.remake('a', 0, { ...keep, fresh: true })).rejects.toMatchObject({ code: 'track_instrumental' });
+  await server.maker.remake('a', 0, keep);
+  await expect(server.maker.remake('a', 0, keep)).rejects.toMatchObject({ code: 'track_remaking' });
+});
+
+test('stopping an album making only its remake drops the remake and leaves it done', async () => {
+  const server = fakeServer(['a']);
+  await server.maker.next('pc');
+  await server.drain();
+  await server.maker.remake('a', 3, keep);
+  await server.maker.stop('a');
+  expect(server.meta('a')).toMatchObject({ stage: 'done', remakeOnly: null, remakes: [], redo: [] });
 });
 
 test('the line: one at a time is oldest first, Make this next first; taking turns, the one sent from longest ago', () => {

@@ -489,6 +489,32 @@ export class Library {
     });
   }
 
+  /**
+   * Put `fresh` (just filed into the playlist, at its end) in `old`'s place, and take `old` out:
+   * an album track made again (Victoria, 2026-10-11). `old` goes into `keepIn` (New Songs), so the
+   * old take is kept outside the album; with no `keepIn`, or that playlist gone, it is deleted
+   * once no playlist holds it. Answers false, changing nothing, when `old` is not in the playlist.
+   */
+  async replaceIn(id: string, old: string, fresh: string, keepIn: string | null): Promise<boolean> {
+    return this.serial(async () => {
+      const playlists = await this.readPlaylists();
+      const at = this.playlistIndex(playlists, id);
+      const playlist = playlists[at] as Playlist;
+      const place = playlist.songs.indexOf(old);
+      if (place < 0 || old === fresh) return false;
+      const songs = playlist.songs.map((song) => (song === old ? fresh : song));
+      playlists[at] = { ...playlist, songs: songs.filter((song, i) => song !== fresh || i === place) };
+      const keep = keepIn === null ? -1 : playlists.findIndex((each) => each.id === keepIn);
+      if (keep >= 0 && keep !== at) {
+        const into = playlists[keep] as Playlist;
+        if (!into.songs.includes(old)) playlists[keep] = { ...into, songs: [...into.songs, old] };
+      }
+      await this.writePlaylists(playlists);
+      await this.deleteIfLoose(playlists, [old]);
+      return true;
+    });
+  }
+
   /** Take a song out of a playlist; a song no playlist holds any more is deleted. Answers whether it was. */
   async removeFrom(id: string, songId: string): Promise<boolean> {
     return this.serial(async () => {

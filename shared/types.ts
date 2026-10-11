@@ -517,6 +517,28 @@ export interface AlbumMeta {
    * painting again (Victoria's Odyssey, 2026-10-11: painted by one run, never saved by the next).
    */
   readonly coverJob?: string | null;
+  /**
+   * Made tracks being made again (Victoria, 2026-10-11: "reroll" one song, such as A Thousand
+   * Ships, whose chorus did not fit the melody). Each stays the old take until the new one lands
+   * and takes its place; one that fails leaves the old take.
+   */
+  readonly remakes?: readonly AlbumRemake[];
+  /**
+   * Set while a finished, stopped or failed album makes only its remakes: the stage it goes back
+   * to once they land, so it never goes on to make tracks it did not set out to.
+   */
+  readonly remakeOnly?: AlbumStage | null;
+  /** The last remake that failed, said on the album's page until the next one is asked for. */
+  readonly remakeRefusal?: RefusalView | null;
+}
+
+/** A made track being made again: its plan place, its take now, and the words the new take sings. */
+export interface AlbumRemake {
+  readonly at: number;
+  /** The song the new take replaces (its library id); null when it could not be found. */
+  readonly song: string | null;
+  /** The words to sing: new ones, or the old take's own (corrected by hand, perhaps); null when instrumental. */
+  readonly lyrics: string | null;
 }
 
 /** One step of an album before its tracks: a line to show and, when it counts, how far through. */
