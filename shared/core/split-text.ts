@@ -106,7 +106,7 @@ export function soundPrompt(page: SongPage, wantsInstrumental: boolean): string 
     '- genre, mood, instruments, sound: 1-5 word phrases a musician would use.',
     '- vocal: the singer (e.g. "soft female voice"); empty when instrumental.',
     wantsInstrumental
-      ? '- The person wants it instrumental: instrumental is true and vocal is empty.'
+      ? '- The person wants it instrumental: instrumental is true and vocal is empty. The first instrument names the one that\n  carries the melody, as a melody ("lyrical violin melody", "searing lead guitar melody").'
       : '- instrumental: true only when the description asks for no singing (a beat, a game soundtrack, background music).',
     '- language: English unless the description asks for Chinese.',
     '- bpm: the tempo that suits it.',
@@ -123,12 +123,17 @@ export async function describeSound(writer: TextModel, page: SongPage, descripti
   const user = brief === '' ? description : `${description}\nThe lyrics will be about: ${brief}`;
   const got = await call(writer, '[sound]', 'song_sound', soundPrompt(page, wantsInstrumental), user, SOUND_SCHEMA, 300, SOUND_TEMPERATURE);
   const instrumental = wantsInstrumental || got['instrumental'] === true;
+  // An instrumental names what carries its melody (YuE2's instrumental example: "lyrical violin melody").
+  const instruments = phrasesOf(got['instruments'], '[sound]', writer);
+  if (instrumental && instruments.length > 0 && !instruments.some((phrase) => /\b(melody|lead)\b/i.test(phrase))) {
+    instruments[0] = `${instruments[0]} melody`;
+  }
   const fields = {
     language: typeof got['language'] === 'string' ? got['language'] : 'English',
     genre: phrasesOf(got['genre'], '[sound]', writer),
     mood: phrasesOf(got['mood'], '[sound]', writer),
     vocal: phrasesOf(got['vocal'], '[sound]', writer),
-    instruments: phrasesOf(got['instruments'], '[sound]', writer),
+    instruments,
     sound: phrasesOf(got['sound'], '[sound]', writer),
     bpm: typeof got['bpm'] === 'number' ? got['bpm'] : 100,
     instrumental,
@@ -143,7 +148,9 @@ export function corePrompt(sung: boolean, page: SongPage | null): string {
     'You write the shared sound of a music album for YuE2, a model that makes songs: 4-6 short style phrases every track',
     'keeps (genre, mood, instruments, production). Reply with JSON only: {"core": [...]}.',
     '- No tempo and no singer: each track sets its own. No language: B-Sides adds it.',
-    sung ? '- The album is sung.' : '- The album is instrumental: nothing about voices or singing.',
+    sung
+      ? '- The album is sung.'
+      : '- The album is instrumental: nothing about voices or singing, and no "soaring", "anthemic" or "operatic". Describe the\n  accompaniment and the sound; each track names its own lead melody.',
     SOUND_RULES,
     vocabLine(page),
     '',
@@ -170,7 +177,9 @@ export function turnsPrompt(sung: boolean, coreHasTempo: boolean, n: number, pag
     '- Each phrase is 1-4 words. Never repeat the language, the genre or anything already in the core.',
     `- Each list: 2-4 short phrases: a mood, one instrument or texture${coreHasTempo ? '' : ', and exactly one tempo written "<number> BPM"'}${sung ? ', and one singer (e.g. "warm male voice")' : ''}.`,
     '- Never repeat or contradict the core. Let the tracks differ from each other, each fitting what its song is about.',
-    sung ? '' : '- The album is instrumental: nothing about voices or singing.',
+    sung
+      ? ''
+      : '- The album is instrumental: nothing about voices or singing, and no "soaring", "anthemic" or "operatic". Each list\n  names the instrument that carries that track\'s melody, as a melody ("searing lead guitar melody", "lyrical violin\n  melody", "warm electric piano melody"): YuE2 moves the sung melody onto it, and an unnamed lead invites singing.',
     coreHasTempo ? '- The core sets the tempo: add none.' : '',
     SOUND_RULES,
     vocabLine(page),

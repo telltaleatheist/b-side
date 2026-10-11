@@ -61,6 +61,12 @@ export const NO_VOICE_CLAUSE: readonly string[] = ['no vocals', 'no singing', 'n
 
 /** A language named on its own ("Spanish", "Japanese lyrics"): recognised so English is never added beside it. */
 const LANGUAGE = /^(english|chinese|mandarin|cantonese|japanese|korean|spanish|french|german|italian|portuguese|brazilian portuguese|russian|ukrainian|polish|czech|slovak|slovenian|croatian|serbian|bosnian|bulgarian|romanian|hungarian|greek|turkish|dutch|flemish|swedish|norwegian|danish|finnish|icelandic|estonian|latvian|lithuanian|irish|gaelic|scottish gaelic|welsh|breton|basque|catalan|galician|maltese|albanian|macedonian|armenian|georgian|azerbaijani|kazakh|uzbek|mongolian|arabic|hebrew|yiddish|persian|farsi|kurdish|pashto|urdu|hindi|punjabi|bengali|gujarati|marathi|tamil|telugu|kannada|malayalam|sinhala|nepali|thai|lao|khmer|burmese|vietnamese|indonesian|malay|filipino|tagalog|cebuano|javanese|hawaiian|maori|samoan|tongan|swahili|amharic|somali|yoruba|igbo|hausa|zulu|xhosa|afrikaans|shona|wolof|lingala|haitian creole|creole|patois|latin|esperanto|sanskrit)( language| lyrics| vocals?| singing)?$/i;
+/**
+ * Words that describe a singer more than an instrument, kept out of an instrumental's style
+ * (crucible-pc-1, from YuE2's instrumental guidance, 2026-10-11): with the melody moved off the
+ * voice, nothing should invite YuE2 to sing it.
+ */
+const SINGER_LIKE = /\b(soaring|anthemic|operatic|epic choir)\b/i;
 const NO_VOICE = /^(instrumental|no vocals?|no singing|no choir|no spoken words?|without vocals|vocal-free)$/i;
 const TEMPO = /\b\d{2,3}\s*BPM\b/i;
 /** A voice by its singer alone ("male", "female"): a voice phrase too, beside VOICE_TAG's. */
@@ -98,7 +104,8 @@ function isVoice(tag: string): boolean {
 export function styleLine(tags: string, instrumental: boolean): string {
   const seen = new Set<string>();
   const phrases = splitTags(tags).filter((tag) => {
-    const key = tag.toLowerCase();
+    // "distorted guitar" and "distorted guitars" are one phrase (crucible-pc-1, 2026-10-11).
+    const key = tag.toLowerCase().replace(/s$/, '');
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -113,7 +120,7 @@ export function styleLine(tags: string, instrumental: boolean): string {
     return true;
   });
   if (instrumental) {
-    return joinTags(['Instrumental', ...rest.filter((tag) => !LANGUAGE.test(tag) && !isVoice(tag)), ...NO_VOICE_CLAUSE]);
+    return joinTags(['Instrumental', ...rest.filter((tag) => !LANGUAGE.test(tag) && !isVoice(tag) && !SINGER_LIKE.test(tag)), ...NO_VOICE_CLAUSE]);
   }
   const language = rest.find((tag) => LANGUAGE.test(tag)) ?? 'English';
   return joinTags([language, ...rest.filter((tag) => !LANGUAGE.test(tag))]);

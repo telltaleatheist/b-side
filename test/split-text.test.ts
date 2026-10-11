@@ -74,3 +74,9 @@ test("a whole style line in one turn item is split, its cut-off end dropped, one
   const [turn] = await writeTurns(sound, true, "children's pop, kids choir", [{ title: 'Crash Like Thunder, Zeus!' }], page);
   expect(turn).toBe("children's pop, playful female vocal, piano, thunderous drums");
 });
+
+test('an instrumental single names what carries its melody', async () => {
+  const sound = answering({ language: 'English', genre: ['ambient'], mood: ['calm'], vocal: [], instruments: ['piano', 'strings'], sound: [], bpm: 70, instrumental: true });
+  const described = await describeSound(sound, page, 'calm piano', true, '');
+  expect(described.tags).toContain('piano melody');
+});

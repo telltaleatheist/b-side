@@ -42,3 +42,8 @@ test("a language YuE2 does not declare is named for the Studio's note; English a
   expect(undeclaredLanguage('Mandarin, ballad')).toBeNull();
   expect(undeclaredLanguage('pop, 90 BPM')).toBeNull();
 });
+
+test('an instrumental keeps out singer-like words and plural repeats (crucible-pc-1, 2026-10-11)', () => {
+  expect(styleLine('heavy metal, epic, soaring, distorted guitar, distorted guitars, anthemic chorus, 140 BPM', true))
+    .toBe('Instrumental, heavy metal, epic, distorted guitar, 140 BPM, no vocals, no singing, no choir, no spoken words');
+});
