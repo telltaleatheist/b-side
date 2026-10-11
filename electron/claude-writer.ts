@@ -100,7 +100,7 @@ export function claudeWriter(): { readonly text: TextModel; readonly lyricist: L
 /** A song's words from Claude, named too when `titled`; lines YuE2 would cram are sent back once to be shortened. */
 async function writeLyrics(song: SongToWrite, titled: boolean): Promise<{ lyrics: string; title: string | null }> {
   const ask = async (user: string, schema: object): Promise<Record<string, unknown>> => {
-    const answer = await runClaude(claudeLyricsSystem(), user, schema);
+    const answer = await runClaude(claudeLyricsSystem(song.preChorus === true), user, schema);
     if (typeof answer['lyrics'] !== 'string' || answer['lyrics'].trim() === '') throw new Refusal('claude_failed', 'Claude answered without lyrics.');
     return answer;
   };
@@ -110,7 +110,7 @@ async function writeLyrics(song: SongToWrite, titled: boolean): Promise<{ lyrics
   const lyrics = (first['lyrics'] as string).trim();
   const budget = syllableBudget(song.tags);
   const crammed = crammedLines(lyrics, budget);
-  const misshapen = misshapenSections(lyrics);
+  const misshapen = misshapenSections(lyrics, song.preChorus === true);
   if (crammed.length === 0 && misshapen.length === 0) return { lyrics, title };
   console.log(`[claude] ${crammed.length} line(s) over ${budget} syllables, ${misshapen.length} section(s) not 4 or 8 lines; asking for them fixed`);
   const shorter = await ask(claudeLyricsShorter(lyrics, crammed, budget, misshapen), CLAUDE_LYRICS_SCHEMA)

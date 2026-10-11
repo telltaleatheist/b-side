@@ -961,7 +961,7 @@ export class HubCore {
       if (described.instrumental) {
         return { ...described, title: named ?? await nameSong(claude.words, about, described.tags), lyricsModel: claude.words.name };
       }
-      const song = { title: named, tags: described.tags.join(', '), about, brief };
+      const song = { title: named, tags: described.tags.join(', '), about, brief, ...(body['preChorus'] === true ? { preChorus: true } : {}) };
       const written = named === null && lyricist.writeTitled !== undefined
         ? await lyricist.writeTitled(song)
         : { lyrics: await lyricist.write(song), title: named };
@@ -988,6 +988,7 @@ export class HubCore {
       const ask: AlbumAsk = {
         description: albumDescription(body['description']), tags: tags as string[], minutes, sung, cfg,
         ...(title !== null ? { title } : {}),
+        ...(sung && body['preChorus'] === true ? { preChorus: true } : {}),
         ...(lyrics ? { lyrics } : {}), ...(body['exactTags'] === true ? { exactTags: true } : {}),
         ...(LENGTH_AIMS.some((aim) => aim.key === body['trackLength']) ? { trackLength: body['trackLength'] as string } : {}),
       };

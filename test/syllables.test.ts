@@ -62,3 +62,12 @@ test("no pre-chorus: YuE2's score dropped it in most of Victoria's songs (Owen, 
   // The trained shapes are left as B-Sides' model learned them.
   expect(SONG_SHAPES[0]).toContain('pre-chorus');
 });
+
+test('a pre-chorus when the person ticks it: the trained shapes, and a 4-line [Pre-Chorus] passes (Owen, 2026-10-11)', () => {
+  const user = claudeLyricsUser({ title: 'x', tags: 'pop', about: '', brief: '', preChorus: true, album: { title: 'A', artist: 'B', blurb: '', tracks: ['x'], at: 0 } });
+  expect(user).toContain(`Shape: ${SONG_SHAPES[0]}`);
+  expect(claudeLyricsSystem(true)).toContain('[Pre-Chorus] is 4 short lines');
+  const lyrics = ['[Verse]', 'a', 'b', 'c', 'd', '', '[Pre-Chorus]', 'a', 'b', 'c', 'd'].join('\n');
+  expect(misshapenSections(lyrics, true)).toEqual([]);
+  expect(misshapenSections(lyrics, false).length).toBe(1);
+});

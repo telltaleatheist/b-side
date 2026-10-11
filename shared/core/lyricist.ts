@@ -32,6 +32,8 @@ export interface SongToWrite {
   readonly brief: string;
   /** What this song is about, from the album's track list (split-text.ts [ideas]). */
   readonly idea?: string;
+  /** The person chose a pre-chorus (Make's checkbox; Owen, 2026-10-11: an option, with a warning). */
+  readonly preChorus?: boolean;
   /** For an album's track: the record around it. */
   readonly album?: {
     readonly title: string;
@@ -56,7 +58,7 @@ export interface Lyricist {
 /** The sections YuE2 composes (crucible/jobs/audio/yue2music/compile_score.py SECTIONS). */
 export const YUE_SECTIONS = ['Intro', 'Verse', 'Pre-Chorus', 'Chorus', 'Bridge', 'Interlude', 'Outro'] as const;
 
-export function claudeLyricsSystem(): string {
+export function claudeLyricsSystem(preChorus = false): string {
   return [
     'You are a working songwriter writing lyrics that an AI singer (YuE2) will sing over music it composes from a style line.',
     'Write lyrics that tell a story: a person, a place, a turn. Each verse moves the story on; the chorus says what it means;',
@@ -65,13 +67,14 @@ export function claudeLyricsSystem(): string {
     'soul like soul). No cliches, no filler, no line that only rhymes. Every line must make sense read aloud.',
     '',
     'Form, which YuE2 needs to sing every section:',
-    `- Use only these section tags, each alone on its own line, in Title Case, in square brackets: ${LYRIC_SECTIONS.map((s) => `[${s}]`).join(', ')}.`,
-    '  No [Pre-Chorus] and no [Interlude]: YuE2 drops a pre-chorus more often than it sings one, and its words then crowd the',
-    '  verse or chorus melody beside it.',
+    `- Use only these section tags, each alone on its own line, in Title Case, in square brackets: ${sectionsFor(preChorus).map((s) => `[${s}]`).join(', ')}.`,
+    preChorus
+      ? '  A [Pre-Chorus] is 4 short lines that build into the chorus. No [Interlude].'
+      : '  No [Pre-Chorus] and no [Interlude]: YuE2 drops a pre-chorus more often than it sings one, and its words then crowd the\n  verse or chorus melody beside it. Let the last lines of a verse build toward the chorus instead.',
     '- Every section is exactly 4 lines, or 8 for a verse. YuE2 plans its melody in phrases of four, one line each: a',
     '  6-line chorus has every line after the first run across a phrase, and a section under 4 lines is dropped.',
     '- Use an [Intro] or [Outro] only as 4 sung lines; otherwise start on the first verse and end on the last chorus.',
-    '- Verses 8 lines (or 4); choruses, bridges, intros and outros 4. The final chorus has its last two lines changed.',
+    `- Verses 8 lines (or 4); ${preChorus ? 'pre-choruses, ' : ''}choruses, bridges, intros and outros 4. The final chorus has its last two lines changed.`,
     '- Short lines: at most the syllables per line you are given. YuE2 sings about one bar per line, and a longer line is',
     '  crammed or loses words. Count every line\'s syllables before you answer, and split or cut any line over the budget.',
     '- Follow the shape you are given, if one is given.',
@@ -101,7 +104,8 @@ export function claudeLyricsUser(song: SongToWrite): string {
   lines.push(song.title ? `Song: "${song.title}"` : 'Song: not named yet; name it too (title: 1-5 words that fit its hook, never its first line, never generic)');
   lines.push(`Style line: ${song.tags}`);
   lines.push(`Syllables: at most ${syllableBudget(song.tags)} per line.`);
-  lines.push(`Shape: ${CLAUDE_SHAPES[(song.album?.at ?? Math.floor(Math.random() * CLAUDE_SHAPES.length)) % CLAUDE_SHAPES.length]}`);
+  const shapes = song.preChorus === true ? SONG_SHAPES : CLAUDE_SHAPES;
+  lines.push(`Shape: ${shapes[(song.album?.at ?? Math.floor(Math.random() * shapes.length)) % shapes.length]}`);
   return lines.join('\n');
 }
 
@@ -163,14 +167,14 @@ export function crammedLines(lyrics: string, budget: number): string[] {
  * verse (crucible-pc-1, 2026-10-11: "A Thousand Ships" sang a 6-line chorus over a score of four
  * 2-bar phrases, and every line after the first ran across a phrase). Each as "[Chorus] (6 lines)".
  */
-export function misshapenSections(lyrics: string): string[] {
+export function misshapenSections(lyrics: string, preChorus = false): string[] {
   const found: string[] = [];
   let tag: string | null = null;
   let lines = 0;
   const close = (): void => {
     if (tag === null) return;
     const name = tag.slice(1, -1).trim().toLowerCase();
-    if (!LYRIC_SECTIONS.some((section) => section.toLowerCase() === name)) found.push(`${tag} (not a section YuE2 sings reliably: use Verse, Chorus or Bridge)`);
+    if (!sectionsFor(preChorus).some((section) => section.toLowerCase() === name)) found.push(`${tag} (not a section YuE2 sings reliably: use Verse, Chorus or Bridge)`);
     else if (!(lines === 4 || (lines === 8 && name === 'verse'))) found.push(`${tag} (${lines} lines)`);
   };
   for (const raw of lyrics.split(/\r?\n/)) {
@@ -206,6 +210,11 @@ export function claudeLyricsShorter(lyrics: string, crammed: readonly string[], 
  * Not [Interlude]: an interlude is not sung.
  */
 export const LYRIC_SECTIONS = ['Intro', 'Verse', 'Chorus', 'Bridge', 'Outro'] as const;
+
+/** The sections a song may use: LYRIC_SECTIONS, with a pre-chorus when the person chose one. */
+export function sectionsFor(preChorus: boolean): readonly string[] {
+  return preChorus ? ['Intro', 'Verse', 'Pre-Chorus', 'Chorus', 'Bridge', 'Outro'] : LYRIC_SECTIONS;
+}
 
 /**
  * SONG_SHAPES as Claude is handed them: the same six orders, without a pre-chorus. SONG_SHAPES

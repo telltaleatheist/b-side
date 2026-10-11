@@ -47,6 +47,8 @@ export class StudioService {
   readonly description = signal('');
   /** The person's own name for the song or album (Victoria, 2026-10-11); '' leaves it to the writer. */
   readonly name = signal('');
+  /** Lyrics with a pre-chorus (Owen, 2026-10-11: an option, with a warning), as last chosen on this device. */
+  readonly preChorus = signal(readPreChorus());
   /** The length to aim for (LENGTH_AIMS' key), or '' for the server's own; songs and albums share it. */
   readonly lengthAim = signal('');
   /**
@@ -150,7 +152,9 @@ export class StudioService {
     const text = this.description().trim() || this.tagLine() || this.lyricsBrief().trim();
     const lyrics = instrumental || forAlbum ? '' : this.lyricsBrief().trim();
     const name = this.name().trim();
-    const outcome = await this.hub.call<DescribeResult>('POST', '/api/describe', { text, instrumental, lyrics, ...(name !== '' && !forAlbum ? { title: name } : {}) });
+    const outcome = await this.hub.call<DescribeResult>('POST', '/api/describe', {
+      text, instrumental, lyrics, preChorus: this.preChorus(), ...(name !== '' && !forAlbum ? { title: name } : {}),
+    });
     clearInterval(ticker);
     this.describing.set(false);
     if (!outcome.ok) {
@@ -319,5 +323,25 @@ export class StudioService {
     this.player.playWhenMade(made.map((job) => job.key));
     const playlist = made[0]?.playlist;
     if (playlist != null) void this.router.navigate(['/library', playlist]);
+  }
+}
+
+const PRE_CHORUS_KEY = 'b-sides.preChorus';
+
+/** The pre-chorus choice last made on this device; none until one is chosen. */
+function readPreChorus(): boolean {
+  try {
+    return localStorage.getItem(PRE_CHORUS_KEY) === 'yes';
+  } catch {
+    return false;
+  }
+}
+
+/** Keep the pre-chorus choice for next time (Owen: the checkbox starts as it was last left). */
+export function keepPreChorus(on: boolean): void {
+  try {
+    localStorage.setItem(PRE_CHORUS_KEY, on ? 'yes' : 'no');
+  } catch {
+    // A private window: it is only forgotten.
   }
 }

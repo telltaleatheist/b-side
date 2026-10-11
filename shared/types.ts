@@ -550,6 +550,8 @@ export interface AlbumAsk {
    */
   /** The name the person gave it in Make (Victoria, 2026-10-11): kept, and the words written to it. */
   readonly title?: string;
+  /** Sung: its lyrics may have a pre-chorus (Make's checkbox, Owen 2026-10-11); YuE2 often drops one. */
+  readonly preChorus?: boolean;
   readonly exactTags?: boolean;
 }
 

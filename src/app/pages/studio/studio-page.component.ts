@@ -19,7 +19,7 @@ import { JobsService } from '../../core/jobs.service';
 import { PlayerService } from '../../core/player.service';
 import { RememberHeightDirective } from '../../core/remember-height.directive';
 import { LibraryService } from '../../core/library.service';
-import { StudioService } from '../../core/studio.service';
+import { StudioService, keepPreChorus } from '../../core/studio.service';
 import { RefusalComponent } from '../../components/refusal/refusal.component';
 
 /**
@@ -205,6 +205,13 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
                 @if (studio.lyricsBrief().length > briefMax * 0.8) {
                   <p class="hint" [class.warn]="studio.lyricsBrief().length > briefMax">{{ studio.lyricsBrief().length }} / {{ briefMax }}{{ studio.lyricsBrief().length > briefMax ? ': too long. Shorten it before you make it; nothing is cut.' : '' }}</p>
                 }
+<label class="switch" title="A short build-up between each verse and chorus">
+                  <input type="checkbox" [checked]="studio.preChorus()" (change)="setPreChorus($any($event.target).checked)" />
+                  Pre-chorus
+                </label>
+                @if (studio.preChorus()) {
+                  <p class="hint warn">YuE2 often leaves a pre-chorus out of the melody (in 38 of 67 of Victoria's songs it dropped at least one), and its lines are then squeezed into the verse or chorus. Unticked, the verses build into the chorus instead.</p>
+                }
                 <p class="hint">Every track's lyrics are written to this, and the titles fit it. Blank: the album's description leads.</p>
               </div>
             }
@@ -268,6 +275,13 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
                       [value]="studio.lyricsBrief()" (input)="studio.lyricsBrief.set($any($event.target).value)"></textarea>
             @if (studio.lyricsBrief().length > briefMax * 0.8) {
               <p class="hint" [class.warn]="studio.lyricsBrief().length > briefMax">{{ studio.lyricsBrief().length }} / {{ briefMax }}{{ studio.lyricsBrief().length > briefMax ? ': too long. Shorten it before you make it; nothing is cut.' : '' }}</p>
+            }
+<label class="switch" title="A short build-up between each verse and chorus">
+            <input type="checkbox" [checked]="studio.preChorus()" (change)="setPreChorus($any($event.target).checked)" />
+            Pre-chorus
+            </label>
+            @if (studio.preChorus()) {
+            <p class="hint warn">YuE2 often leaves a pre-chorus out of the melody (in 38 of 67 of Victoria's songs it dropped at least one), and its lines are then squeezed into the verse or chorus. Unticked, the verses build into the chorus instead.</p>
             }
             <p class="hint">Fill in the tags writes the lyrics to this. With the Lyrics box empty, Make writes them first.</p>
           </div>
@@ -404,6 +418,11 @@ export class StudioPageComponent {
   protected readonly albumMinutes = ALBUM_MINUTES;
   protected readonly lengthAims = LENGTH_AIMS;
   protected readonly descriptionMax = DESCRIPTION_MAX;
+
+  protected setPreChorus(on: boolean): void {
+    this.studio.preChorus.set(on);
+    keepPreChorus(on);
+  }
   /** "What the lyrics are about": counted near its limit, refused by name past it (Victoria, 2026-10-11). */
   protected readonly briefMax = 2000;
   /** A sung song's language when it is not English or Chinese, the two YuE2 sings (Owen, 2026-10-11): said, not changed. */
@@ -534,6 +553,7 @@ export class StudioPageComponent {
       ...(this.studio.lengthAim() !== '' && this.studio.page()?.length ? { trackLength: this.studio.lengthAim() } : {}),
       server: this.albumServer() ?? '',
       folder: this.albumFolder(),
+      preChorus: this.albumSung() && this.studio.preChorus(),
       ...(this.studio.name().trim() !== '' ? { title: this.studio.name().trim() } : {}),
     });
     this.albumSending.set(false);
