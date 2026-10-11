@@ -55,7 +55,7 @@ import type { StoredServer } from './servers';
 import { denoiseJob, inputNameOf, runStrip, type StripWatch } from './strip';
 import { batchSeeds } from '../batch';
 import { namedSet, pickSet, planningLyrics, type Planned } from '../planning-sets';
-import { styleLine } from '../tags';
+import { styleLine, varyInstrumental } from '../tags';
 import {
   ENDED_PHASES,
   SONG_MODEL,
@@ -343,7 +343,11 @@ export class JobRunner {
       delete asked.seed;
       if (seed !== null) asked.seed = seed;
       // An instrumental's seed and set, settled now so the job shows them from the start.
-      const params = settleSong(asked);
+      const settled = settleSong(asked);
+      // Each instrumental its own key and tempo, from its seed (Owen, 2026-10-11); a listening test's exact tags stay exact.
+      const params = settled.instrumental === true && settled.tags !== undefined && settled.seed !== undefined && settled.experiment?.tags === undefined
+        ? { ...settled, tags: varyInstrumental(settled.tags, settled.seed) }
+        : settled;
       this.numbered += 1;
       const job: Job = {
         server,

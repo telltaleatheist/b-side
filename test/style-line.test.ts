@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { leadOf, leadPhrase, styleLine, undeclaredLanguage } from '../shared/tags';
+import { leadOf, leadPhrase, styleLine, undeclaredLanguage, varyInstrumental } from '../shared/tags';
 
 // The lead (the one singer, or the instrument carrying an instrumental's melody) goes first after the
 // language or "Instrumental" (Owen, 2026-10-11): lines that held it elsewhere now have it moved there.
@@ -101,4 +101,17 @@ test("an instrumental ends with YuE2's full stop, and a line that has one alread
   expect(once).toBe('Instrumental, piano melody, ambient, no vocals, no singing, no choir, no spoken words.');
   expect(styleLine(once, true)).toBe(once);
   expect(styleLine('', true)).toBe('Instrumental, piano melody, no vocals, no singing, no choir, no spoken words.');
+});
+
+test('each instrumental gets its own key and a nudged tempo from its seed, and keeps a key it has (Owen, 2026-10-11)', () => {
+  const line = 'Instrumental, electric guitar melody, heavy metal, dark, 140 BPM, no vocals, no singing, no choir, no spoken words.';
+  const a = varyInstrumental(line, 4248160977);
+  const b = varyInstrumental(line, 1001);
+  expect(a).toMatch(/ minor, \d+ BPM, no vocals/);
+  expect(a).not.toBe(b);
+  expect(varyInstrumental(a, 99)).toBe(a);
+  expect(varyInstrumental(line, 4248160977)).toBe(a);
+  const bpm = Number(/(\d+) BPM/.exec(a)?.[1]);
+  expect(Math.abs(bpm - 140)).toBeLessThanOrEqual(8);
+  expect(varyInstrumental('Instrumental, piano melody, uplifting, no vocals.', 12)).toContain(' major');
 });

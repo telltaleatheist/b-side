@@ -200,6 +200,31 @@ export function styleLine(tags: string, instrumental: boolean, lead?: string | n
   return joinTags([language, ...(chosen === null ? [] : [chosen]), ...others]);
 }
 
+const KEY = /\b[A-G](#|b)?\s+(major|minor)\b/i;
+const ROOTS = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+const DARK = /\b(dark|aggressive|melanchol|sad|brooding|menacing|grim|doom|sorrow|heavy metal|metal|haunting|tense|bittersweet)/i;
+const BRIGHT = /\b(uplifting|happy|joyful|cheerful|bright|playful|sunny|triumphant|carefree)/i;
+
+/**
+ * Each instrumental its own key and a nudged tempo (Owen, 2026-10-11: an album's metal tracks
+ * shared one riff; they shared one lead, one tempo, and no key). YuE2's own instrumental example
+ * names a key ("<key>, <BPM> BPM"). Both come from the seed, so the same seed gives the same song.
+ * A line that names a key already is left as it is, which also keeps a resent song unchanged.
+ */
+export function varyInstrumental(line: string, seed: number): string {
+  if (KEY.test(line)) return line;
+  const at = Math.abs(Math.trunc(seed));
+  const mode = DARK.test(line) && !BRIGHT.test(line) ? 'minor' : BRIGHT.test(line) && !DARK.test(line) ? 'major' : Math.floor(at / 32) % 2 === 0 ? 'minor' : 'major';
+  const key = `${ROOTS[at % ROOTS.length]} ${mode}`;
+  // Up to 8 BPM either way, never below 50.
+  const shift = (Math.floor(at / 512) % 17) - 8;
+  const nudged = line.replace(TEMPO, (bpm) => `${Math.max(50, Number(bpm.replace(/\D/g, '')) + shift)} BPM`);
+  // The key goes before the tempo, as YuE2's example has it; else before the no-voice clause.
+  if (TEMPO.test(nudged)) return nudged.replace(TEMPO, (bpm) => `${key}, ${bpm}`);
+  const clause = nudged.toLowerCase().indexOf(', no vocals');
+  return clause < 0 ? `${nudged}, ${key}` : `${nudged.slice(0, clause)}, ${key}${nudged.slice(clause)}`;
+}
+
 /** The value the request sends: one comma-separated line. */
 export function joinTags(tags: readonly string[]): string {
   return tags.join(', ');
