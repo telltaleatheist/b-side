@@ -3,7 +3,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
 
-import { SINGLES_NAME, type AlbumMeta, type AlbumStage, type Playlist, type RefusalView, type Song } from '@shared/types';
+import { SINGLES_NAME, type AlbumMeta, type AlbumStage, type JobView, type Playlist, type RefusalView, type Song } from '@shared/types';
 
 import { CoverComponent } from '../../components/cover/cover.component';
 import { IconComponent } from '../../components/icon/icon.component';
@@ -224,6 +224,10 @@ const COVER_PX = 768;
               <div class="main">
                 <div class="title">{{ row.title }}</div>
                 <div class="sub">{{ row.tags }}</div>
+                @if (trackJob(playlist, row.index); as job) {
+                  <div class="bar making-bar" [class.indeterminate]="jobShare(job) === null"><span [style.width.%]="(jobShare(job) ?? 0) * 100"></span></div>
+                  <div class="meta amber">{{ jobStatus(job, jobs.now()) }}</div>
+                }
               </div>
               <span class="mono time">{{ row.state }}</span>
               @if (canRewrite(playlist)) {
@@ -560,6 +564,11 @@ export class PlaylistsPageComponent {
     if (this.isPeer()) this.player.playPeer(this.peerKey(), playlist.id);
     else if (this.isCloud()) this.player.playCloud(playlist.id);
     else this.player.playPlaylist(playlist.id);
+  }
+
+  /** The job making this album track on a server now, for its bar; null when none is. */
+  protected trackJob(playlist: Playlist, track: number): JobView | null {
+    return this.hub.albumJobs().get(`${playlist.id}:${track}`) ?? null;
   }
 
   protected async extendAlbum(playlist: Playlist): Promise<void> {

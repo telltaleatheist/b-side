@@ -528,12 +528,16 @@ export interface HubSnapshot {
   readonly jobs: readonly JobView[];
   readonly takes: readonly Take[];
   readonly library: LibraryView;
+  /** Album tracks on a server now, every album's: for each track's bar on its album page. */
+  readonly albumJobs?: readonly JobView[];
 }
 
 /** What the hub pushes on `GET /api/events`. */
 export type HubEvent =
   | { readonly type: 'snapshot'; readonly snapshot: HubSnapshot }
   | { readonly type: 'job'; readonly job: JobView }
+  /** An album track's progress, to every device (Victoria, 2026-10-10: a bar "under each individual song"). */
+  | { readonly type: 'album-job'; readonly job: JobView }
   | { readonly type: 'take'; readonly take: Take }
   | { readonly type: 'take-gone'; readonly id: string; readonly reason: TakeGoneReason }
   | { readonly type: 'library'; readonly library: LibraryView }

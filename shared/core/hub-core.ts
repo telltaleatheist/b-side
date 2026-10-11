@@ -201,7 +201,11 @@ export class HubCore {
     this.takes.onGone((take, reason) => this.sink.send(take.client, { type: 'take-gone', id: take.id, reason }));
     this.jobs = new JobRunner(
       {
-        publish: (job) => this.sink.send(job.client, { type: 'job', job }),
+        publish: (job) => {
+          // An album's track belongs to the album's own client, which no device is: every device follows it.
+          if (job.album != null) this.sink.broadcast({ type: 'album-job', job });
+          else this.sink.send(job.client, { type: 'job', job });
+        },
         server: (name) => this.registry.get(name),
         land: async (landed) => {
           if (this.sink.isClosed(landed.job.client)) {
@@ -565,6 +569,7 @@ export class HubCore {
       jobs: this.jobs.list(client.id),
       takes: this.takes.list(client.id),
       library: await this.libraryView(),
+      albumJobs: this.jobs.albumJobs(),
     };
   }
 

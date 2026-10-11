@@ -171,6 +171,13 @@ export class JobRunner {
   ) {}
 
   /** One client's jobs, oldest first. */
+  /** Every album track on a server now (not ended), whichever album's. */
+  albumJobs(): JobView[] {
+    return [...this.jobs.values()]
+      .filter((job) => job.view.album !== null && !ENDED_PHASES.includes(job.view.phase))
+      .map((job) => ({ ...job.view }));
+  }
+
   list(client: string): JobView[] {
     return [...this.jobs.values()]
       .filter((job) => job.view.client === client)

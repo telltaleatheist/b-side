@@ -83,3 +83,17 @@ test("a song asked for with the writer's title carries it to the end, for its na
   expect(ended[0]?.title).toBe('Brown Banana Blues');
   expect(server.sent[0]?.['title']).toBeUndefined();
 });
+
+test("an album's tracks on the server are listed for every device's album page; a single song is not", async () => {
+  const server = crashingServer({ status: 'running' });
+  const runner = new JobRunner(
+    { publish: () => undefined, land: async () => { throw new Error('nothing lands'); }, server: () => ({}) as never },
+    disk, 'pending.json', async () => 0, () => server.client,
+  );
+  const pc = { name: 'pc', url: 'http://pc:7100', token: 't' } as never;
+  runner.generate(pc, { id: 'album:a', kind: 'desktop' }, { params: { tags: 'folk' }, count: 1 }, 'flac', { id: 'a', track: 4 });
+  runner.generate(pc, { id: 'c', kind: 'desktop' }, { params: { tags: 'folk' }, count: 1 }, 'flac');
+  await new Promise((rest) => setTimeout(rest, 20));
+  expect(runner.albumJobs().map((job) => job.album)).toEqual([{ id: 'a', track: 4 }]);
+  for (const job of [...runner.list('album:a'), ...runner.list('c')]) await runner.cancel(job.key).catch(() => undefined);
+});

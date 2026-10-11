@@ -3,6 +3,7 @@ import { computed, Injectable, signal } from '@angular/core';
 import type { DesktopBridge } from '@shared/api';
 import {
   DEFAULT_HUB_PORT,
+  ENDED_PHASES,
   HUB_KEY_HEADER,
   type ClientKind,
   type HubEvent,
@@ -104,6 +105,11 @@ function newId(prefix: string): string {
  * The phone closes the stream in the background and opens it again in front:
  * never a request loop (the Bookshelf app's heat lesson).
  */
+/** An album track's place: "<album id>:<plan index>". */
+export function albumJobKey(job: JobView): string {
+  return `${job.album?.id ?? ''}:${job.album?.track ?? -1}`;
+}
+
 @Injectable({ providedIn: 'root' })
 export class HubService {
   readonly kind: ClientKind = desktop !== null ? 'desktop' : isNative ? 'ios' : 'web';
@@ -119,6 +125,8 @@ export class HubService {
   readonly info = signal<HubInfo | null>(null);
   readonly servers = signal<ServerView[]>([]);
   readonly jobs = signal<JobView[]>([]);
+  /** Album tracks on a server now, by album and plan place ("<album>:<track>"). */
+  readonly albumJobs = signal<ReadonlyMap<string, JobView>>(new Map());
   readonly takes = signal<Take[]>([]);
   readonly library = signal<LibraryView>({ dir: '', songs: [], playlists: [], problems: [] });
   /** True once the first snapshot has arrived. */
@@ -352,6 +360,7 @@ export class HubService {
         this.info.set(event.snapshot.hub);
         this.servers.set([...event.snapshot.servers]);
         this.jobs.set([...event.snapshot.jobs]);
+        this.albumJobs.set(new Map((event.snapshot.albumJobs ?? []).map((job) => [albumJobKey(job), job])));
         this.takes.set([...event.snapshot.takes]);
         this.library.set(event.snapshot.library);
         this.loaded.set(true);
@@ -362,6 +371,17 @@ export class HubService {
       case 'job':
         this.upsertJob(event.job);
         break;
+      case 'album-job': {
+        const job = event.job;
+        this.albumJobs.update((jobs) => {
+          const next = new Map(jobs);
+          // Ended: its song is in the album now (or the album's page says why not).
+          if (ENDED_PHASES.includes(job.phase)) next.delete(albumJobKey(job));
+          else next.set(albumJobKey(job), job);
+          return next;
+        });
+        break;
+      }
       case 'take': {
         const known = this.takes().some((take) => take.id === event.take.id);
         this.takes.update((takes) =>
