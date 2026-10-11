@@ -169,8 +169,9 @@ export class StudioService {
       this.describeRefusal.set(outcome.refusal);
       return;
     }
-    // The lead it picked fills Lead, and is not a chip as well (Owen, 2026-10-11).
-    const lead = outcome.value.lead ?? '';
+    // The lead it picked fills Lead, and is not a chip as well (Owen, 2026-10-11). Not an instrumental
+    // album's: a lead in the box is every track's, and each track names its own melody instrument.
+    const lead = forAlbum && outcome.value.instrumental ? '' : outcome.value.lead ?? '';
     this.lead.set(lead);
     this.tags.set(outcome.value.tags.filter((tag) => tag.toLowerCase() !== lead.toLowerCase()));
     // An album's tracks follow its own Vocals choice: the song's switch and Lyrics box are not the album's.

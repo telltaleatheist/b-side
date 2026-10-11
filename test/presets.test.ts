@@ -57,3 +57,9 @@ test('saving keeps the form without a seed; deleting one brought over does not b
   expect((await store.remove([pc], 'Old')).map((p) => p.name)).toEqual(['Doom']);
   expect((await new PresetStore(nodeDisk, dir, async () => [preset('Old', 'jazz')]).list([pc])).map((p) => p.name)).toEqual(['Doom']);
 });
+
+test('a preset keeps the lead as its own param', async () => {
+  const store = new PresetStore(nodeDisk, dir, async () => []);
+  const saved = await store.save([pc], 'Piano', { ...form, lead: ' piano ' });
+  expect(saved[0]?.params).toEqual({ instrumental: true, tags: 'doom metal', lead: 'piano' });
+});

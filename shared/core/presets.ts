@@ -31,6 +31,8 @@ export function presetParams(form: SongForm): Record<string, string | number | b
   if (form.tags.trim() !== '') params['tags'] = form.tags;
   if (!form.instrumental && form.lyrics.trim() !== '') params['lyrics'] = form.lyrics;
   if (form.cfg !== null) params['cfg'] = form.cfg;
+  // The lead is its own param (Owen, 2026-10-11); a preset from before has none.
+  if (typeof form.lead === 'string' && form.lead.trim() !== '') params['lead'] = form.lead.trim();
   return params;
 }
 
