@@ -502,6 +502,16 @@ export interface Playlist {
   readonly album?: AlbumMeta;
   /** The folder it is filed in (Folder.id); absent or null: the top of the library. */
   readonly folder?: string | null;
+  /**
+   * A plain playlist's own cover file (an album's is album.cover): "<album> (Instrumental)" wears
+   * a copy of its album's (Owen, 2026-10-11). Absent: the standard cover.
+   */
+  readonly cover?: string;
+}
+
+/** The cover file a playlist or album wears; null for the standard one. */
+export function coverOf(playlist: Pick<Playlist, 'album' | 'cover'>): string | null {
+  return playlist.album?.cover ?? playlist.cover ?? null;
 }
 
 /**

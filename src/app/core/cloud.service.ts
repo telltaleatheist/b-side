@@ -1,6 +1,6 @@
 import { computed, Injectable, inject, signal } from '@angular/core';
 
-import { HUB_KEY_HEADER, type LibraryView, type Playlist, type RefusalView, type Song } from '@shared/types';
+import { coverOf, HUB_KEY_HEADER, type LibraryView, type Playlist, type RefusalView, type Song } from '@shared/types';
 
 import { PHONE_LIBRARY } from '../phone/phone-paths';
 import { HubService, isNative, STOCK_COVER, type HubAddress } from './hub.service';
@@ -105,8 +105,7 @@ export class CloudService {
   coverUrl(playlist: Playlist): string | null {
     const address = this.address();
     // A playlist (New Songs included) wears the standard cover, as an album does until its own is painted.
-    if (playlist.album == null) return STOCK_COVER;
-    const cover = playlist.album.cover;
+    const cover = coverOf(playlist);
     if (cover === null) return STOCK_COVER;
     if (address === null) return null;
     return `${address.url}/api/albums/${encodeURIComponent(playlist.id)}/cover?key=${encodeURIComponent(address.key)}&v=${encodeURIComponent(cover)}`;

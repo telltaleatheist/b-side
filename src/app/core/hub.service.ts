@@ -1,7 +1,7 @@
 import { computed, Injectable, signal } from '@angular/core';
 
 import type { DesktopBridge } from '@shared/api';
-import {
+import { coverOf,
   DEFAULT_HUB_PORT,
   ENDED_PHASES,
   HUB_KEY_HEADER,
@@ -228,8 +228,7 @@ export class HubService {
   /** An album's painted cover; the stock cover while it waits for one; null (the drawn art) for a playlist. */
   coverUrl(playlist: Playlist): string | null {
     // A playlist (New Songs included) wears the standard cover, as an album does until its own is painted.
-    if (playlist.album == null) return STOCK_COVER;
-    const cover = playlist.album.cover;
+    const cover = coverOf(playlist);
     if (cover === null) return STOCK_COVER;
     if (this.onPhone()) return this.openedPhone?.fileUrl(`${PHONE_LIBRARY}/${cover}`) ?? null;
     const address = this.address();

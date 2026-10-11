@@ -1,5 +1,6 @@
 import { computed, effect, inject, Injectable, signal, untracked } from '@angular/core';
 
+import { coverOf } from '@shared/types';
 import type { Song, Take } from '@shared/types';
 
 import { HtmlAudioOutput, NativeAudioOutput, type AudioOutput, type QueueItem } from './audio-output';
@@ -125,11 +126,11 @@ export class PlayerService {
     if (source.kind === 'cloud') {
       const remote = this.cloud.playlist(source.id);
       if (remote === null) return [];
-      const remoteArt = (remote.album ? this.cloud.coverUrl(remote) : null);
+      const remoteArt = (coverOf(remote) !== null ? this.cloud.coverUrl(remote) : null);
       return this.cloud.songsOf(remote).map((song) => ({ ...itemOfSong(song, remoteArt), key: `cloud:${song.id}`, kind: 'cloud' as const }));
     }
     if (playlist === null) return [];
-    const art = (playlist.album ? this.hub.coverUrl(playlist) : null);
+    const art = (coverOf(playlist) !== null ? this.hub.coverUrl(playlist) : null);
     return this.library.songsOf(playlist).map((song) => itemOfSong(song, art));
   });
 
@@ -446,7 +447,7 @@ export class PlayerService {
     if (playlist === null) return;
     const first = song ?? this.cloud.songsOf(playlist)[0];
     if (first !== undefined) {
-      this.play({ ...itemOfSong(first, (playlist.album ? this.cloud.coverUrl(playlist) : null)), key: `cloud:${first.id}`, kind: 'cloud' }, { kind: 'cloud', id: playlistId });
+      this.play({ ...itemOfSong(first, (coverOf(playlist) !== null ? this.cloud.coverUrl(playlist) : null)), key: `cloud:${first.id}`, kind: 'cloud' }, { kind: 'cloud', id: playlistId });
     }
   }
 
@@ -459,12 +460,12 @@ export class PlayerService {
     if (cloud) {
       const remote = this.cloud.playlist(playlistId);
       if (remote === null) return [];
-      const art = (remote.album ? this.cloud.coverUrl(remote) : null);
+      const art = (coverOf(remote) !== null ? this.cloud.coverUrl(remote) : null);
       return (songs ?? this.cloud.songsOf(remote)).map((song) => ({ ...itemOfSong(song, art), key: `cloud:${song.id}`, kind: 'cloud' as const }));
     }
     const playlist = this.library.playlist(playlistId);
     if (playlist === null) return [];
-    const art = (playlist.album ? this.hub.coverUrl(playlist) : null);
+    const art = (coverOf(playlist) !== null ? this.hub.coverUrl(playlist) : null);
     return (songs ?? this.library.songsOf(playlist)).map((song) => itemOfSong(song, art));
   }
 
@@ -479,7 +480,7 @@ export class PlayerService {
   private peerItems(peer: string, playlistId: string, songs?: readonly Song[]): PlayItem[] {
     const playlist = this.peers.playlist(peer, playlistId);
     if (playlist === null) return [];
-    const art = playlist.album ? this.peers.coverUrl(peer, playlist) : null;
+    const art = coverOf(playlist) !== null ? this.peers.coverUrl(peer, playlist) : null;
     return (songs ?? this.peers.songsOf(peer, playlist)).map((song) => ({ ...itemOfSong(song, art), key: `peer:${peer}:${song.id}`, kind: 'peer' as const, peer }));
   }
 
@@ -490,7 +491,7 @@ export class PlayerService {
     const songs = this.library.songsOf(playlist);
     // Shuffled, a whole list starts anywhere in it, not always on its first track (Victoria, 2026-10-10).
     const first = song ?? (this.shuffle() ? songs[Math.floor(Math.random() * songs.length)] : songs[0]);
-    if (first !== undefined) this.play(itemOfSong(first, (playlist.album ? this.hub.coverUrl(playlist) : null)), { kind: 'playlist', id: playlistId });
+    if (first !== undefined) this.play(itemOfSong(first, (coverOf(playlist) !== null ? this.hub.coverUrl(playlist) : null)), { kind: 'playlist', id: playlistId });
   }
 
   /**

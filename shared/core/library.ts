@@ -475,6 +475,19 @@ export class Library {
     await this.disk.remove(this.coverPath(file));
   }
 
+  /** Give a plain playlist a copy of a cover file (an album's), under a name of its own. */
+  async copyCoverTo(id: string, cover: string): Promise<void> {
+    await this.serial(async () => {
+      const playlists = await this.readPlaylists();
+      const at = this.playlistIndex(playlists, id);
+      const extension = cover.slice(cover.lastIndexOf('.') + 1);
+      const file = `${id}-${Date.now().toString(36)}.cover.${extension}`;
+      await this.disk.copy(this.coverPath(cover), this.coverPath(file));
+      playlists[at] = { ...(playlists[at] as Playlist), cover: file };
+      await this.writePlaylists(playlists);
+    });
+  }
+
   async renamePlaylist(id: string, name: string): Promise<void> {
     await this.serial(async () => {
       const clean = cleanName(name);
@@ -552,7 +565,8 @@ export class Library {
       const songs = gone.songs;
       playlists.splice(at, 1);
       await this.writePlaylists(playlists);
-      if (gone.album?.cover) await this.disk.remove(this.coverPath(gone.album.cover));
+      const cover = gone.album?.cover ?? gone.cover;
+      if (cover) await this.disk.remove(this.coverPath(cover));
       let deleted = 0;
       for (const song of songs) if (await this.deleteIfLoose(playlists, [song])) deleted += 1;
       return deleted;

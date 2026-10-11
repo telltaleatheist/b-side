@@ -52,7 +52,7 @@ import { ServerRegistry, type StoredServer, type Vault } from './servers';
 import { StripGate } from './strip';
 import { stripFacts, TakeStore, type TakeLimits } from './takes';
 import { defaultTitle } from './titles';
-import {
+import { coverOf,
   ALBUM_MINUTES,
   ALBUM_ORDERS,
   ALBUM_SPACE_GB,
@@ -548,11 +548,12 @@ export class HubCore {
     return this.library.importPath(name);
   }
 
-  /** An album's painted cover file, when it has one. */
+  /** An album's painted cover file, or a playlist's own copy of one, when it has one. */
   async coverFile(id: string): Promise<string> {
-    const album = await this.library.album(id);
-    if (album?.cover == null) throw new Refusal('no_cover', 'That album has no painted cover.', 404);
-    return this.library.coverPath(album.cover);
+    const playlist = (await this.library.list()).playlists.find((p) => p.id === id);
+    const cover = playlist === undefined ? null : coverOf(playlist);
+    if (cover === null) throw new Refusal('no_cover', 'That album has no painted cover.', 404);
+    return this.library.coverPath(cover);
   }
 
   /**
@@ -1365,7 +1366,7 @@ export class HubCore {
       const songs = new Map(view.songs.map((song) => [song.id, song]));
       const list = playlist.songs.flatMap((songId) => songs.get(songId) ?? []);
       if (list.length === 0) throw new Refusal('playlist_empty', 'There are no songs in it to make instrumental.', 409);
-      return this.makeVersions(request.client(), list, playlist.name, playlist.folder ?? null);
+      return this.makeVersions(request.client(), list, playlist.name, playlist.folder ?? null, coverOf(playlist));
     });
     // Who this hub is (its computer's name), for another B-Sides listing its library.
     this.route('GET', '/api/info', () => this.options.info);
@@ -1494,10 +1495,10 @@ export class HubCore {
    * original, into "<name> (Instrumental)": made beside `folder` when missing, reused when there
    * (Owen, 2026-10-11). Songs already there as a version are not made again. Answers the jobs.
    */
-  private async makeVersions(client: CoreClient, songs: readonly Song[], name: string, folder: string | null): Promise<unknown> {
+  private async makeVersions(client: CoreClient, songs: readonly Song[], name: string, folder: string | null, cover: string | null = null): Promise<unknown> {
     const ability = await this.stripAbility();
     if (!ability.can) throw new Refusal('strip_unavailable', ability.why ?? 'This server cannot take the voice out of songs.', 409);
-    const target = await this.instrumentalPlaylist(name, folder);
+    const target = await this.instrumentalPlaylist(name, folder, cover);
     const view = await this.library.list();
     const held = new Set((view.playlists.find((p) => p.id === target)?.songs ?? []).flatMap((songId) => view.songs.find((song) => song.id === songId)?.instrumentalOf ?? []));
     const asks = songs.filter((song) => !held.has(song.id)).map((song) => ({ song, file: this.library.audioPath(song.file) }));
@@ -1506,11 +1507,13 @@ export class HubCore {
   }
 
   /** The playlist "<name> (Instrumental)": the one there (not an album), else a new one beside `folder`. */
-  private async instrumentalPlaylist(name: string, folder: string | null): Promise<string> {
+  private async instrumentalPlaylist(name: string, folder: string | null, cover: string | null = null): Promise<string> {
     const wanted = instrumentalName(name);
     const found = (await this.library.list()).playlists.find((p) => p.album == null && p.name.trim().toLowerCase() === wanted.toLowerCase());
     if (found !== undefined) return found.id;
     const made = await this.library.createPlaylist(wanted);
+    // It wears its album's cover, not the standard one (Owen, 2026-10-11).
+    if (cover !== null) await this.library.copyCoverTo(made.id, cover).catch((err: unknown) => console.error(`[strip] could not give ${wanted} its album's cover:`, err));
     if (folder !== null) await this.library.movePlaylist(made.id, folder, null).catch((err: unknown) => console.error(`[strip] could not file ${wanted} beside its original:`, err));
     await this.libraryChanged();
     return made.id;

@@ -1,6 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 
-import { HUB_KEY_HEADER, type HubInfo, type HubSettingsView, type JobView, type LibraryView, type PeerIntroduction, type Playlist, type Song } from '@shared/types';
+import { coverOf, HUB_KEY_HEADER, type HubInfo, type HubSettingsView, type JobView, type LibraryView, type PeerIntroduction, type Playlist, type Song } from '@shared/types';
 
 import { albumJobKey, HubService, isNative, parseHubLink, STOCK_COVER } from './hub.service';
 import { hearPairLinks, readPairLink } from './pairing';
@@ -203,7 +203,7 @@ export class PeersService {
 
   coverUrl(peerKey: string, playlist: Playlist): string {
     const peer = this.byId(peerKey);
-    const cover = playlist.album?.cover ?? null;
+    const cover = coverOf(playlist);
     if (peer === null || cover === null) return STOCK_COVER;
     return `${peer.url}/api/albums/${encodeURIComponent(playlist.id)}/cover?key=${encodeURIComponent(peer.key)}&v=${encodeURIComponent(cover)}`;
   }
