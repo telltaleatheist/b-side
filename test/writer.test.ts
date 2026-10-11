@@ -75,5 +75,20 @@ test('a writer off the card is loaded first with the step shown, and a failed lo
     loadModel: async () => 'j2',
     events: async function* () { yield { event: 'failed', data: { error: { code: 'card_guard', message: 'needs 18 GiB, the card has 7' } } }; },
   });
-  await expect(loadWriter(failing, 'w', async () => undefined)).rejects.toThrow('needs 18 GiB, the card has 7');
+  await expect(loadWriter(failing, 'w', async () => undefined, 0)).rejects.toThrow('needs 18 GiB, the card has 7');
+});
+
+test('a failed writer load is tried once more, and a second try that works carries on (Victoria, 2026-10-11)', async () => {
+  const { loadWriter } = await import('../shared/core/albums');
+  let loads = 0;
+  const flaky = fake({
+    models: async () => [{ id: 'w', resident: false }],
+    loadModel: async () => { loads += 1; return `j${loads}`; },
+    events: async function* () {
+      if (loads === 1) yield { event: 'failed', data: { error: { code: 'worker_failed', message: 'Free memory on device cuda:0 (6.95/8.0 GiB)' } } };
+      else yield { event: 'done', data: {} };
+    },
+  });
+  await loadWriter(flaky, 'w', async () => undefined, 0);
+  expect(loads).toBe(2);
 });

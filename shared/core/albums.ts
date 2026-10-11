@@ -62,11 +62,30 @@ const FAILURES_TO_STOP = 3;
  * server fails is a refusal in its words. A stream that ends with no outcome is
  * followed again: the job is still the server's.
  */
-export async function loadWriter(client: CrucibleClient, model: string, step: () => Promise<void>): Promise<void> {
+export async function loadWriter(client: CrucibleClient, model: string, step: () => Promise<void>, retryMs = LOAD_RETRY_MS): Promise<void> {
   const row = (await client.models()).find((entry) => entry.id === model);
   // Not a local model (an upstream account) or already on the card: nothing to load.
   if (row === undefined || row.resident) return;
   await step();
+  // A failed load is tried once more after a pause (Victoria's laptop, 2026-10-11: on her 8 GiB card
+  // the load failed while the song model was still leaving the card, "Free memory ... 6.95/8.0 GiB",
+  // and every second try on a clear card worked).
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await loadOnce(client, model);
+      return;
+    } catch (error) {
+      if (attempt >= 2 || !(error instanceof Refusal) || error.code !== 'writer_load_failed') throw error;
+      console.error(`[albums] ${error.message}; trying once more in ${retryMs / 1000} s`);
+      await new Promise((rest) => setTimeout(rest, retryMs));
+    }
+  }
+}
+
+/** A failed writer load is tried again after this long: time for the card to clear. */
+const LOAD_RETRY_MS = 15_000;
+
+async function loadOnce(client: CrucibleClient, model: string): Promise<void> {
   const jobId = await client.loadModel(model);
   for (;;) {
     for await (const event of client.events(jobId)) {
@@ -507,8 +526,11 @@ export class AlbumMaker {
       }
     } catch (error) {
       const current = await this.hooks.meta(id);
+      const refusal = refusalOf(error);
+      // Said in the log too, so a failure on someone else's computer can be read afterwards.
+      console.error(`[albums] ${current?.plan?.title ?? id} (${id}) failed: ${refusal.code}: ${refusal.message}`);
       if (current !== null) {
-        await this.hooks.update(id, { ...current, stage: 'failed', refusal: refusalOf(error) });
+        await this.hooks.update(id, { ...current, stage: 'failed', refusal });
         await this.next(current.server);
       }
     }

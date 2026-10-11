@@ -65,7 +65,8 @@ if (!single) {
   app.quit();
 } else {
   adoptOldFolders();
-  console.log(`[main] B-Sides ${app.getVersion()} starting; this log is ${keepLog(path.join(app.getPath('userData'), 'logs'))}`);
+  const logFile = keepLog(path.join(app.getPath('userData'), 'logs'));
+  console.log(`[main] B-Sides ${app.getVersion()} starting; this log is ${logFile}`);
   app.on('second-instance', () => {
     const window = BrowserWindow.getAllWindows()[0];
     if (window !== undefined) {

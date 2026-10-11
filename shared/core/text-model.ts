@@ -71,6 +71,7 @@ export function crucibleText(client: CrucibleClient, model: string): TextModel {
         console.log(`[text] ${model} ${request.tag}: ${answer.usage?.promptTokens ?? '?'} tokens in, ${answer.usage?.completionTokens ?? '?'} out of ${request.maxTokens}, ${answer.finishReason}, ${Date.now() - started} ms`);
         return { content: answer.content, truncated: answer.finishReason === 'length' };
       } catch (error) {
+        console.error(`[text] ${model} ${request.tag}: refused after ${Date.now() - started} ms:`, error instanceof Error ? error.message : error);
         if (error instanceof CrucibleRefused && error.code === 'installing') {
           // The model's first use: the server is downloading it. Say how far along, in its words.
           throw new Refusal('model_installing', `${model} is being set up on the server first: ${error.serverMessage}`, 409);
