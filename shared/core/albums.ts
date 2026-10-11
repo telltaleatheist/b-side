@@ -24,7 +24,7 @@
 import type { CrucibleClient, CrucibleSession } from '@crucible/client';
 
 import {
-  aboutOf, batches, BPM, newAlbumTitle, newArtist, newCoverPrompt, newTrackTitles, writeSongLyrics, type AlbumConcept,
+  aboutOf, batches, BPM, newAlbumTitle, newArtist, newTrackTitles, writeSongLyrics, type AlbumConcept,
 } from './album-text';
 import { installModel, startInstall } from './crucible';
 import type { Lyricist } from './lyricist';
@@ -32,7 +32,7 @@ import { crucibleText, type TextModel } from './text-model';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { layLyrics } from './describe';
-import { writeConcept, writeCore, writeIdeas, writeTurns } from './split-text';
+import { writeConcept, writeCore, writeCover, writeIdeas, writeTurns } from './split-text';
 import { VOICE_TAG, withoutVoice } from '../tags';
 import {
   LENGTH_AIMS, type AlbumAsk, type AlbumMeta, type AlbumOrder, type AlbumPlan, type AlbumTrack, type LengthAim, type SinglesOrder, type SongPage,
@@ -390,7 +390,7 @@ export class AlbumMaker {
         return next;
       }
       case 'cover': {
-        const coverPrompt = await newCoverPrompt(writer, meta.ask, concept);
+        const coverPrompt = await writeCover(writer, meta.ask, concept);
         const now = await fresh();
         await this.hooks.update(id, { ...now, plan: { ...(now.plan as AlbumPlan), coverPrompt } });
         // The text model goes off the card first, as before an album's first cover: the painter needs it.
@@ -636,7 +636,7 @@ export class AlbumMaker {
         await show({ kind: 'plan', done: steps - 1, of: steps });
         const writer = await sound();
         const concept: AlbumConcept = { title: plan.title, artist: plan.artist, blurb: plan.blurb, coverPrompt: '', core };
-        plan = { ...plan, coverPrompt: await newCoverPrompt(writer, meta.ask, concept) };
+        plan = { ...plan, coverPrompt: await writeCover(writer, meta.ask, concept) };
         meta = { ...(await this.hooks.meta(id) ?? meta), plan };
         await this.hooks.update(id, meta);
       }

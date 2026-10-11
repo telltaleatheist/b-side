@@ -52,7 +52,7 @@ const COVER_RULE =
   + 'newspapers, screens, labels, banners, graffiti, tattoos, logos or anything else that would show letters, numbers or symbols. '
   + 'Never name the album or artist in it.';
 
-const NO_WRITING =
+export const NO_WRITING =
   'The art must carry NO writing of any kind, in any language or script: so describe no signs, neon signs, shop fronts, '
   + 'posters, billboards, books, newspapers, screens, labels, banners, graffiti, tattoos, logos or anything else that would '
   + 'show letters, numbers or symbols. Never name the album or artist in it.';

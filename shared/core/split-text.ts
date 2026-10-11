@@ -19,7 +19,7 @@
 import { Refusal } from './refusal';
 import type { TextModel } from './text-model';
 import { YUE2_STYLE_GUIDE } from './yue2-style';
-import { aboutOf, vocabLine, type AlbumConcept } from './album-text';
+import { aboutOf, NO_WRITING, vocabLine, type AlbumConcept } from './album-text';
 import { clashesIn, composeTags } from './describe';
 import { withoutVoice } from '../tags';
 import type { AlbumAsk, DescribeResult, SongPage } from '../types';
@@ -180,6 +180,23 @@ export async function writeTurns(
   const turns = got['turns'];
   if (!Array.isArray(turns) || turns.length !== n) throw new Refusal('text_unreadable', `${writer.name} gave ${Array.isArray(turns) ? turns.length : 'no'} tracks their sound, not ${n}.`);
   return turns.map((turn: unknown) => phrasesOf(turn, '[turns]', writer).join(', '));
+}
+
+/**
+ * [cover]: what the image model paints, held short. The stock 4B, asked as B-Sides' model was
+ * (200 tokens, no length), ran out of room on Victoria's Gods and Wonders (2026-10-11): a long
+ * description of nine myths. Now: one paragraph of at most 70 words, which the schema ends.
+ */
+export async function writeCover(writer: TextModel, ask: AlbumAsk, album: Pick<AlbumConcept, 'title' | 'artist' | 'blurb' | 'core'>): Promise<string> {
+  const schema = { type: 'object', additionalProperties: false, required: ['coverPrompt'], properties: { coverPrompt: { type: 'string', maxLength: 600 } } };
+  const system = [
+    'You describe album cover art for an image model. Reply with JSON only: {"coverPrompt": "..."}.',
+    '- One paragraph of at most 70 words: the subject, its setting, colours, the art style and the mood. One clear picture, not a list of everything the album is about.',
+    `- ${NO_WRITING}`,
+  ].join('\n');
+  const user = [`About: ${aboutOf(ask)}`, `Sound: ${album.core}`, `Album: "${album.title}" by ${album.artist}. ${album.blurb}`].join('\n');
+  const got = await call(writer, '[cover]', 'cover', system, user, schema, 400, WORDS_TEMPERATURE);
+  return textOf(got['coverPrompt'], '[cover]', 'coverPrompt');
 }
 
 // ── words ──────────────────────────────────────────────────────────────────────────────────
