@@ -16,6 +16,7 @@ import { writeAtomically } from './atomic';
 import { adoptOldFolder } from './adopt-old-folder';
 import { keepLog } from './log-file';
 import { Hub } from './hub/hub';
+import { useLocal } from './crucible-local';
 import { registerIpc } from './ipc';
 import { ICONS, isDev, openWindow } from './window';
 import { Agent, setGlobalDispatcher } from 'undici';
@@ -113,6 +114,14 @@ if (!single) {
       return;
     }
     registerIpc(hub);
+    // No server yet, and a Crucible on this computer published its connection: it is used at once,
+    // so the welcome's "install or connect" never shows (Owen, 2026-10-11). Anything else (none
+    // published, one already chosen) leaves it to the person.
+    if (hub.registry.all().length === 0) {
+      await useLocal(hub.registry)
+        .then((used) => hub.serversChanged(used.servers))
+        .catch((err: unknown) => console.log(`[crucible] no Crucible on this computer to use by itself: ${(err as Error).message}`));
+    }
     openWindow(hub.localAddress().url);
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) openWindow(hub.localAddress().url);

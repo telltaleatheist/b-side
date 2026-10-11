@@ -125,9 +125,11 @@ export class ServerNeeds {
     try {
       task = await client.submitTask({ type: 'module', module });
     } catch (error) {
-      // One task at a time on a server: another app's (or an install-on-submit) is running.
-      if (error instanceof CrucibleRefused && error.status === 409) {
-        this.set({ server, state: 'failed', sentence: `${server} is busy installing something else, so B-Sides asks for the vocal separator the next time it starts.`, task: null });
+      // A refusal is said as the server said it (Victoria's laptop, 2026-10-11: a 409 read as "busy
+      // installing something else" while nothing was installing, and the real reason was lost).
+      if (error instanceof CrucibleRefused) {
+        console.log(`[needs] ${server} refused the vocal separator's install: ${error.code} (${error.status}): ${error.serverMessage}`);
+        this.set({ server, state: 'failed', sentence: `${server} would not install the vocal separator (${error.code}: ${error.serverMessage}). B-Sides asks again the next time it starts.`, task: null });
         return;
       }
       throw error;
