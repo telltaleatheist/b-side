@@ -104,7 +104,7 @@ function phrases(least: number, most: number): object {
  * The schema with a song title first: asked only of a writer not held to B-Sides' model's
  * trained [describe] contract (Claude), until v3 learns it (Owen, 2026-10-10: "lets have the
  * model generate a title for one song as well, not just for albums"). Its lists are shorter, so
- * a style line runs no longer than YuE2's own examples (4 to 11 phrases): Claude fills every list
+ * a style line runs no longer than YuE2's own examples (at most 11 phrases, Owen 2026-10-11): Claude fills every list
  * it is given, whatever the prompt says (16 phrases on 2026-10-10 with SCHEMA's).
  */
 const TITLED_SCHEMA = {
@@ -117,7 +117,7 @@ const TITLED_SCHEMA = {
     mood: phrases(1, 2),
     vocal: phrases(0, 1),
     instruments: phrases(1, 3),
-    sound: phrases(0, 2),
+    sound: phrases(0, 1),
   },
 } as const;
 

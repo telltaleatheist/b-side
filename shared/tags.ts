@@ -59,7 +59,7 @@ export function withoutVoice(tags: readonly string[]): string[] {
 /** The phrases that end every instrumental style line (YuE2's own instrumental examples). */
 export const NO_VOICE_CLAUSE: readonly string[] = ['no vocals', 'no singing', 'no choir', 'no spoken words'];
 
-const LANGUAGE = /^(english|chinese|mandarin|cantonese)$/i;
+const LANGUAGE = /^(english|chinese|mandarin|cantonese|japanese|korean|spanish|french|german|italian|portuguese|russian)( lyrics| vocals?)?$/i;
 const NO_VOICE = /^(instrumental|no vocals?|no singing|no choir|no spoken words?|without vocals|vocal-free)$/i;
 const TEMPO = /\b\d{2,3}\s*BPM\b/i;
 /** A voice by its singer alone ("male", "female"): a voice phrase too, beside VOICE_TAG's. */
@@ -72,7 +72,8 @@ function isVoice(tag: string): boolean {
 /**
  * A style line in YuE2's official form (the yue2-music skill, YuE rev 18a07bb6, read 2026-10-10;
  * Owen via crucible-pc-1), applied to whatever wrote the tags, the person included:
- *   sung          the language first (every official example), the rest as written; exactly one
+ *   sung          the language first (every official example), "English" when the tags name none
+ *                 (Owen, 2026-10-11; the writers' own default), the rest as written; exactly one
  *                 "N BPM" ("describe them consistently in the style"). The voice's place varies
  *                 across the official examples, so it is not moved.
  *   instrumental  "Instrumental" first; no language and no voice; exactly one "N BPM"; ending
@@ -100,8 +101,8 @@ export function styleLine(tags: string, instrumental: boolean): string {
   if (instrumental) {
     return joinTags(['Instrumental', ...rest.filter((tag) => !LANGUAGE.test(tag) && !isVoice(tag)), ...NO_VOICE_CLAUSE]);
   }
-  const language = rest.filter((tag) => LANGUAGE.test(tag)).slice(0, 1);
-  return joinTags([...language, ...rest.filter((tag) => !LANGUAGE.test(tag))]);
+  const language = rest.find((tag) => LANGUAGE.test(tag)) ?? 'English';
+  return joinTags([language, ...rest.filter((tag) => !LANGUAGE.test(tag))]);
 }
 
 /** The value the request sends: one comma-separated line. */

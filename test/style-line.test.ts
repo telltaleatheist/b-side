@@ -21,3 +21,10 @@ test('a sung line puts the language first, keeps one tempo, and loses any instru
   expect(styleLine('contemporary pop, 96 BPM, warm female vocal, English, piano, 100 BPM, no vocals, piano', false))
     .toBe('English, contemporary pop, 96 BPM, warm female vocal, piano');
 });
+
+test('a sung line that names no language gets English first; one that names another keeps it', () => {
+  expect(styleLine('boom bap, playful, male rapper, 92 BPM', false)).toBe('English, boom bap, playful, male rapper, 92 BPM');
+  expect(styleLine('city pop, Japanese, female vocal, 110 BPM', false)).toBe('Japanese, city pop, female vocal, 110 BPM');
+  expect(styleLine('Chinese, ballad, 70 BPM', false)).toBe('Chinese, ballad, 70 BPM');
+  expect(styleLine('boom bap, Spanish, 92 BPM', true)).toBe('Instrumental, boom bap, 92 BPM, no vocals, no singing, no choir, no spoken words');
+});
