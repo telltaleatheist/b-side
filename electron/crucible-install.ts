@@ -24,6 +24,11 @@
  * a type the moment a job asks for one (install-on-submit: a `409 installing`
  * that B-Sides' job runner already follows, electron/jobs.ts), so the first
  * Generate is what fetches the song model — and the studio says so.
+ *
+ * Beyond YuE2, the vocal separator (`denoise` with `vocals-roformer`) is asked
+ * for as BookForge and Foundry ask for theirs: B-Sides' module, posted once the
+ * server is registered (shared/core/server-needs.ts; Owen, 2026-10-11). Not
+ * here: the same ask has to happen for a server connected to by its address.
  */
 import {
   compareReleases,
@@ -143,7 +148,7 @@ export function installationSteps(platform: InstallPlatform): CrucibleInstallSte
     }, {
       id: 'job-types',
       title: 'Preparing what B-Sides needs',
-      detail: 'The song model itself downloads with your first song.',
+      detail: 'The song model itself downloads with your first song; the vocal separator is asked for once B-Sides is connected.',
     }, {
       id: 'models',
       title: 'Moving models to the Linux engine',

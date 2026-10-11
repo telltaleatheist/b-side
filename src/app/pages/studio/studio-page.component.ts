@@ -7,6 +7,7 @@ import { ALBUM_MINUTES, albumBytes, DESCRIPTION_MAX, ENDED_PHASES, LENGTH_AIMS, 
 import { styleLine, undeclaredLanguage } from '@shared/tags';
 
 import { CrucibleSetupComponent } from '../../components/crucible-setup/crucible-setup.component';
+import { NeedsCrucibleComponent } from '../../components/needs-crucible/needs-crucible.component';
 import { PresetBarComponent } from '../../components/preset-bar/preset-bar.component';
 import { CoverComponent } from '../../components/cover/cover.component';
 import { IconComponent } from '../../components/icon/icon.component';
@@ -30,13 +31,15 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
  *
  * Everything the form offers — the tag suggestions, the conflicts, the cfg
  * limits, whether this server's YuE2 takes `instrumental` — is the active
- * server's own `yue2-3b` playground page. With no server yet, the form is
- * replaced by the way to get one (app-crucible-setup).
+ * server's own `yue2-3b` playground page. With no server yet, a phone or a
+ * browser tab sees the way to get one (app-crucible-setup) instead of the form;
+ * the desktop sees the form with everything that asks a server disabled, under
+ * app-needs-crucible (Owen, 2026-10-11), and its welcome sets one up.
  */
 @Component({
   selector: 'app-studio-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RefusalComponent, DecimalPipe, RouterLink, CrucibleSetupComponent, PresetBarComponent, TagInputComponent, IconComponent, CoverComponent, RememberHeightDirective],
+  imports: [RefusalComponent, DecimalPipe, RouterLink, CrucibleSetupComponent, NeedsCrucibleComponent, PresetBarComponent, TagInputComponent, IconComponent, CoverComponent, RememberHeightDirective],
   template: `
     <div class="page">
       <h1 class="page-title">Make</h1>
@@ -44,14 +47,16 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
         <button type="button" role="tab" [attr.aria-selected]="mode() === 'songs'" [class.on]="mode() === 'songs'" (click)="mode.set('songs')">Songs</button>
         <button type="button" role="tab" [attr.aria-selected]="mode() === 'album'" [class.on]="mode() === 'album'" (click)="mode.set('album')">Album</button>
       </div>
-      @if (hub.loaded() && hub.activeServer() === null) {
+      @if (hub.needsCrucible() && !isDesktop) {
+        <!-- A phone or a browser tab: its own pairing, here. The desktop has its welcome, and the form greyed below. -->
         <div class="card">
           <h2 class="card-title">Get a Crucible server</h2>
           <p class="detail">B-Sides makes songs with YuE2 on a Crucible server{{ isDesktop ? ': install Crucible on this computer, or use one that already runs somewhere.' : ' that already runs somewhere.' }}</p>
           <app-crucible-setup [addByLine]="true" />
         </div>
       } @else {
-        @if (studio.pageRefusal(); as refused) {
+        <app-needs-crucible />
+        @if (!hub.needsCrucible() && studio.pageRefusal(); as refused) {
           <app-refusal [refusal]="refused" />
           <div><button type="button" class="ghost small" (click)="studio.reload()">Try again</button></div>
         }
@@ -84,10 +89,10 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
             <p class="hint" [class.warn]="studio.description().length > descriptionMax">{{ studio.description().length }} / {{ descriptionMax }}{{ studio.description().length > descriptionMax ? ': too long. Shorten it before you make it; nothing is cut.' : '' }}</p>
           }
           <div class="describe-foot">
-            <button type="submit" class="ghost small" [disabled]="studio.describing() || studio.description().trim() === ''">
+            <button type="submit" class="ghost small" [disabled]="studio.describing() || studio.description().trim() === '' || hub.needsCrucible()">
               {{ studio.describing() ? 'Working…' : 'Fill in the tags' }}
             </button>
-            <span class="hint">@if (studio.tagModel(); as model) {{{ model }}{{ studio.page()?.writer ? ' (Claude Code on this computer)' : ' on the server' }} picks the tags{{ instrumentalHere() ? ', no singer: it is instrumental' : '' }}{{ studio.page()?.writer ? '' : '; it swaps the song model out for a minute' }}.@if (mode() !== 'album') {@if (studio.page()?.lyricist; as lyricist) { {{ lyricist }} (Claude Code on this computer) {{ instrumentalHere() ? 'names it' : 'writes the lyrics and names it' }}.} @else if (!instrumentalHere()) { It writes the lyrics too.}}} @else {{{ studio.page()?.tagModelReason ?? 'Reading which tag model this server has…' }}}</span>
+            <span class="hint">@if (studio.tagModel(); as model) {{{ model }}{{ studio.page()?.writer ? ' (Claude Code on this computer)' : ' on the server' }} picks the tags{{ instrumentalHere() ? ', no singer: it is instrumental' : '' }}{{ studio.page()?.writer ? '' : '; it swaps the song model out for a minute' }}.@if (mode() !== 'album') {@if (studio.page()?.lyricist; as lyricist) { {{ lyricist }} (Claude Code on this computer) {{ instrumentalHere() ? 'names it' : 'writes the lyrics and names it' }}.} @else if (!instrumentalHere()) { It writes the lyrics too.}}} @else {{{ hub.needsCrucible() ? 'Needs a Crucible server.' : (studio.page()?.tagModelReason ?? 'Reading which tag model this server has…') }}}</span>
           </div>
           @if (studio.describing()) {
             <div class="progress-line">

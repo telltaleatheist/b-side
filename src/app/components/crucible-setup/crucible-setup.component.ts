@@ -63,6 +63,7 @@ type Busy = 'install' | 'start' | 'use' | 'retry' | 'restart' | 'pairing' | 'uni
   template: `
     <div class="setup">
       @if (isDesktop) {
+        @if (localDoors()) {
         @switch (face()) {
           @case ('looking') {
             <p class="hint">Looking for Crucible on this computer…</p>
@@ -222,6 +223,7 @@ type Busy = 'install' | 'start' | 'use' | 'retry' | 'restart' | 'pairing' | 'uni
             </div>
           </details>
         }
+        }
       } @else if (hub.onPhone()) {
         <p class="hint">This phone makes songs on a Crucible server by itself. Add one by its name or address; B-Sides remembers each one you add.</p>
       } @else {
@@ -235,9 +237,10 @@ type Busy = 'install' | 'start' | 'use' | 'retry' | 'restart' | 'pairing' | 'uni
         <div class="door">
           <span class="door-name">Use a Crucible server</span>
           <span class="hint">A Crucible running on another computer: type its name or address. B-Sides remembers it, and Settings switches between the ones you add.</span>
+          <span class="hint">A server that asks for no token connects without one.</span>
           <app-pair-server />
           <details>
-            <summary class="hint">…or paste its pairing line</summary>
+            <summary class="hint">…or paste its pairing line (the #token part only when the server has one)</summary>
             <form class="line" (submit)="$event.preventDefault(); addPairing()">
               <input type="password" autocomplete="off" spellcheck="false" placeholder="crucible://name@host:7100/#token"
                      [value]="pairing()" (input)="pairing.set($any($event.target).value)" />
@@ -303,6 +306,11 @@ export class CrucibleSetupComponent {
    * "install" is a screen arguing with itself.
    */
   readonly manage = input(false);
+  /**
+   * The doors for the Crucible on this computer (install, start, use). Off on the welcome's
+   * "connect to another server" step (Owen, 2026-10-11), which is only the pairing.
+   */
+  readonly localDoors = input(true);
 
   protected readonly hub = inject(HubService);
   protected readonly isDesktop = desktop !== null;

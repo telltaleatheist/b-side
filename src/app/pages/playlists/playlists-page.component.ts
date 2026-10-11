@@ -8,6 +8,7 @@ import { SINGLES_NAME, type AlbumMeta, type AlbumStage, type Folder, type JobVie
 
 import { CoverComponent } from '../../components/cover/cover.component';
 import { FolderMoveComponent } from '../../components/folder-move/folder-move.component';
+import { NeedsCrucibleComponent } from '../../components/needs-crucible/needs-crucible.component';
 import { FoldersService, type DropTarget, type ShelfItem } from '../../core/folders.service';
 import { IconComponent } from '../../components/icon/icon.component';
 import { albumProgress, coverNote } from '../../core/album-progress';
@@ -36,7 +37,7 @@ const COVER_PX = 768;
 @Component({
   selector: 'app-playlists-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RefusalComponent, RouterLink, CoverComponent, IconComponent, NgTemplateOutlet, FolderMoveComponent],
+  imports: [RefusalComponent, RouterLink, CoverComponent, IconComponent, NgTemplateOutlet, FolderMoveComponent, NeedsCrucibleComponent],
   template: `
     <div class="page" [attr.data-drop-playlist]="remote() ? null : (selected()?.id ?? null)">
       @if (selected(); as playlist) {
@@ -67,11 +68,11 @@ const COVER_PX = 768;
                      (keydown.escape)="renaming.set(null)"
                      (blur)="renamePlaylist(playlist, $any($event.target).value)" />
             } @else {
-              <h1 class="head-title">{{ playlist.name }}@if (canRewrite(playlist)) {<button type="button" class="icon-btn reroll" aria-label="A new album title" title="A new title, written by the album's model" [disabled]="rewriting() !== null" (click)="rewrite(playlist, 'title')"><app-icon name="reroll" [size]="18" /></button>}</h1>
+              <h1 class="head-title">{{ playlist.name }}@if (canRewrite(playlist)) {<button type="button" class="icon-btn reroll" aria-label="A new album title" title="A new title, written by the album's model" [disabled]="rewriting() !== null || hub.needsCrucible()" (click)="rewrite(playlist, 'title')"><app-icon name="reroll" [size]="18" /></button>}</h1>
             }
             @if (playlist.album; as album) {
               @if (album.artist) {
-                <span class="head-artist">{{ album.artist }}@if (canRewrite(playlist)) {<button type="button" class="icon-btn reroll" aria-label="A new artist" title="A new artist, written by the album's model" [disabled]="rewriting() !== null" (click)="rewrite(playlist, 'artist')"><app-icon name="reroll" [size]="14" /></button>}</span>
+                <span class="head-artist">{{ album.artist }}@if (canRewrite(playlist)) {<button type="button" class="icon-btn reroll" aria-label="A new artist" title="A new artist, written by the album's model" [disabled]="rewriting() !== null || hub.needsCrucible()" (click)="rewrite(playlist, 'artist')"><app-icon name="reroll" [size]="14" /></button>}</span>
               }
               @if (rewriting(); as what) { <span class="hint">Writing {{ what }} again…</span> }
               @if (album.blurb) { <span class="head-blurb">{{ album.blurb }}</span> }
@@ -115,7 +116,7 @@ const COVER_PX = 768;
                 </button>
               }
               @if (!remote() && canContinue()) {
-                <button type="button" class="ghost" (click)="continueAlbum(playlist)"><app-icon name="play-next" [size]="18" />{{ playlist.album?.stage === 'done' ? 'Make the missing tracks' : 'Continue making it' }}</button>
+                <button type="button" class="ghost" [disabled]="hub.needsCrucible()" (click)="continueAlbum(playlist)"><app-icon name="play-next" [size]="18" />{{ playlist.album?.stage === 'done' ? 'Make the missing tracks' : 'Continue making it' }}</button>
               }
               @if (!remote() && playlist.album && busy(playlist.album.stage) && !interrupted(playlist.album)) {
                 <button type="button" class="ghost stop" (click)="stopAlbum(playlist)"><app-icon name="close" [size]="16" />Stop making it</button>
@@ -124,8 +125,8 @@ const COVER_PX = 768;
                 <button type="button" class="ghost" [title]="playlist.album.waitingFor ? 'Make this album before the others on its computer; the songs already started for the one ahead still finish' : 'Give this album the very next turn'" (click)="makeNext(playlist)"><app-icon name="play-next" [size]="16" />Make this next</button>
               }
               @if (canRewrite(playlist)) {
-                <button type="button" class="ghost" [disabled]="rewriting() !== null" title="The album's model describes the cover again; the image model, when the server has one, paints it" (click)="rewrite(playlist, 'cover')"><app-icon name="reroll" [size]="16" />New cover</button>
-                <button type="button" class="ghost" [disabled]="rewriting() !== null" title="15 more minutes of this album: new songs at the end, same sound, names that are not already on it" (click)="extendAlbum(playlist)"><app-icon name="queue-add" [size]="16" />More like this</button>
+                <button type="button" class="ghost" [disabled]="rewriting() !== null || hub.needsCrucible()" title="The album's model describes the cover again; the image model, when the server has one, paints it" (click)="rewrite(playlist, 'cover')"><app-icon name="reroll" [size]="16" />New cover</button>
+                <button type="button" class="ghost" [disabled]="rewriting() !== null || hub.needsCrucible()" title="15 more minutes of this album: new songs at the end, same sound, names that are not already on it" (click)="extendAlbum(playlist)"><app-icon name="queue-add" [size]="16" />More like this</button>
               }
               @if (!remote() && playlist.album) {
                 <button type="button" class="ghost" title="Open Make with this album's description and settings, to change and make a new album beside this one" (click)="remakeAlbum(playlist)"><app-icon name="reroll" [size]="16" />Make it again</button>
@@ -146,6 +147,10 @@ const COVER_PX = 768;
             </div>
           </div>
         </header>
+        @if (playlist.album && !remote()) {
+          <!-- Its new names, cover, tracks and takes are all made on a server (Owen, 2026-10-11). -->
+          <app-needs-crucible />
+        }
         @if (movingPlaylist() && !remote()) {
           <app-folder-move [item]="shelfPlaylist(playlist.id)" (done)="movingPlaylist.set(false)" />
         }
@@ -210,10 +215,10 @@ const COVER_PX = 768;
                 <button type="button" class="icon-btn" aria-label="Move down" title="Move down" [disabled]="at === songs().length - 1" (click)="move(playlist, at, 1)"><app-icon name="down" [size]="18" /></button>
                 <button type="button" class="icon-btn" aria-label="Rename" title="Rename" (click)="renaming.set(song.id)"><app-icon name="edit" [size]="16" /></button>
                 @if (canRewrite(playlist) && trackPlace(playlist, song.title) !== null) {
-                  <button type="button" class="icon-btn" aria-label="A new name" title="A new name, written by the album's model" [disabled]="rewriting() !== null" (click)="rewrite(playlist, 'track', trackPlace(playlist, song.title)!)"><app-icon name="reroll" [size]="16" /></button>
+                  <button type="button" class="icon-btn" aria-label="A new name" title="A new name, written by the album's model" [disabled]="rewriting() !== null || hub.needsCrucible()" (click)="rewrite(playlist, 'track', trackPlace(playlist, song.title)!)"><app-icon name="reroll" [size]="16" /></button>
                 }
                 @if (canRemake(playlist, song)) {
-                  <button type="button" class="icon-btn narrow-keep" aria-label="Make this track again" title="Make this track again: a new take in this one's place" [attr.aria-expanded]="remakeMenu() === song.id" [disabled]="remakeState(playlist, song) !== null" (click)="remakeMenu.set(remakeMenu() === song.id ? null : song.id)"><app-icon name="make" [size]="17" /></button>
+                  <button type="button" class="icon-btn narrow-keep" aria-label="Make this track again" title="Make this track again: a new take in this one's place" [attr.aria-expanded]="remakeMenu() === song.id" [disabled]="remakeState(playlist, song) !== null || hub.needsCrucible()" (click)="remakeMenu.set(remakeMenu() === song.id ? null : song.id)"><app-icon name="make" [size]="17" /></button>
                 }
                 @if (!playlist.album && moveTargets(playlist).length > 0) {
                   <button type="button" class="icon-btn" aria-label="Move to another playlist" title="Move to another playlist" (click)="moving.set(moving() === song.id ? null : song.id)"><app-icon name="library" [size]="17" /></button>
@@ -266,7 +271,7 @@ const COVER_PX = 768;
               <span class="mono time">{{ row.state }}</span>
               @if (canRewrite(playlist)) {
                 <div class="actions shown">
-                  <button type="button" class="icon-btn" aria-label="A new name" title="A new name, written by the album's model" [disabled]="rewriting() !== null" (click)="rewrite(playlist, 'track', row.index)"><app-icon name="reroll" [size]="16" /></button>
+                  <button type="button" class="icon-btn" aria-label="A new name" title="A new name, written by the album's model" [disabled]="rewriting() !== null || hub.needsCrucible()" (click)="rewrite(playlist, 'track', row.index)"><app-icon name="reroll" [size]="16" /></button>
                 </div>
               }
             </div>

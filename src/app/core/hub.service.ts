@@ -133,6 +133,13 @@ export class HubService {
   readonly loaded = signal(false);
 
   readonly activeServer = computed(() => this.servers().find((server) => server.active) ?? null);
+  /**
+   * No Crucible server is set up (Owen, 2026-10-11: "the app doesnt work without a crucible
+   * connection of some sort, so it should disable all functions that would require crucible"):
+   * every act that asks a server is disabled while this is true, with app-needs-crucible beside
+   * it. False until the first snapshot, so nothing flickers disabled on a start.
+   */
+  readonly needsCrucible = computed(() => this.loaded() && this.activeServer() === null);
 
   private readonly takeListeners: ((take: Take) => void)[] = [];
   private readonly filedListeners: ((job: JobView) => void)[] = [];

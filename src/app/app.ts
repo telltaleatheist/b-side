@@ -9,6 +9,7 @@ import { IconComponent, type IconName } from './components/icon/icon.component';
 import { MiniPlayerComponent } from './components/mini-player/mini-player.component';
 import { NowPlayingComponent } from './components/now-playing/now-playing.component';
 import { PlayerBarComponent } from './components/player-bar/player-bar.component';
+import { WelcomeComponent } from './components/welcome/welcome.component';
 import { SINGLES_NAME, type Playlist } from '@shared/types';
 
 import { albumProgress, type AlbumProgress } from './core/album-progress';
@@ -51,7 +52,7 @@ interface Room {
   },
   imports: [
     NgTemplateOutlet, RouterOutlet, RouterLink, RouterLinkActive, ConfirmDialogComponent, HubPickerComponent, CoverComponent,
-    IconComponent, MiniPlayerComponent, NowPlayingComponent, PlayerBarComponent, SwipeDirective,
+    IconComponent, MiniPlayerComponent, NowPlayingComponent, PlayerBarComponent, SwipeDirective, WelcomeComponent,
   ],
   template: `
     <div class="shell">
@@ -177,6 +178,7 @@ interface Room {
 
     @if (ui.nowPlayingOpen()) { <app-now-playing mode="sheet" /> }
     <app-confirm-dialog />
+    @if (hub.kind === 'desktop' && hub.state() !== 'key') { <app-welcome /> }
     @if (dropInto(); as into) {
       <div class="drop-hint" role="status"><app-icon name="queue-add" [size]="20" />Drop to add to <strong>{{ into }}</strong></div>
     }

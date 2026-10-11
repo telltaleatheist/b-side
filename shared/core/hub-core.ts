@@ -21,6 +21,7 @@
 import type { CrucibleClient } from '@crucible/client';
 
 import { AlbumMaker, albumLine, trackSong } from './albums';
+import { ServerNeeds } from './server-needs';
 import { clientFor, clientName, probe, serverPresets, setClientName, songPage, startInstall } from './crucible';
 import { PresetStore } from './presets';
 import { describe, layLyrics, lyricsBrief } from './describe';
@@ -280,6 +281,7 @@ export class HubCore {
   private readonly sink: EventSink;
   private preferences: HubPreferences = DEFAULT_PREFERENCES;
   private readonly presets: PresetStore;
+  private readonly needs = new ServerNeeds();
 
   constructor(private readonly options: HubCoreOptions) {
     this.sink = options.sink;
@@ -442,6 +444,7 @@ export class HubCore {
 
   /** Follow again the jobs that were generating when this hub last stopped, and the albums being made. */
   async resume(): Promise<void> {
+    this.askNeeds();
     await this.jobs.resume();
     // Before any album opens a new one: this install's album sessions left over from a run that
     // ended (crucible-pc-1, 2026-10-11: every hold has an owner and a reconciler that finds orphans).
@@ -822,7 +825,23 @@ export class HubCore {
    */
   serversChanged(servers: ServerView[] = this.registry.views()): ServerView[] {
     this.sink.broadcast({ type: 'servers', servers });
+    this.askNeeds();
     return servers;
+  }
+
+  /**
+   * Ask the server in use for what B-Sides needs beyond YuE2, once per server per run: on a
+   * start, and whenever a server is set up or switched to (Owen, 2026-10-11; server-needs.ts).
+   * In the background; nothing waits on it.
+   */
+  private askNeeds(): void {
+    let server;
+    try {
+      server = this.registry.active();
+    } catch {
+      return;
+    }
+    void this.needs.ensure(server.name, clientFor(server));
   }
 
   async snapshot(client: CoreClient): Promise<HubSnapshot> {
@@ -951,6 +970,11 @@ export class HubCore {
 
     // ── Crucible servers (tokens go in, never come out) ─────────────────────
     this.route('GET', '/api/servers', () => this.registry.views());
+    // What the server in use was asked for beyond YuE2, and where that got to (server-needs.ts).
+    this.route('GET', '/api/server-needs', () => {
+      const active = this.registry.views().find((server) => server.active);
+      return active === undefined ? null : this.needs.of(active.name);
+    });
     this.route('POST', '/api/servers/pairing', async (request) =>
       this.serversChanged(await this.registry.addPairing(text((await request.body())['line'], 'line'))));
     // By address alone: begin, then poll at `pollAfterMs` until it is not pending.

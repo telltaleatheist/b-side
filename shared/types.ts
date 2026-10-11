@@ -76,6 +76,20 @@ export interface ServerProbe {
   readonly audio: boolean;
 }
 
+/**
+ * What B-Sides asked a server for beyond YuE2 (the vocal separator, shared/core/server-needs.ts;
+ * Owen, 2026-10-11), and where that got to. `GET /api/server-needs`: the active server's, or null.
+ */
+export interface ServerNeedsView {
+  readonly server: string;
+  /** checking: reading the server; installing: its module task runs; not-here: its engine has no separator. */
+  readonly state: 'checking' | 'installing' | 'ready' | 'not-here' | 'failed';
+  /** The sentence to show, as it is. */
+  readonly sentence: string;
+  /** The Crucible task installing it, when one was posted. */
+  readonly task: string | null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // The song page (from GET /v1/playground)
 // ─────────────────────────────────────────────────────────────────────────────
