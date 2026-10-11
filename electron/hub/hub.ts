@@ -435,6 +435,8 @@ export class Hub {
     }, true);
 
     // ── other libraries ─────────────────────────────────────────────────────────
+    // The album tracks on a server now: another B-Sides reading this library shows each one's progress.
+    this.route('GET', '/api/albums/jobs', () => this.core.jobs.albumJobs());
     // A B-Sides that adds this one offers its own library back: it says its name and port,
     // and its address is where the request came from. This computer then adds it, or not.
     this.route('POST', '/api/peers/introduce', async (request) => {

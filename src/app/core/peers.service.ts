@@ -1,8 +1,8 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 
-import { HUB_KEY_HEADER, type HubInfo, type HubSettingsView, type LibraryView, type PeerIntroduction, type Playlist, type Song } from '@shared/types';
+import { HUB_KEY_HEADER, type HubInfo, type HubSettingsView, type JobView, type LibraryView, type PeerIntroduction, type Playlist, type Song } from '@shared/types';
 
-import { HubService, isNative, parseHubLink, STOCK_COVER } from './hub.service';
+import { albumJobKey, HubService, isNative, parseHubLink, STOCK_COVER } from './hub.service';
 import { hearPairLinks, readPairLink } from './pairing';
 
 const STORED_PEERS = 'bside.peers';
@@ -24,6 +24,8 @@ export interface Peer {
   /** The computer's name, from its hub. */
   readonly hostname: string | null;
   readonly library: LibraryView | null;
+  /** Its album tracks on a server now, by "<album>:<track>" (read only while it is making an album). */
+  readonly albumJobs: ReadonlyMap<string, JobView>;
 }
 
 interface StoredPeer {
@@ -189,6 +191,11 @@ export class PeersService {
     return playlist.songs.map((id) => songs.get(id)).filter((song): song is Song => song !== undefined);
   }
 
+  /** An album track being made in that library now, or null. */
+  albumJob(peerKey: string, playlistId: string, track: number): JobView | null {
+    return this.byId(peerKey)?.albumJobs.get(`${playlistId}:${track}`) ?? null;
+  }
+
   audioUrl(peerKey: string, songId: string): string {
     const peer = this.byId(peerKey);
     return peer === null ? '' : `${peer.url}/api/songs/${encodeURIComponent(songId)}/audio?key=${encodeURIComponent(peer.key)}`;
@@ -204,10 +211,7 @@ export class PeersService {
   /** Look at every library, then again soon while one is making an album, else in a while. */
   private async lookAgain(): Promise<void> {
     await this.lookAll();
-    const making = this.present().some((peer) => peer.library?.playlists.some((playlist) => {
-      const album = playlist.album;
-      return album != null && album.working !== false && ['planning', 'cover', 'making'].includes(album.stage);
-    }));
+    const making = this.present().some((peer) => peer.library !== null && makingAlbum(peer.library));
     setTimeout(() => void this.lookAgain(), making ? LOOK_WHILE_MAKING_MS : LOOK_EVERY_MS);
   }
 
@@ -259,12 +263,15 @@ export class PeersService {
         }
       }
     }
+    // While it is making an album, each track's progress too (a hub without that list yet answers nothing: no bars).
+    const jobs = library !== null && makingAlbum(library) ? await this.get<JobView[]>(at, '/api/albums/jobs') : null;
     this.peers.update((peers) => peers.map((other) => other.url !== url ? other : {
       ...other,
       url: library !== null ? at.url : other.url,
       state: library === null ? 'away' : 'ok',
       library: library ?? other.library,
       hostname: info?.hostname ?? other.hostname,
+      albumJobs: new Map((jobs ?? []).map((job) => [albumJobKey(job), job])),
     }));
     if (at.url !== url || (info !== null && info.hostname !== peer.hostname)) this.store();
     this.dedupe();
@@ -283,7 +290,7 @@ export class PeersService {
   }
 
   private fresh(stored: StoredPeer): Peer {
-    return { url: stored.url, key: stored.key ?? '', label: stored.label ?? null, state: 'looking', hostname: stored.hostname ?? null, library: null };
+    return { url: stored.url, key: stored.key ?? '', label: stored.label ?? null, state: 'looking', hostname: stored.hostname ?? null, library: null, albumJobs: new Map() };
   }
 
   private store(): void {
@@ -294,6 +301,14 @@ export class PeersService {
       // Kept for this run only.
     }
   }
+}
+
+/** Whether a library is making an album now (not stopped or interrupted). */
+function makingAlbum(library: LibraryView): boolean {
+  return library.playlists.some((playlist) => {
+    const album = playlist.album;
+    return album != null && album.working !== false && ['planning', 'cover', 'making'].includes(album.stage);
+  });
 }
 
 function sameHost(a: string | null | undefined, b: string | null | undefined): boolean {

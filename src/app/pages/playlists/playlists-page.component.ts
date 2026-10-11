@@ -585,6 +585,7 @@ export class PlaylistsPageComponent {
 
   /** The job making this album track on a server now, for its bar; null when none is. */
   protected trackJob(playlist: Playlist, track: number): JobView | null {
+    if (this.isPeer()) return this.peers.albumJob(this.peerKey(), playlist.id, track);
     return this.hub.albumJobs().get(`${playlist.id}:${track}`) ?? null;
   }
 
