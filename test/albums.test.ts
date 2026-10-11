@@ -45,10 +45,10 @@ test('the progress line says what the maker is doing, and the bar only goes forw
 import { AlbumMaker, type AlbumHooks } from '../shared/core/albums';
 import type { AlbumMeta } from '../shared/types';
 
-/** An album with four planned tracks, cover painted, as a fake hub holds it. */
 /** The albums making their music on the server, oldest first (only the first sends tracks). */
 let line: string[] = ['a'];
 
+/** An album with four planned tracks, cover painted, as a fake hub holds it. */
 function fakeAlbum(meta: Partial<AlbumMeta>, songs: { title: string; durationS: number }[], flying: number[] = []) {
   const tracks = ['One', 'Two', 'Three', 'Four'].map((title) => ({ title, tags: 'folk', lyrics: null }));
   let stored: AlbumMeta = {
@@ -130,4 +130,22 @@ test('a newer album waits for the one ahead on its server, then makes its music 
   await album.maker.next('pc');
   expect(album.rendered.length).toBeGreaterThan(0);
   line = ['a'];
+});
+
+test('more like this: 15 more minutes, planning new tracks only when too few unmade ones are left', async () => {
+  // Four planned, three sent: one spare, so seven more are planned after the four.
+  const few = fakeAlbum({ stage: 'done', sent: 3 }, []);
+  const grown = await few.maker.extend('a');
+  expect(grown.ask.minutes).toBe(25);
+  expect(grown.stage).toBe('planning');
+  expect(grown.plan?.trackCount).toBe(11);
+  expect(grown.plan?.tracks.length).toBe(4);
+  // Twenty planned, ten sent: the ten unmade tracks fill it; nothing new is planned, the music goes on.
+  const tracks = Array.from({ length: 20 }, (_, at) => ({ title: `T${at}`, tags: 'folk', lyrics: null }));
+  const spare = fakeAlbum({ stage: 'done', sent: 10, madeS: 600, plan: { title: 'T', artist: 'A', blurb: '', coverPrompt: '', tracks } }, []);
+  const more = await spare.maker.extend('a');
+  expect(more.stage).toBe('making');
+  expect(more.plan?.trackCount).toBeUndefined();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(spare.rendered.length).toBeGreaterThan(0);
 });

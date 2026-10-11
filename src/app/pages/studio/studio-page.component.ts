@@ -354,6 +354,16 @@ export class StudioPageComponent {
   protected readonly spaceFull = computed(() => this.hub.onPhone() && this.spaceUsed() >= this.spaceLimitGb() * 1e9 * 0.95);
 
   constructor() {
+    // Opened to make an album again: its settings, ready to change (the form fields are the studio's).
+    const remake = this.studio.remake();
+    if (remake !== null) {
+      this.studio.remake.set(null);
+      this.mode.set('album');
+      this.albumLength.set(ALBUM_MINUTES.includes(remake.ask.minutes) ? remake.ask.minutes : 60);
+      this.albumSung.set(remake.ask.sung);
+      this.albumExact.set(remake.ask.exactTags === true);
+      this.pickedServer.set(remake.server);
+    }
     void this.hub.call<HubPreferences>('GET', '/api/preferences').then((outcome) => {
       if (outcome.ok) this.preferences.set(outcome.value);
     });

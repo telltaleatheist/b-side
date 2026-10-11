@@ -13,6 +13,7 @@ import { ConfirmService } from '../../core/confirm.service';
 import { clockText } from '../../core/format';
 import { desktop, HubService } from '../../core/hub.service';
 import { LibraryService } from '../../core/library.service';
+import { StudioService } from '../../core/studio.service';
 import { OfflineService } from '../../core/offline.service';
 import { jobCancellable, jobEnded, jobShare, jobStatus, jobTitle } from '../../core/job-status';
 import { JobsService } from '../../core/jobs.service';
@@ -115,6 +116,10 @@ const COVER_PX = 768;
               }
               @if (canRewrite(playlist)) {
                 <button type="button" class="ghost" [disabled]="rewriting() !== null" title="The album's model describes the cover again; the image model, when the server has one, paints it" (click)="rewrite(playlist, 'cover')"><app-icon name="reroll" [size]="16" />New cover</button>
+                <button type="button" class="ghost" [disabled]="rewriting() !== null" title="15 more minutes of this album: new songs at the end, same sound, names that are not already on it" (click)="extendAlbum(playlist)"><app-icon name="queue-add" [size]="16" />More like this</button>
+              }
+              @if (!remote() && playlist.album) {
+                <button type="button" class="ghost" title="Open Make with this album's description and settings, to change and make a new album beside this one" (click)="remakeAlbum(playlist)"><app-icon name="reroll" [size]="16" />Make it again</button>
               }
               @if (ownCover(playlist)) {
                 <label class="ghost file-pick" title="Pick an image for the cover; or drop one on the cover, or paste one">
@@ -383,6 +388,7 @@ export class PlaylistsPageComponent {
 
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly studio = inject(StudioService);
   /** The playlist the address names (`/library/<id>`), or none: the grid. */
   private readonly chosen = toSignal(this.route.paramMap.pipe(map((params) => params.get('id'))), { initialValue: null });
   protected readonly cloud = inject(CloudService);
@@ -549,6 +555,18 @@ export class PlaylistsPageComponent {
     if (this.isPeer()) this.player.playPeer(this.peerKey(), playlist.id);
     else if (this.isCloud()) this.player.playCloud(playlist.id);
     else this.player.playPlaylist(playlist.id);
+  }
+
+  protected async extendAlbum(playlist: Playlist): Promise<void> {
+    const outcome = await this.hub.call<unknown>('POST', `/api/albums/${encodeURIComponent(playlist.id)}/extend`);
+    this.refusal.set(outcome.ok ? null : outcome.refusal);
+  }
+
+  protected remakeAlbum(playlist: Playlist): void {
+    const album = playlist.album;
+    if (album == null) return;
+    this.studio.remakeAlbum(album.ask, album.server);
+    void this.router.navigate(['/make']);
   }
 
   protected async downloadAlbum(playlist: Playlist): Promise<void> {

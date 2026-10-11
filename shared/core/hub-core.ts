@@ -766,6 +766,10 @@ export class HubCore {
       if (now.cover !== null && now.cover !== file) await this.library.removeCover(now.cover);
       return this.libraryChanged();
     });
+    this.route('POST', '/api/albums/:id/extend', async (request) => {
+      await this.albums.extend(request.params['id'] as string);
+      return this.libraryChanged();
+    });
     this.route('POST', '/api/albums/:id/resume', async (request) => {
       await this.albums.resume(request.params['id'] as string);
       return this.libraryChanged();

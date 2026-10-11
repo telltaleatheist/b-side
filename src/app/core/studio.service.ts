@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 
 import { batchCount } from '@shared/batch';
 import { addTags, clashesWith, joinTags, splitTags, toggleTag, withoutVoice } from '@shared/tags';
-import { type DescribeResult, type Preset, type RefusalView, type SongForm, type SongPage, type SongParams } from '@shared/types';
+import { type AlbumAsk, type DescribeResult, type Preset, type RefusalView, type SongForm, type SongPage, type SongParams } from '@shared/types';
 
 import { HubService } from './hub.service';
 import { JobsService } from './jobs.service';
@@ -45,6 +45,21 @@ export class StudioService {
   /** The chat model the hub asks on this server (the full one, or 4-bit on a small card), named in the hint. */
   readonly tagModel = computed(() => this.page()?.writer ?? this.page()?.tagModel ?? null);
   readonly description = signal('');
+  /**
+   * An album to make again (Victoria, 2026-10-10: "B-sides would start on the album fresh. That
+   * way I don't have to remember the prompt again"): what it was asked, for Make to open with.
+   */
+  readonly remake = signal<{ readonly ask: AlbumAsk; readonly server: string } | null>(null);
+
+  /** Fill the form with an album's ask and open Make → Album on it, to change and make again. */
+  remakeAlbum(ask: AlbumAsk, server: string): void {
+    this.description.set(ask.description);
+    this.tags.set([...ask.tags]);
+    this.lyricsBrief.set(ask.lyrics ?? '');
+    this.cfg.set(ask.cfg == null ? '' : String(ask.cfg));
+    this.described.set(null);
+    this.remake.set({ ask, server });
+  }
   readonly describing = signal(false);
   readonly described = signal<DescribeResult | null>(null);
   readonly describeRefusal = signal<RefusalView | null>(null);

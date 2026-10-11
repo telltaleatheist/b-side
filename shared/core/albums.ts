@@ -39,6 +39,8 @@ const TYPICAL_TRACK_S = 150;
 /** Songs run two to five minutes: the plan has a track per shortest song, so the length is always filled. */
 const SHORTEST_TRACK_S = 120;
 const MOST_TRACKS = 45;
+/** "More like this" adds this much to an album. */
+export const EXTEND_MINUTES = 15;
 /** A writing session closes after this long with nothing asked (the cover's paint counts as asking). */
 const SESSION_IDLE_S = 180;
 /** Songs on the server at once for one album: one rendering, one waiting. */
@@ -333,6 +335,37 @@ export class AlbumMaker {
         return next;
       }
     }
+  }
+
+  /**
+   * More like this (Victoria, 2026-10-10: "the ability to add to an album if I really like the
+   * vibe, with new songs added to the bottom"): EXTEND_MINUTES more of the same album. Its plan
+   * already holds tracks it never made (one per two minutes, made until the length was filled);
+   * when fewer than that much are left, new ones are planned after them, told every title so far.
+   */
+  async extend(id: string): Promise<AlbumMeta> {
+    if (this.running.has(id)) throw new Refusal('album_writing', 'This album is still being written; add to it once it is planned.', 409);
+    const meta = await this.hooks.meta(id);
+    if (meta === null) throw new Refusal('album_missing', 'That album is gone.', 404);
+    const plan = meta.plan;
+    if (plan === null || plan.tracks.length < (plan.trackCount ?? 0)) {
+      throw new Refusal('album_unplanned', 'This album is not planned yet; add to it once it is.', 409);
+    }
+    const spare = plan.tracks.length - meta.sent;
+    const more = Math.max(0, trackCount(EXTEND_MINUTES) - spare);
+    const grown: AlbumPlan = more === 0 ? plan : { ...plan, trackCount: plan.tracks.length + more };
+    const next: AlbumMeta = {
+      ...meta,
+      ask: { ...meta.ask, minutes: meta.ask.minutes + EXTEND_MINUTES },
+      plan: grown,
+      stage: more > 0 ? 'planning' : 'making',
+      refusal: null,
+      step: null,
+    };
+    await this.hooks.update(id, next);
+    this.failures.set(id, 0);
+    this.start(id);
+    return next;
   }
 
   /** Stop making it: no more tracks, and the ones on the server are cancelled. What is made stays. */
