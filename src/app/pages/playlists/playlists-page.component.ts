@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, HostListener, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
@@ -26,6 +26,9 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
  * playlist holds it, so taking it out of its last playlist deletes it — and
  * the page says so before it does.
  */
+/** The largest cover kept from the person's own image, in pixels square. */
+const COVER_PX = 768;
+
 @Component({
   selector: 'app-playlists-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -35,7 +38,15 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
       @if (selected(); as playlist) {
         <a class="back" routerLink="/library"><app-icon name="chevron" [size]="16" class="flip" />Library</a>
         <header class="head">
-          <app-cover class="head-art" [key]="playlist.id" [src]="coverOf(playlist)" />
+          @if (ownCover(playlist)) {
+            <!-- Drop an image on the cover, paste one (Ctrl+V), or pick one: the album's own cover. -->
+            <div class="head-art drop-cover" [class.over]="coverOver()" title="Drop an image here, or paste one, for the album's cover"
+                 (dragover)="coverDragOver($event)" (dragleave)="coverOver.set(false)" (drop)="coverDrop(playlist, $event)">
+              <app-cover [key]="playlist.id" [src]="coverOf(playlist)" />
+            </div>
+          } @else {
+            <app-cover class="head-art" [key]="playlist.id" [src]="coverOf(playlist)" />
+          }
           <div class="head-text">
             @if (isPeer()) {
               <span class="kicker">{{ playlist.album ? 'Album' : 'Playlist' }} · in {{ peerName() }}'s library</span>
@@ -98,6 +109,12 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
               }
               @if (canRewrite(playlist)) {
                 <button type="button" class="ghost" [disabled]="rewriting() !== null" title="The album's model describes the cover again; the image model, when the server has one, paints it" (click)="rewrite(playlist, 'cover')"><app-icon name="reroll" [size]="16" />New cover</button>
+              }
+              @if (ownCover(playlist)) {
+                <label class="ghost file-pick" title="Pick an image for the cover; or drop one on the cover, or paste one">
+                  <app-icon name="edit" [size]="16" />Your own cover
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden (change)="coverPicked(playlist, $event)" />
+                </label>
               }
               @if (!remote()) {
                 <button type="button" class="icon-btn outlined" aria-label="Rename" title="Rename" (click)="renaming.set('playlist')"><app-icon name="edit" [size]="18" /></button>
@@ -292,6 +309,9 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
     .flip-v { transform: scaleY(-1); }
     .head { display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; }
     .head-art { width: 168px; --cover-radius: 8px; box-shadow: 0 18px 40px rgba(0,0,0,.5); }
+    .drop-cover { border-radius: 8px; outline: 2px dashed transparent; outline-offset: 4px; transition: outline-color .15s; }
+    .drop-cover.over { outline-color: var(--accent, currentColor); }
+    .file-pick { cursor: pointer; }
     .head-text { display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1 1 240px; }
     .head-title { font-family: var(--font-display); font-weight: 900; font-size: 44px; line-height: .92; margin: 0; overflow-wrap: anywhere; }
     .head-sub { font-size: 13px; color: var(--text-tertiary); }
@@ -523,6 +543,72 @@ export class PlaylistsPageComponent {
     if (this.isPeer()) this.player.playPeer(this.peerKey(), playlist.id);
     else if (this.isCloud()) this.player.playCloud(playlist.id);
     else this.player.playPlaylist(playlist.id);
+  }
+
+  /** Dragging an image over the cover. */
+  protected readonly coverOver = signal(false);
+
+  /** An album on this computer: its cover can be the person's own image. */
+  protected ownCover(playlist: Playlist): boolean {
+    return !this.remote() && playlist.album != null;
+  }
+
+  protected coverDragOver(event: DragEvent): void {
+    if (!Array.from(event.dataTransfer?.types ?? []).includes('Files')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.coverOver.set(true);
+  }
+
+  protected coverDrop(playlist: Playlist, event: DragEvent): void {
+    this.coverOver.set(false);
+    const image = Array.from(event.dataTransfer?.files ?? []).find((file) => file.type.startsWith('image/'));
+    // Not an image (a song dropped on the cover): the window's own drop files it as before.
+    if (image === undefined) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void this.setCover(playlist, image);
+  }
+
+  protected coverPicked(playlist: Playlist, event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const image = input.files?.[0];
+    input.value = '';
+    if (image !== undefined) void this.setCover(playlist, image);
+  }
+
+  /** Ctrl+V with an image on the clipboard, on an album's page: its cover. */
+  @HostListener('document:paste', ['$event'])
+  protected pasted(event: ClipboardEvent): void {
+    const playlist = this.selected();
+    if (playlist === null || playlist === undefined || !this.ownCover(playlist)) return;
+    const target = event.target as HTMLElement | null;
+    if (target !== null && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+    const image = Array.from(event.clipboardData?.items ?? []).find((item) => item.kind === 'file' && item.type.startsWith('image/'))?.getAsFile();
+    if (image == null) return;
+    event.preventDefault();
+    void this.setCover(playlist, image);
+  }
+
+  /** Shrink the image to a cover (at most COVER_PX square, JPEG) and keep it as the album's cover. */
+  private async setCover(playlist: Playlist, image: Blob): Promise<void> {
+    let data: string;
+    try {
+      const bitmap = await createImageBitmap(image);
+      const side = Math.min(bitmap.width, bitmap.height);
+      const size = Math.min(COVER_PX, side);
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      // Square, from the middle: a cover is square.
+      canvas.getContext('2d')?.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size);
+      data = canvas.toDataURL('image/jpeg', 0.9).replace(/^data:[^,]*,/, '');
+    } catch {
+      this.refusal.set({ code: 'cover_unreadable', message: 'That image could not be read; try a PNG or JPEG.' });
+      return;
+    }
+    const outcome = await this.hub.call<unknown>('PUT', `/api/albums/${encodeURIComponent(playlist.id)}/cover`, { image: data, type: 'image/jpeg' });
+    this.refusal.set(outcome.ok ? null : outcome.refusal);
   }
 
   protected coverOf(playlist: Playlist): string | null {

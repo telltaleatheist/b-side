@@ -33,6 +33,7 @@ export const nodeDisk: Disk = {
     }
   },
   writeText: (file, text) => writeAtomically(file, text),
+  writeBytes: (file, bytes) => writeAtomically(file, bytes),
   async exists(file) {
     try {
       await fsp.access(file);

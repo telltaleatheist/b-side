@@ -160,6 +160,10 @@ function making(playlists: readonly Playlist[], server: string): Playlist[] {
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
+/** A cover the person sets themselves: the image types kept, and the largest file (the page shrinks it first). */
+const COVER_TYPES: Readonly<Record<string, string>> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
+const COVER_UPLOAD_MAX = 700 * 1024;
+
 /** The painted cover's width and height, in pixels. */
 const COVER_SIZE = 256;
 
@@ -699,6 +703,33 @@ export class HubCore {
       this.albums.start(album.id);
       await this.libraryChanged();
       return { id: album.id };
+    });
+    // The person's own cover (Owen, 2026-10-10: "we should be able to upload our own images though ...
+    // drag/drop or ctrl+v"): {image: base64, type}, made small by the page first (COVER_UPLOAD_MAX).
+    this.route('PUT', '/api/albums/:id/cover', async (request) => {
+      const id = request.params['id'] as string;
+      const body = await request.body();
+      const extension = COVER_TYPES[typeof body['type'] === 'string' ? body['type'] : ''];
+      if (extension === undefined || typeof body['image'] !== 'string') {
+        throw new Refusal('body_invalid', 'A cover is {image: base64, type: image/png, image/jpeg or image/webp}.');
+      }
+      const write = this.options.disk.writeBytes;
+      if (write === undefined) throw new Refusal('cover_upload_unavailable', 'Setting your own cover is not on this device yet; set it on a B-Sides computer.', 501);
+      const album = await this.library.album(id);
+      if (album === null) throw new Refusal('album_missing', 'That album is gone.', 404);
+      let bytes: Uint8Array;
+      try {
+        bytes = Uint8Array.from(atob(body['image']), (char) => char.charCodeAt(0));
+      } catch {
+        throw new Refusal('body_invalid', 'The cover image is not base64.');
+      }
+      if (bytes.length === 0 || bytes.length > COVER_UPLOAD_MAX) throw new Refusal('cover_too_large', 'That image is too large for a cover.', 413);
+      const file = `${id}-${Date.now().toString(36)}.cover.${extension}`;
+      await write.call(this.options.disk, this.library.coverPath(file), bytes);
+      const now = (await this.library.album(id)) ?? album;
+      await this.library.setAlbum(id, { ...now, cover: file, coverState: null });
+      if (now.cover !== null && now.cover !== file) await this.library.removeCover(now.cover);
+      return this.libraryChanged();
     });
     this.route('POST', '/api/albums/:id/resume', async (request) => {
       await this.albums.resume(request.params['id'] as string);

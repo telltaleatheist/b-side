@@ -220,3 +220,26 @@ test('another B-Sides reads who this one is, and its library, with the address a
   expect(library.status).toBe(200);
   expect(library.headers.get('access-control-allow-origin')).toBe('*');
 });
+
+test("an album's cover can be the person's own image, which replaces the one before", async () => {
+  const meta = {
+    artist: 'X', blurb: '', cover: null, ask: { description: 'd', tags: [], minutes: 15, sung: false },
+    plan: null, stage: 'done', sent: 0, madeS: 0, refusal: null, server: 'pc', writer: null,
+  };
+  const file = '20261010-010000-9.mp3';
+  await fetch(`${base}/api/import/files/${file}`, { method: 'PUT', body: new Uint8Array([7]), headers: { 'X-BSide-Key': key, ...desktop } });
+  const song = { id: '20261010-010000-9', title: 'T', file, model: 'yue2-3b', params: { tags: null, lyrics: null, instrumental: true, cfg: null, seed: 1 }, server: { name: 'pc', url: 'http://pc:7100' }, jobId: 'j', createdAt: new Date().toISOString(), durationS: 1, batch: null, album: null, bytes: 1, effective: null };
+  const imported = await api('/api/import/albums', { method: 'POST', body: JSON.stringify({ id: 'own-cover', name: 'Own Cover', createdAt: new Date().toISOString(), album: meta, songs: [song] }) });
+  expect(imported.status).toBe(200);
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]).toString('base64');
+  const first = (await (await api('/api/albums/own-cover/cover', { method: 'PUT', body: JSON.stringify({ image: png, type: 'image/png' }) })).json()) as LibraryView;
+  const cover = first.playlists.find((p) => p.id === 'own-cover')?.album?.cover as string;
+  expect(cover).toMatch(/^own-cover-.*\.cover\.png$/);
+  const served = await api('/api/albums/own-cover/cover');
+  expect(new Uint8Array(await served.arrayBuffer())).toEqual(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]));
+  await new Promise((rest) => setTimeout(rest, 5));
+  const second = (await (await api('/api/albums/own-cover/cover', { method: 'PUT', body: JSON.stringify({ image: png, type: 'image/jpeg' }) })).json()) as LibraryView;
+  expect(second.playlists.find((p) => p.id === 'own-cover')?.album?.cover).toMatch(/\.cover\.jpg$/);
+  const refused = await api('/api/albums/own-cover/cover', { method: 'PUT', body: JSON.stringify({ image: png, type: 'image/svg+xml' }) });
+  expect(refused.status).toBe(400);
+});
