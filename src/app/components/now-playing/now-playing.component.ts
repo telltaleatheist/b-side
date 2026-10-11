@@ -18,6 +18,13 @@ import { SaveMenuComponent } from '../save-menu/save-menu.component';
  *     player bar below has them, Owen 2026-10-06): the song, then Up next. A
  *     click on the song shows its lyrics, with Back to the list.
  */
+/** About how many syllables a line has: its vowel groups (how long it takes to sing). */
+function syllables(text: string): number {
+  const words = text.toLowerCase().match(/[a-z']+/g) ?? [];
+  const count = words.reduce((sum, word) => sum + Math.max(1, (word.replace(/e$/, '').match(/[aeiouy]+/g) ?? []).length), 0);
+  return Math.max(3, count);
+}
+
 @Component({
   selector: 'app-now-playing',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -342,40 +349,63 @@ export class NowPlayingComponent {
   /**
    * The line being sung, as near as it can be told: YuE's songs carry no
    * timings, so the sung lines are spread over the song (past a short intro,
-   * before a short outro), each by its length. Null when nothing is sung.
+   * before a short outro), each by its syllables, with a short instrumental
+   * break between sections. Only an estimate: it can run ahead or behind the voice.
+   * Null when nothing is sung.
    */
   protected readonly activeLine = computed(() => {
     const lyrics = this.player.current()?.lyrics;
     const duration = this.player.duration();
     if (!lyrics || duration <= 0) return null;
     const lines = this.lyricLines(lyrics);
-    const sung = lines.map((line, at) => ({ at, weight: line.section ? 0 : Math.max(8, line.text.length) })).filter((line) => line.weight > 0);
-    if (sung.length === 0) return null;
-    const start = Math.min(12, duration * 0.08);
-    const end = duration - Math.min(10, duration * 0.06);
+    const sungWeights = lines.filter((line) => !line.section).map((line) => syllables(line.text));
+    if (sungWeights.length === 0) return null;
+    const average = sungWeights.reduce((sum, weight) => sum + weight, 0) / sungWeights.length;
+    // A section after the first starts with a break about one line long.
+    const parts: { at: number | null; weight: number }[] = [];
+    let seenSung = false;
+    lines.forEach((line, at) => {
+      if (line.section) {
+        if (seenSung) parts.push({ at: null, weight: average });
+      } else {
+        parts.push({ at, weight: syllables(line.text) });
+        seenSung = true;
+      }
+    });
+    const start = Math.min(15, duration * 0.1);
+    const end = duration - Math.min(12, duration * 0.08);
     const share = Math.min(1, Math.max(0, (this.player.time() - start) / Math.max(1, end - start)));
-    const total = sung.reduce((sum, line) => sum + line.weight, 0);
+    const total = parts.reduce((sum, part) => sum + part.weight, 0);
     let reached = share * total;
-    for (const line of sung) {
-      reached -= line.weight;
-      if (reached < 0) return line.at;
+    let last: number | null = null;
+    for (const part of parts) {
+      if (part.at !== null) last = part.at;
+      reached -= part.weight;
+      if (reached < 0) return last ?? part.at;
     }
-    return (sung[sung.length - 1] as { at: number }).at;
+    return last;
   });
 
   constructor() {
-    // The lyrics follow the song: the line being sung kept in the middle, unless a finger is reading.
+    // The lyrics follow the song, calmly: the card scrolls only when the line being sung
+    // leaves the part of it in view, and then puts that line near the top. Never while a
+    // finger is reading.
     effect(() => {
       const line = this.activeLine();
       const card = this.lyricsCard()?.nativeElement;
       if (line === null || card === undefined) return;
       untracked(() => {
-        if (Date.now() - this.lyricsTouchedAt < 4000) return;
+        if (Date.now() - this.lyricsTouchedAt < 6000) return;
         // Only while the card is on screen: scrolling an unseen list kept the sheet busy for nothing.
         const box = card.getBoundingClientRect();
         if (box.bottom < 0 || box.top > innerHeight) return;
         const element = card.querySelector<HTMLElement>(`[data-line="${line}"]`);
-        if (element !== null) card.scrollTo({ top: element.offsetTop - card.clientHeight * 0.38, behavior: 'smooth' });
+        if (element === null) return;
+        // Where the line sits inside the card's scrolled content (offsetTop would measure from the sheet).
+        const top = element.getBoundingClientRect().top - box.top;
+        const bottom = top + element.offsetHeight;
+        if (top >= card.clientHeight * 0.12 && bottom <= card.clientHeight * 0.7) return;
+        card.scrollTo({ top: Math.max(0, card.scrollTop + top - card.clientHeight * 0.22), behavior: 'smooth' });
       });
     });
   }
