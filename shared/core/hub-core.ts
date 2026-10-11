@@ -103,6 +103,11 @@ export interface HubCoreOptions {
   readonly limitsAlbumSpace?: boolean;
   /** Claude through Claude Code on this computer, writing in B-Sides' model's place; absent on the phone. */
   readonly claude?: { readonly text: TextModel; readonly lyricist: Lyricist; check(): Promise<void> };
+  /**
+   * Shrink a painted cover larger than a tile needs to a COVER_KEPT_PX JPEG beside it; answers the
+   * new file's name (in the same folder). Absent (the phone): the cover is kept as painted.
+   */
+  readonly shrinkCover?: (file: string, side: number) => Promise<string | null>;
 }
 
 /** The pseudo-client an album's tracks are made for: their jobs and takes never show in anyone's playing list. */
@@ -173,6 +178,28 @@ function making(playlists: readonly Playlist[], server: string): Playlist[] {
 /** A cover the person sets themselves: the image types kept, and the largest file (the page shrinks it first). */
 const COVER_TYPES: Readonly<Record<string, string>> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 const COVER_UPLOAD_MAX = 700 * 1024;
+
+/** A painted cover larger than this is shrunk to it for keeping (a tile never shows more). */
+const COVER_KEPT_PX = 512;
+
+/**
+ * The side to paint `model`'s cover at: its published `quality_min_side` (Crucible 1.0.138's image
+ * page facts), never under COVER_SIZE; COVER_SIZE when the server publishes none. Read from the
+ * playground directly: the pinned SDK predates the facts and drops them.
+ */
+export async function coverSide(server: StoredServer, model: string): Promise<number> {
+  try {
+    const response = await fetch(`${server.url.replace(/\/+$/, '')}/v1/playground`, { headers: { Authorization: `Bearer ${server.token}` } });
+    if (!response.ok) return COVER_SIZE;
+    const body = (await response.json()) as { pages?: { id?: unknown; facts?: { quality_min_side?: unknown } }[] };
+    const least = body.pages?.find((page) => page.id === model)?.facts?.quality_min_side;
+    if (typeof least !== 'number' || !Number.isFinite(least)) return COVER_SIZE;
+    // A multiple of 32, as the server takes.
+    return Math.max(COVER_SIZE, Math.ceil(least / 32) * 32);
+  } catch {
+    return COVER_SIZE;
+  }
+}
 
 /** The painted cover's width and height, in pixels. */
 const COVER_SIZE = 256;
@@ -455,7 +482,10 @@ export class HubCore {
     // Small on purpose (Owen, 2026-10-06: "250x250 or something would be fine"): a cover is shown
     // as a tile, and 256 square is a sixteenth of the server's default 1024, so it paints that much
     // sooner. 256 is the smallest size the server takes (a multiple of 32 on the PC).
-    const jobId = await client.image({ model, prompt, width: COVER_SIZE, height: COVER_SIZE });
+    // The size the model paints well at, as the server publishes it (1.0.138: an SDXL model is crunchy
+    // under 768; qwen-image is fine at 256). A server that publishes nothing gets the 256 it always had.
+    const side = await coverSide(server, model);
+    const jobId = await client.image({ model, prompt, width: side, height: side });
     for (;;) {
       let ended = false;
       for await (const event of client.events(jobId)) {
@@ -464,6 +494,16 @@ export class HubCore {
           // so a cover painted again (the regenerate button) is never one a browser has cached.
           const file = `${id}-${Date.now().toString(36)}.cover.png`;
           await this.options.fetchAudio(server, jobId, 'image.png', this.library.coverPath(file));
+          if (side > COVER_KEPT_PX && this.options.shrinkCover !== undefined) {
+            const small = await this.options.shrinkCover(this.library.coverPath(file), COVER_KEPT_PX).catch((err: unknown) => {
+              console.error(`[albums] could not shrink the cover for ${id}; keeping it as painted:`, err);
+              return null;
+            });
+            if (small !== null) {
+              await this.library.removeCover(file);
+              return small;
+            }
+          }
           return file;
         }
         if (event.event === 'failed' || event.event === 'cancelled' || event.event === 'removed') {

@@ -60,6 +60,8 @@ export interface HubOptions {
   /** The built web app (`dist/renderer/browser`). */
   readonly appRoot: string;
   readonly version: string;
+  /** Shrink a painted cover (Electron's nativeImage, given by main; absent in tests). */
+  readonly shrinkCover?: (file: string, side: number) => Promise<string | null>;
 }
 
 interface Request extends CoreRequest {
@@ -118,6 +120,7 @@ export class Hub {
     this.core = new HubCore({
       disk: nodeDisk,
       claude: claudeWriter(),
+      ...(options.shrinkCover !== undefined ? { shrinkCover: options.shrinkCover } : {}),
       vault: fileVault(path.join(options.userData, 'servers.json')),
       dataDir: options.userData,
       takeLimits: { perClient: TAKES_PER_CLIENT, bytes: TAKE_CACHE_BYTES },

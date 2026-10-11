@@ -10,8 +10,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import { app, BrowserWindow, dialog, Menu, type MenuItemConstructorOptions } from 'electron';
+import { app, BrowserWindow, dialog, Menu, nativeImage, type MenuItemConstructorOptions } from 'electron';
 
+import { writeAtomically } from './atomic';
 import { adoptOldFolder } from './adopt-old-folder';
 import { Hub } from './hub/hub';
 import { registerIpc } from './ipc';
@@ -78,6 +79,14 @@ if (!single) {
       .find((dir) => fs.existsSync(dir)) ?? path.join(app.getPath('music'), 'B-Sides'),
     appRoot: path.join(__dirname, '..', 'renderer', 'browser'),
     version: app.getVersion(),
+    // A cover painted large (Crucible's SDXL rung paints at 768+) is kept as a 512 JPEG beside it.
+    shrinkCover: async (file, side) => {
+      const image = nativeImage.createFromPath(file);
+      if (image.isEmpty()) return null;
+      const small = path.join(path.dirname(file), path.basename(file).replace(/\.cover\.\w+$/, `-${side}.cover.jpg`));
+      await writeAtomically(small, image.resize({ width: side, height: side, quality: 'best' }).toJPEG(90));
+      return path.basename(small);
+    },
   });
 
   void app.whenReady().then(async () => {
