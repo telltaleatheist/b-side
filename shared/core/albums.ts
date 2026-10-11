@@ -32,7 +32,7 @@ import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { layLyrics } from './describe';
 import { VOICE_TAG, withoutVoice } from '../tags';
-import type { AlbumMeta, AlbumPlan, AlbumTrack, SongPage } from '../types';
+import { LENGTH_AIMS, type AlbumAsk, type AlbumMeta, type AlbumPlan, type AlbumTrack, type LengthAim, type SongPage } from '../types';
 
 /** A song is about this long: how many are counted as on their way. */
 const TYPICAL_TRACK_S = 150;
@@ -83,8 +83,14 @@ export async function chooseCoverModel(client: CrucibleClient): Promise<string |
   return pages.find((page) => page.jobType === 'image' && page.standing === 'ready')?.id ?? null;
 }
 
-export function trackCount(minutes: number): number {
-  return Math.min(MOST_TRACKS, Math.ceil((minutes * 60) / SHORTEST_TRACK_S));
+/** The plan's tracks for `minutes`: one per shortest song (the aim's shortest, when it has one). */
+export function trackCount(minutes: number, shortestS: number = SHORTEST_TRACK_S): number {
+  return Math.min(MOST_TRACKS, Math.ceil((minutes * 60) / Math.max(60, shortestS)));
+}
+
+/** The aim an album's tracks were asked for, or null. */
+export function trackAim(ask: AlbumAsk): LengthAim | null {
+  return LENGTH_AIMS.find((aim) => aim.key === ask.trackLength) ?? null;
 }
 
 /**
@@ -121,6 +127,16 @@ export function coverPrompt(description: string): string {
   return `${said}. Square album cover art. Absolutely no text, letters, numbers, characters or writing of any kind, in any language or script, anywhere in the image: no signs, labels, posters, logos or captions.`;
 }
 
+/** One track as the album sends it; the hub adds what its server takes (the aim, a planning set). */
+export interface AlbumTrackParams {
+  readonly tags: string;
+  readonly lyrics?: string;
+  readonly instrumental: boolean;
+  readonly cfg?: number;
+  /** The length every track aims for, in seconds. */
+  readonly aim?: { readonly min: number; readonly max: number };
+}
+
 /** What the album maker needs from the hub around it. */
 export interface AlbumHooks {
   /** The album's details as stored, or null when the album was deleted. */
@@ -137,7 +153,7 @@ export interface AlbumHooks {
   /** Remove a cover file a newer one replaced (once the album points at the new one). */
   removeCover(file: string): Promise<void>;
   /** Send one track to the server, tagged with its album and place. */
-  render(id: string, track: number, server: StoredServer, params: { tags: string; lyrics?: string; instrumental: boolean; cfg?: number }): void;
+  render(id: string, track: number, server: StoredServer, params: AlbumTrackParams): void;
   /** How many of this album's tracks are on the server and not ended. */
   inFlight(id: string): number;
   /** Name the album's first songs (made before the plan had names), in order. */
@@ -352,7 +368,7 @@ export class AlbumMaker {
       throw new Refusal('album_unplanned', 'This album is not planned yet; add to it once it is.', 409);
     }
     const spare = plan.tracks.length - meta.sent;
-    const more = Math.max(0, trackCount(EXTEND_MINUTES) - spare);
+    const more = Math.max(0, trackCount(EXTEND_MINUTES, trackAim(meta.ask)?.min) - spare);
     const grown: AlbumPlan = more === 0 ? plan : { ...plan, trackCount: plan.tracks.length + more };
     const next: AlbumMeta = {
       ...meta,
@@ -452,7 +468,9 @@ export class AlbumMaker {
     try {
       const page = await this.hooks.page(server);
       // A plan from before v2 was written whole, in one call: its own length is its count.
-      const count = meta.plan == null ? trackCount(meta.ask.minutes) : (meta.plan.trackCount ?? meta.plan.tracks.length);
+      const count = meta.plan == null
+        ? trackCount(meta.ask.minutes, trackAim(meta.ask)?.min)
+        : (meta.plan.trackCount ?? meta.plan.tracks.length);
       const show = async (step: AlbumMeta['step']): Promise<void> => {
         meta = { ...(await this.hooks.meta(id) ?? meta), step };
         await this.hooks.update(id, meta);
@@ -583,6 +601,7 @@ export class AlbumMaker {
     // already has on the server finish; `next` starts it when the one ahead leaves the line.
     if ((await this.hooks.makingOn(meta.server))[0] !== id) return;
     const target = meta.ask.minutes * 60;
+    const aim = trackAim(meta.ask);
     let sent = meta.sent;
     const redo = [...(meta.redo ?? [])];
     let flying = Math.max(0, this.hooks.inFlight(id) - landing);
@@ -597,6 +616,7 @@ export class AlbumMaker {
         instrumental: !sung,
         ...(sung ? { lyrics: track.lyrics as string } : {}),
         ...(meta.ask.cfg != null ? { cfg: meta.ask.cfg } : {}),
+        ...(aim !== null ? { aim: { min: aim.min, max: aim.max } } : {}),
       });
       flying += 1;
     }

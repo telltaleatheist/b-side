@@ -89,6 +89,9 @@ export function songJob(params: SongParams, format: SongFormat, key: string): Jo
   if (params.instrumental !== undefined) wire['instrumental'] = params.instrumental;
   if (params.cfg !== undefined) wire['cfg'] = params.cfg;
   if (params.seed !== undefined) wire['seed'] = params.seed;
+  if (params.min_duration_s !== undefined) wire['min_duration_s'] = params.min_duration_s;
+  if (params.max_duration_s !== undefined) wire['max_duration_s'] = params.max_duration_s;
+  if (params.planning_set !== undefined && params.instrumental === true) wire['planning_set'] = params.planning_set;
   return { type: 'audio', model: SONG_MODEL, params: wire, inputs: {}, clientRef: `b-sides:${key}` };
 }
 

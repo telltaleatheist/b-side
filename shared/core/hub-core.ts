@@ -36,17 +36,18 @@ import { defaultTitle } from './titles';
 import {
   ALBUM_MINUTES,
   ALBUM_SPACE_GB,
-  ENDED_PHASES,
   albumBytes,
+  ENDED_PHASES,
+  LENGTH_AIMS,
   SINGLES_NAME,
   SONG_FORMATS,
   SONG_MODEL,
   type AlbumAsk,
   type ClientKind,
-  type HubPreferences,
   type GenerateRequest,
   type HubEvent,
   type HubInfo,
+  type HubPreferences,
   type HubSnapshot,
   type LibraryView,
   type Playlist,
@@ -54,6 +55,8 @@ import {
   type ServerView,
   type Song,
   type SongForm,
+  type SongPage,
+  type SongParams,
 } from '../types';
 
 /** The device a request comes from. */
@@ -192,13 +195,15 @@ const COVER_KEPT_PX = 512;
  */
 export async function coverSide(server: StoredServer, model: string): Promise<number> {
   try {
-    const response = await fetch(`${server.url.replace(/\/+$/, '')}/v1/playground`, { headers: { Authorization: `Bearer ${server.token}` } });
+    const response = await fetch(`${server.url.replace(/\/+$/, '')}/v1/playground`, { headers: { Authorization: `Bearer ${server.token}`, 'X-Crucible-Api': '1' } });
     if (!response.ok) return COVER_SIZE;
-    const body = (await response.json()) as { pages?: { id?: unknown; facts?: { quality_min_side?: unknown; native_size?: unknown } }[] };
+    const body = (await response.json()) as { pages?: { id?: unknown; facts?: { quality_min_side?: unknown; native_width?: unknown; native_height?: unknown; native_size?: unknown } }[] };
     const facts = body.pages?.find((page) => page.id === model)?.facts;
     const least = facts?.quality_min_side;
     if (typeof least !== 'number' || !Number.isFinite(least) || least <= COVER_SIZE) return COVER_SIZE;
-    const native = sideOf(facts?.native_size);
+    // 1.0.140 publishes native_width and native_height (a square cover takes the smaller).
+    const native = sideOf(facts?.native_width !== undefined || facts?.native_height !== undefined
+      ? { width: facts.native_width, height: facts.native_height } : facts?.native_size);
     // A multiple of 32, as the server takes.
     return Math.ceil((native !== null && native >= least ? native : least) / 32) * 32;
   } catch {
@@ -308,11 +313,23 @@ export class HubCore {
       // items, and removes the ones still waiting when it closes. Under the install's own name, a song
       // made meanwhile would join the album's session and be dropped with it.
       client: (server, album) => (album ? clientFor(server, `${clientName()}/album`) : clientFor(server)),
-      page: (server) => songPage(server).catch(() => null),
+      page: (server) => this.songPageOf(server).catch(() => null),
       paint: (id, server, client, model, prompt) => this.paintCover(id, server, client, model, prompt),
       removeCover: (file) => this.library.removeCover(file),
       render: (id, track, server, params) => {
-        this.jobs.generate(server, { id: albumClient(id), kind: 'desktop' }, { params, count: 1 }, this.preferences.songFormat, { id, track });
+        // What this server takes, as its song page said when the album was written (older ones take neither).
+        const page = this.pages.get(server.name);
+        const sets = page?.planningSets ?? [];
+        const song: SongParams = {
+          tags: params.tags,
+          instrumental: params.instrumental,
+          ...(params.lyrics !== undefined ? { lyrics: params.lyrics } : {}),
+          ...(params.cfg !== undefined ? { cfg: params.cfg } : {}),
+          ...(params.aim !== undefined && page?.length === true ? { min_duration_s: params.aim.min, max_duration_s: params.aim.max } : {}),
+          // Each instrumental its own structure, in turn through the server's sets (crucible-pc-1, 2026-10-10).
+          ...(params.instrumental && sets.length > 0 ? { planning_set: sets[track % sets.length] as string } : {}),
+        };
+        this.jobs.generate(server, { id: albumClient(id), kind: 'desktop' }, { params: song, count: 1 }, this.preferences.songFormat, { id, track });
       },
       inFlight: (id) => this.jobs.list(albumClient(id)).filter((job) => !ENDED_PHASES.includes(job.phase)).length,
       retitle: async (id, titles) => {
@@ -574,6 +591,15 @@ export class HubCore {
     return { title: song.title, file: this.library.audioPath(song.file) };
   }
 
+  /** Each server's song page as last read, for what its YuE2 takes when an album's track is sent. */
+  private readonly pages = new Map<string, SongPage>();
+
+  private async songPageOf(server: StoredServer): Promise<SongPage> {
+    const page = await songPage(server);
+    this.pages.set(server.name, page);
+    return page;
+  }
+
   /** The albums making their music on `server`, oldest first (only the first sends tracks). */
   private async makingOn(server: string): Promise<string[]> {
     return making((await this.library.list()).playlists, server).map((playlist) => playlist.id);
@@ -772,6 +798,7 @@ export class HubCore {
       const ask: AlbumAsk = {
         description: text(body['description'] ?? '', 'description').slice(0, 600), tags: tags as string[], minutes, sung, cfg,
         ...(lyrics ? { lyrics } : {}), ...(body['exactTags'] === true ? { exactTags: true } : {}),
+        ...(LENGTH_AIMS.some((aim) => aim.key === body['trackLength']) ? { trackLength: body['trackLength'] as string } : {}),
       };
       if (ask.description.trim() === '' && ask.tags.length === 0) {
         throw new Refusal('album_ask_empty', 'Describe the album, or pick some tags, first.');

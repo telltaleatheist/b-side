@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 
 import { batchCount } from '@shared/batch';
 import { addTags, clashesWith, joinTags, splitTags, toggleTag, withoutVoice } from '@shared/tags';
-import { type AlbumAsk, type DescribeResult, type Preset, type RefusalView, type SongForm, type SongPage, type SongParams } from '@shared/types';
+import { LENGTH_AIMS, type AlbumAsk, type DescribeResult, type Preset, type RefusalView, type SongForm, type SongPage, type SongParams } from '@shared/types';
 
 import { HubService } from './hub.service';
 import { JobsService } from './jobs.service';
@@ -45,6 +45,8 @@ export class StudioService {
   /** The chat model the hub asks on this server (the full one, or 4-bit on a small card), named in the hint. */
   readonly tagModel = computed(() => this.page()?.writer ?? this.page()?.tagModel ?? null);
   readonly description = signal('');
+  /** The length to aim for (LENGTH_AIMS' key), or '' for the server's own; songs and albums share it. */
+  readonly lengthAim = signal('');
   /**
    * An album to make again (Victoria, 2026-10-10: "B-sides would start on the album fresh. That
    * way I don't have to remember the prompt again"): what it was asked, for Make to open with.
@@ -57,6 +59,7 @@ export class StudioService {
     this.tags.set([...ask.tags]);
     this.lyricsBrief.set(ask.lyrics ?? '');
     this.cfg.set(ask.cfg == null ? '' : String(ask.cfg));
+    this.lengthAim.set(ask.trackLength ?? '');
     this.described.set(null);
     this.remake.set({ ask, server });
   }
@@ -263,6 +266,12 @@ export class StudioService {
       const value = Number(cfg);
       if (!Number.isFinite(value)) return { code: 'cfg_invalid', message: `Guidance "${cfg}" is not a number.` };
       params.cfg = value;
+    }
+    // A length to aim for, when this server's YuE2 takes one (Crucible 1.0.140).
+    const aim = LENGTH_AIMS.find((choice) => choice.key === this.lengthAim());
+    if (aim !== undefined && this.page()?.length === true) {
+      params.min_duration_s = aim.min;
+      params.max_duration_s = aim.max;
     }
     const seed = this.seed().trim();
     if (seed !== '') {

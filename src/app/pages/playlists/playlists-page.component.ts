@@ -159,7 +159,7 @@ const COVER_PX = 768;
                 } @else {
                   <div class="title">{{ song.title }}</div>
                 }
-                <div class="sub">{{ song.params.tags ?? '' }}@if (song.structure) { · structure {{ song.structure }} }@if (alsoIn(song, playlist); as others) { · also in {{ others }} }</div>
+                <div class="sub">{{ song.params.tags ?? '' }}@if (song.structure) { · structure {{ song.structure }} }@if (aimText(song); as aimed) { · {{ aimed }} }@if (alsoIn(song, playlist); as others) { · also in {{ others }} }</div>
                 @if (moving() === song.id) {
                   <div class="move-menu">
                     <span class="kicker">Move to</span>
@@ -564,6 +564,16 @@ export class PlaylistsPageComponent {
     if (this.isPeer()) this.player.playPeer(this.peerKey(), playlist.id);
     else if (this.isCloud()) this.player.playCloud(playlist.id);
     else this.player.playPlaylist(playlist.id);
+  }
+
+  /** The length a song aimed for, honestly: "aimed 3–5 min", and whether it missed. */
+  protected aimText(song: Song): string | null {
+    const aim = song.aim;
+    if (aim == null || (aim.min === null && aim.max === null)) return null;
+    const minutes = (s: number | null): string => (s === null ? '' : `${+(s / 60).toFixed(1)}`);
+    const range = aim.min !== null && aim.max !== null ? `${minutes(aim.min)}–${minutes(aim.max)} min`
+      : aim.min !== null ? `${minutes(aim.min)}+ min` : `up to ${minutes(aim.max)} min`;
+    return `aimed ${range}${aim.inRange === false ? ', landed outside' : ''}`;
   }
 
   /** The job making this album track on a server now, for its bar; null when none is. */

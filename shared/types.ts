@@ -123,6 +123,10 @@ export interface SongPage {
   readonly lyricsHint: string | null;
   /** Whether this server's YuE2 takes `instrumental`. */
   readonly instrumental: boolean;
+  /** Whether it takes a length to aim for (`min_duration_s` / `max_duration_s`, Crucible 1.0.140). */
+  readonly length?: boolean;
+  /** Its instrumentals' planning sets (`planning_set`'s options), in order; empty when it takes none. */
+  readonly planningSets?: readonly string[];
   readonly cfg: NumberField | null;
   readonly seed: NumberField | null;
   /** The tag and lyrics model this server gets (chooseTagModel), or null when it can hold none of them. */
@@ -152,7 +156,30 @@ export interface SongParams {
   readonly instrumental?: boolean;
   readonly cfg?: number;
   readonly seed?: number;
+  /** The length to aim for, in seconds (Crucible 1.0.140): an aim for instrumentals, a note for sung songs. */
+  readonly min_duration_s?: number;
+  readonly max_duration_s?: number;
+  /** An instrumental's structure: one of the server's planning sets (SongPage.planningSets). */
+  readonly planning_set?: string;
 }
+
+/**
+ * The song lengths to aim for (Victoria, 2026-10-10: "a slider ... between 3 and 5 minutes"; Owen:
+ * "if its close, thats good enough"). Crucible sizes an instrumental toward it in its one pass; a
+ * sung song runs as long as its lyrics, which are never cut or padded for it.
+ */
+export interface LengthAim {
+  readonly key: string;
+  readonly label: string;
+  readonly min: number;
+  readonly max: number;
+}
+export const LENGTH_AIMS: readonly LengthAim[] = [
+  { key: '1-2', label: '1–2 min', min: 60, max: 120 },
+  { key: '2-3', label: '2–3 min', min: 120, max: 180 },
+  { key: '3-5', label: '3–5 min', min: 180, max: 300 },
+  { key: '5-6', label: '5–6 min', min: 300, max: 360 },
+];
 
 /**
  * How songs are kept. MP3 (192 kbps, rendered by Crucible) is about an eighth
@@ -341,6 +368,8 @@ export interface Song extends SongFacts {
    * e.g. "tidewater"), shown so a report can name it (crucible-pc-1, 2026-10-10). Absent when sung.
    */
   readonly structure?: string | null;
+  /** The length it aimed for, and whether it landed in it (null: not told), as the server recorded. */
+  readonly aim?: { readonly min: number | null; readonly max: number | null; readonly inRange: boolean | null } | null;
 }
 
 /** A named playlist: library song ids in play order. */
@@ -446,6 +475,8 @@ export interface AlbumAsk {
   readonly lyrics?: string;
   /** Guidance from the form (a preset's), sent with every track; null for the server's default. */
   readonly cfg?: number | null;
+  /** The length every track aims for (LENGTH_AIMS' key); absent: the server's own. */
+  readonly trackLength?: string;
   /**
    * Every track keeps exactly the album's own tags, and no track adds a voice, an instrument
    * or a genre of its own (only a tempo, when the tags set none). Off, or absent: each track

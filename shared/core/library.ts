@@ -77,7 +77,17 @@ function songOf(sidecar: Sidecar): Song {
     album: sidecar.album,
     bytes: typeof sidecar.bytes === 'number' ? sidecar.bytes : null,
     structure: structureOf(sidecar.effective),
+    aim: aimOf(sidecar.effective),
   };
+}
+
+/** The length a song aimed for and whether it landed in it (`length`), when it was given one. */
+function aimOf(effective: unknown): Song['aim'] {
+  const length = (effective as { length?: { min_duration_s?: unknown; max_duration_s?: unknown; in_range?: unknown } } | null)?.length;
+  const min = typeof length?.min_duration_s === 'number' ? length.min_duration_s : null;
+  const max = typeof length?.max_duration_s === 'number' ? length.max_duration_s : null;
+  if (min === null && max === null) return null;
+  return { min, max, inRange: typeof length?.in_range === 'boolean' ? length.in_range : null };
 }
 
 /** The planning set an instrumental was scored from, as the server recorded it (`planning_lyrics.id`). */

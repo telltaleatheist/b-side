@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { Router, RouterLink } from '@angular/router';
 
 import { MAX_BATCH } from '@shared/batch';
-import { ALBUM_MINUTES, ENDED_PHASES, SINGLES_NAME, albumBytes, type HubPreferences, type Playlist, type RefusalView } from '@shared/types';
+import { ALBUM_MINUTES, albumBytes, ENDED_PHASES, LENGTH_AIMS, SINGLES_NAME, type HubPreferences, type Playlist, type RefusalView } from '@shared/types';
 
 import { CrucibleSetupComponent } from '../../components/crucible-setup/crucible-setup.component';
 import { PresetBarComponent } from '../../components/preset-bar/preset-bar.component';
@@ -132,6 +132,20 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
                 <button type="button" class="chip" [class.on]="albumExact()" (click)="albumExact.set(true)" title="Every track keeps exactly the album's tags; none adds a voice, instrument or genre">Stick to my tags</button>
               </div>
             </div>
+            @if (studio.page()?.length) {
+              <div class="opt">
+              <span class="opt-name">Song length</span>
+              <div class="opt-chips">
+                <button type="button" class="chip" [class.on]="studio.lengthAim() === ''" (click)="studio.lengthAim.set('')">Any</button>
+                @for (aim of lengthAims; track aim.key) {
+                  <button type="button" class="chip" [class.on]="studio.lengthAim() === aim.key" (click)="studio.lengthAim.set(aim.key)">{{ aim.label }}</button>
+                }
+              </div>
+            </div>
+              @if (studio.lengthAim() !== '') {
+                <p class="opt-note hint">An aim, not a promise: instrumentals are sized toward it and most land in it; a sung track runs as long as its lyrics. Longer songs fill the album's length with fewer tracks.</p>
+              }
+            }
             <div class="opt">
               <span class="opt-name">Vocals</span>
               <div class="opt-chips">
@@ -183,6 +197,22 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
             <input type="checkbox" [checked]="studio.instrumental()" (change)="studio.instrumental.set($any($event.target).checked)" />
             Instrumental (no vocals)
           </label>
+        }
+        @if (studio.page()?.length) {
+          <div class="options">
+            <div class="opt">
+              <span class="opt-name">Song length</span>
+              <div class="opt-chips">
+                <button type="button" class="chip" [class.on]="studio.lengthAim() === ''" (click)="studio.lengthAim.set('')">Any</button>
+                @for (aim of lengthAims; track aim.key) {
+                  <button type="button" class="chip" [class.on]="studio.lengthAim() === aim.key" (click)="studio.lengthAim.set(aim.key)">{{ aim.label }}</button>
+                }
+              </div>
+            </div>
+          </div>
+          @if (studio.lengthAim() !== '') {
+            <p class="hint">{{ studio.instrumental() ? 'An aim, not a promise: the server sizes the song toward it, and most land in it.' : 'A sung song runs as long as its lyrics; the aim is noted with it, and the lyrics are never cut to fit.' }}</p>
+          }
         }
         @if (!studio.instrumental()) {
           <div class="field">
@@ -317,6 +347,7 @@ export class StudioPageComponent {
   private readonly player = inject(PlayerService);
   protected readonly mode = signal<'songs' | 'album'>('songs');
   protected readonly albumMinutes = ALBUM_MINUTES;
+  protected readonly lengthAims = LENGTH_AIMS;
   protected readonly albumLength = signal(60);
   protected readonly albumSung = signal(false);
   protected readonly albumExact = signal(false);
@@ -401,6 +432,7 @@ export class StudioPageComponent {
       lyrics: this.albumSung() ? this.studio.lyricsBrief().trim() : '',
       cfg: this.studio.cfg().trim() === '' ? null : Number(this.studio.cfg()),
       exactTags: this.albumExact(),
+      ...(this.studio.lengthAim() !== '' && this.studio.page()?.length ? { trackLength: this.studio.lengthAim() } : {}),
       server: this.albumServer() ?? '',
     });
     this.albumSending.set(false);

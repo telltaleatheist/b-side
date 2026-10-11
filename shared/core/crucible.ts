@@ -60,6 +60,19 @@ export async function probe(server: StoredServer): Promise<ServerProbe> {
   };
 }
 
+/**
+ * A choice field's option ids, whether the server lists them as text or as {value|id, label}.
+ * The empty option ("the server's choice") is not one to send.
+ */
+function optionIds(field: PlaygroundField | undefined): string[] {
+  return (field?.options ?? []).flatMap((option) => {
+    if (typeof option === 'string') return option === '' ? [] : [option];
+    const row = option as { value?: unknown; id?: unknown } | null;
+    const id = row?.value ?? row?.id;
+    return typeof id === 'string' && id !== '' ? [id] : [];
+  });
+}
+
 function numberField(field: PlaygroundField | undefined): NumberField | null {
   if (field === undefined) return null;
   return {
@@ -179,6 +192,8 @@ export async function songPage(server: StoredServer): Promise<SongPage> {
     lyricsPlaceholder: lyrics?.placeholder ?? null,
     lyricsHint: lyrics?.hint ?? null,
     instrumental: named('instrumental') !== undefined,
+    length: named('min_duration_s') !== undefined && named('max_duration_s') !== undefined,
+    planningSets: optionIds(named('planning_set')),
     cfg: numberField(named('cfg')),
     seed: numberField(named('seed')),
     tagModel: tagModel.model,

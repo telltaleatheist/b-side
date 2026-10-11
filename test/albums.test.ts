@@ -149,3 +149,9 @@ test('more like this: 15 more minutes, planning new tracks only when too few unm
   await new Promise((resolve) => setTimeout(resolve, 10));
   expect(spare.rendered.length).toBeGreaterThan(0);
 });
+
+test('an album aimed at longer songs plans fewer tracks', () => {
+  expect(trackCount(30)).toBe(15);
+  expect(trackCount(30, 180)).toBe(10);
+  expect(trackCount(15, 300)).toBe(3);
+});
