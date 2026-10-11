@@ -34,6 +34,8 @@ export interface SongToWrite {
   readonly idea?: string;
   /** The person chose a pre-chorus (Make's checkbox; Owen, 2026-10-11: an option, with a warning). */
   readonly preChorus?: boolean;
+  /** Worn words and a spark for its name (fresh-names.ts); only when it names the song. */
+  readonly fresh?: string;
   /** For an album's track: the record around it. */
   readonly album?: {
     readonly title: string;
@@ -102,6 +104,7 @@ export function claudeLyricsUser(song: SongToWrite): string {
   if (song.brief) lines.push(`The lyrics should be about: ${song.brief}`);
   if (song.idea) lines.push(`This song is about: ${song.idea}`);
   lines.push(song.title ? `Song: "${song.title}"` : 'Song: not named yet; name it too (title: 1-5 words that fit its hook, never its first line, never generic)');
+  if (!song.title && song.fresh) lines.push(song.fresh);
   lines.push(`Style line: ${song.tags}`);
   lines.push(`Syllables: at most ${syllableBudget(song.tags)} per line.`);
   const shapes = song.preChorus === true ? SONG_SHAPES : CLAUDE_SHAPES;

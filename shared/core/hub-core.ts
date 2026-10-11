@@ -25,6 +25,7 @@ import { clientFor, clientName, probe, serverPresets, setClientName, songPage, s
 import { PresetStore } from './presets';
 import { describe, layLyrics, lyricsBrief } from './describe';
 import { describeSound, nameSong } from './split-text';
+import { freshLine } from './fresh-names';
 import type { Lyricist } from './lyricist';
 import { crucibleText, WRITERS, type TextModel, type Writer } from './text-model';
 import { join, type Disk } from './disk';
@@ -400,6 +401,7 @@ export class HubCore {
         });
       },
       claude: () => this.claude(),
+      freshNames: () => this.freshNames(),
       renameSong: async (id, from, to) => {
         const view = await this.libraryView();
         const playlist = view.playlists.find((p) => p.id === id);
@@ -756,6 +758,21 @@ export class HubCore {
   }
 
   /** The library, each album being made saying whether anything is being done for it right now. */
+  /**
+   * The words names already lean on and a spark (fresh-names.ts; Owen, 2026-10-11: metal names all
+   * crowns, ash and cathedrals, soul all velvet): from the library's 80 newest songs and its albums.
+   */
+  private async freshNames(): Promise<string> {
+    try {
+      const view = await this.libraryView();
+      const songs = [...view.songs].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 80).map((song) => song.title);
+      return freshLine([...songs, ...view.playlists.map((playlist) => playlist.name)]);
+    } catch (err) {
+      console.error('[hub] could not read the library for fresh names:', err);
+      return freshLine([]);
+    }
+  }
+
   async libraryView(): Promise<LibraryView> {
     const view = await this.library.list();
     return {
@@ -982,9 +999,13 @@ export class HubCore {
       // whoever writes the lyrics names the song, so the name fits its hook).
       const described: DescribeResult = await describeSound(sound, page, about, instrumental, brief);
       if (described.instrumental) {
-        return { ...described, title: named ?? await nameSong(claude.words, about, described.tags), lyricsModel: claude.words.name };
+        return { ...described, title: named ?? await nameSong(claude.words, about, described.tags, '', await this.freshNames()), lyricsModel: claude.words.name };
       }
-      const song = { title: named, tags: described.tags.join(', '), about, brief, ...(body['preChorus'] === true ? { preChorus: true } : {}) };
+      const song = {
+        title: named, tags: described.tags.join(', '), about, brief,
+        ...(body['preChorus'] === true ? { preChorus: true } : {}),
+        ...(named === null ? { fresh: await this.freshNames() } : {}),
+      };
       const written = named === null && lyricist.writeTitled !== undefined
         ? await lyricist.writeTitled(song)
         : { lyrics: await lyricist.write(song), title: named };
@@ -1145,7 +1166,8 @@ export class HubCore {
       if (title === '' && words !== null) {
         const params = rest.params;
         const tags = typeof params.tags === 'string' ? params.tags.split(',').map((tag) => tag.trim()).filter((tag) => tag !== '') : [];
-        void nameSong(words, '', tags, params.instrumental === true ? '' : (params.lyrics ?? ''))
+        void this.freshNames()
+          .then((fresh) => nameSong(words, '', tags, params.instrumental === true ? '' : (params.lyrics ?? ''), fresh))
           .then((named) => { if (named !== null) this.jobs.retitle(made.map((job) => job.key), named); })
           .catch((err: unknown) => console.error('[jobs] could not name a song made without one:', err));
       }

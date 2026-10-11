@@ -284,18 +284,18 @@ export function conceptPrompt(ask: AlbumAsk, count: number): string {
   ].filter((line) => line !== '').join('\n');
 }
 
-export function conceptUser(ask: AlbumAsk): string {
+export function conceptUser(ask: AlbumAsk, fresh = ''): string {
   const wanted = [ask.description.trim(), ask.tags.length > 0 ? `Tags: ${ask.tags.join(', ')}` : ''].filter((part) => part !== '').join('\n');
-  return wanted === '' ? 'Surprise me.' : wanted;
+  return [wanted === '' ? 'Surprise me.' : wanted, fresh].filter((part) => part !== '').join('\n');
 }
 
 /** [concept]: the album's title, artist and liner note. */
-export async function writeConcept(writer: TextModel, ask: AlbumAsk, count: number): Promise<{ title: string; artist: string; blurb: string }> {
+export async function writeConcept(writer: TextModel, ask: AlbumAsk, count: number, fresh = ''): Promise<{ title: string; artist: string; blurb: string }> {
   const schema = {
     type: 'object', additionalProperties: false, required: ['title', 'artist', 'blurb'],
     properties: { title: { type: 'string', maxLength: 80 }, artist: { type: 'string', maxLength: 80 }, blurb: { type: 'string', maxLength: 400 } },
   };
-  const got = await call(writer, '[concept]', 'album_concept', conceptPrompt(ask, count), conceptUser(ask), schema, 400, WORDS_TEMPERATURE);
+  const got = await call(writer, '[concept]', 'album_concept', conceptPrompt(ask, count), conceptUser(ask, fresh), schema, 400, WORDS_TEMPERATURE);
   return {
     // The person's own name stands whatever came back.
     title: ask.title || textOf(got['title'], '[concept]', 'title') || 'Untitled',
@@ -316,16 +316,18 @@ export function ideasPrompt(sung: boolean, first: number, last: number, count: n
   ].join('\n');
 }
 
-export function ideasUser(ask: AlbumAsk, album: Pick<AlbumConcept, 'title' | 'artist' | 'blurb'>, previous: readonly string[]): string {
+export function ideasUser(ask: AlbumAsk, album: Pick<AlbumConcept, 'title' | 'artist' | 'blurb'>, previous: readonly string[], fresh = ''): string {
   const lines = [`Album: "${album.title}" by ${album.artist}. ${album.blurb}`, `About: ${aboutOf(ask)}`];
   if (ask.sung && ask.lyrics) lines.push(`The lyrics will be about: ${ask.lyrics}`);
   if (previous.length > 0) lines.push(`Already on the album: ${previous.map((title, at) => `${at + 1}. "${title}"`).join('; ')}`);
+  if (fresh !== '') lines.push(fresh);
   return lines.join('\n');
 }
 
 /** [ideas]: tracks first..last of count, each a title and what it is about, told every title so far. */
 export async function writeIdeas(
   writer: TextModel, ask: AlbumAsk, album: Pick<AlbumConcept, 'title' | 'artist' | 'blurb'>, first: number, last: number, count: number, previous: readonly string[],
+  fresh = '',
 ): Promise<{ title: string; idea: string }[]> {
   const n = last - first + 1;
   const schema = {
@@ -340,7 +342,7 @@ export async function writeIdeas(
       },
     },
   };
-  const got = await call(writer, '[ideas]', 'track_ideas', ideasPrompt(ask.sung, first, last, count), ideasUser(ask, album, previous), schema, 200 + 80 * n, WORDS_TEMPERATURE);
+  const got = await call(writer, '[ideas]', 'track_ideas', ideasPrompt(ask.sung, first, last, count), ideasUser(ask, album, previous, fresh), schema, 200 + 80 * n, WORDS_TEMPERATURE);
   const tracks = got['tracks'];
   if (!Array.isArray(tracks) || tracks.length !== n) {
     throw new Refusal('text_unreadable', `${writer.name} wrote ${Array.isArray(tracks) ? tracks.length : 'no'} tracks for ${first}-${last}, not ${n}.`);
@@ -353,13 +355,13 @@ export async function writeIdeas(
  * instrumental from Describe, and any song made without one (a preset and Make; Owen, 2026-10-11:
  * one came out "Heavy metal · Epic · Dark"). A sung song named by its lyricist never comes here.
  */
-export async function nameSong(writer: TextModel, about: string, tags: readonly string[], lyrics = ''): Promise<string | null> {
+export async function nameSong(writer: TextModel, about: string, tags: readonly string[], lyrics = '', fresh = ''): Promise<string | null> {
   const schema = { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 60 } } };
   const sung = lyrics.trim() !== '';
   const got = await call(
     writer, '[song name]', 'song_name',
     `You name ${sung ? 'a song' : 'a piece of instrumental music'}. Reply with JSON only: {"title": "..."}. A creative title, 1-5 words, that fits ${sung ? 'its words (its hook, never its first line)' : 'what it is about'} and how it sounds; never generic, never a list of its tags.`,
-    [about ? `About: ${about}` : '', `Sound: ${tags.join(', ')}`, sung ? `Lyrics:\n${lyrics.trim().slice(0, 2000)}` : ''].filter((line) => line !== '').join('\n'),
+    [about ? `About: ${about}` : '', `Sound: ${tags.join(', ')}`, sung ? `Lyrics:\n${lyrics.trim().slice(0, 2000)}` : '', fresh].filter((line) => line !== '').join('\n'),
     schema, 80, WORDS_TEMPERATURE,
   );
   const title = textOf(got['title'], '[song name]', 'title').replace(/^["'“]+|["'”]+$/g, '').trim();

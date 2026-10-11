@@ -230,6 +230,8 @@ export interface AlbumHooks {
    * lyrics (`lyricist`), either or both. A null one, or null for both: B-Sides' model on the server.
    */
   claude(): { readonly text: TextModel | null; readonly words?: TextModel | null; readonly lyricist: Lyricist | null } | null;
+  /** Worn words and a spark for names (fresh-names.ts); absent: none given. */
+  freshNames?(): Promise<string>;
   /** A made track was named again: rename its song (the first of the album's songs with the old name). */
   renameSong(id: string, from: string, to: string): Promise<void>;
   /**
@@ -774,7 +776,7 @@ export class AlbumMaker {
       if (meta.plan == null) {
         await show({ kind: 'plan', done: 0, of: steps });
         const writer = await words();
-        const named = await writeConcept(writer, meta.ask, count);
+        const named = await writeConcept(writer, meta.ask, count, await this.hooks.freshNames?.() ?? '');
         plan = { ...named, coverPrompt: '', core: '', tracks: [], trackCount: count };
         meta = { ...(await this.hooks.meta(id) ?? meta), writer: writer.name, plan, artist: plan.artist, blurb: plan.blurb };
         await this.hooks.update(id, meta, plan.title);
@@ -787,7 +789,9 @@ export class AlbumMaker {
         if (await this.halted(id)) return meta;
         await show({ kind: 'plan', done: 1 + at, of: steps });
         const writer = await words();
-        const ideas = await writeIdeas(writer, meta.ask, plan, plan.tracks.length + 1, last, count, plan.tracks.map((track) => track.title));
+        const ideas = await writeIdeas(
+          writer, meta.ask, plan, plan.tracks.length + 1, last, count, plan.tracks.map((track) => track.title), await this.hooks.freshNames?.() ?? '',
+        );
         plan = { ...plan, tracks: [...plan.tracks, ...ideas.map((track): AlbumTrack => ({ title: track.title, idea: track.idea, tags: '', lyrics: null }))] };
         meta = { ...(await this.hooks.meta(id) ?? meta), writer: writer.name, plan };
         await this.hooks.update(id, meta);
