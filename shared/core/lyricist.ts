@@ -66,9 +66,10 @@ export function claudeLyricsSystem(): string {
     '',
     'Form, which YuE2 needs to sing every section:',
     `- Use only these section tags, each alone on its own line, in Title Case, in square brackets: ${YUE_SECTIONS.map((s) => `[${s}]`).join(', ')}.`,
-    '- Every section has at least 4 lines. YuE2 drops shorter sections, above all at the start and end of a song.',
-    '- Use an [intro] or [outro] only when it has 4 or more sung lines; otherwise start on the first verse and end on the last chorus.',
-    '- Verses 4-6 lines, pre-choruses 4, choruses 4-6, a bridge 4. The final chorus has its last two lines changed.',
+    '- Every section is exactly 4 lines, or 8 for a verse. YuE2 plans its melody in phrases of four, one line each: a',
+    '  6-line chorus has every line after the first run across a phrase, and a section under 4 lines is dropped.',
+    '- Use an [Intro] or [Outro] only as 4 sung lines; otherwise start on the first verse and end on the last chorus.',
+    '- Verses 8 lines (or 4); pre-choruses, choruses, bridges, intros and outros 4. The final chorus has its last two lines changed.',
     '- Short lines: at most the syllables per line you are given. YuE2 sings about one bar per line, and a longer line is',
     '  crammed or loses words. Count every line\'s syllables before you answer, and split or cut any line over the budget.',
     '- Follow the shape you are given, if one is given.',
@@ -155,13 +156,38 @@ export function crammedLines(lyrics: string, budget: number): string[] {
     });
 }
 
-/** Asked again, once, when some lines are crammed: those lines named, the rest kept. */
-export function claudeLyricsShorter(lyrics: string, crammed: readonly string[], budget: number): string {
+/**
+ * The sections whose line count YuE2's planner does not take: anything but 4 lines, or 8 for a
+ * verse (crucible-pc-1, 2026-10-11: "A Thousand Ships" sang a 6-line chorus over a score of four
+ * 2-bar phrases, and every line after the first ran across a phrase). Each as "[Chorus] (6 lines)".
+ */
+export function misshapenSections(lyrics: string): string[] {
+  const found: string[] = [];
+  let tag: string | null = null;
+  let lines = 0;
+  const close = (): void => {
+    if (tag !== null && !(lines === 4 || (lines === 8 && /verse/i.test(tag)))) found.push(`${tag} (${lines} lines)`);
+  };
+  for (const raw of lyrics.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (/^\[[^\]]+\]$/.test(line)) {
+      close();
+      tag = line;
+      lines = 0;
+    } else if (line !== '') {
+      lines += 1;
+    }
+  }
+  close();
+  return found;
+}
+
+/** Asked again, once, when some lines are crammed or sections misshapen: those named, the rest kept. */
+export function claudeLyricsShorter(lyrics: string, crammed: readonly string[], budget: number, misshapen: readonly string[] = []): string {
   return [
-    `These lyrics have lines too long for YuE2 to sing (at most ${budget} syllables a line):`,
-    ...crammed.map((line) => `- ${line}`),
-    '',
-    'Rewrite only those lines, shorter (split one into two lines where the section can take it), and keep everything else as it is.',
+    ...(crammed.length > 0 ? [`These lines are too long for YuE2 to sing (at most ${budget} syllables a line):`, ...crammed.map((line) => `- ${line}`), ''] : []),
+    ...(misshapen.length > 0 ? ['These sections are not 4 lines (8 for a verse), the phrases YuE2 plans its melody in:', ...misshapen.map((section) => `- ${section}`), ''] : []),
+    'Fix only those: shorten the lines, and bring each section to 4 lines (a verse 4 or 8). Keep everything else as it is.',
     '',
     lyrics,
   ].join('\n');

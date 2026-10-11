@@ -22,6 +22,7 @@ import {
   claudeLyricsSystem,
   claudeLyricsUser,
   crammedLines,
+  misshapenSections,
   syllableBudget,
   type Lyricist,
   type SongToWrite,
@@ -109,9 +110,10 @@ async function writeLyrics(song: SongToWrite, titled: boolean): Promise<{ lyrics
   const lyrics = (first['lyrics'] as string).trim();
   const budget = syllableBudget(song.tags);
   const crammed = crammedLines(lyrics, budget);
-  if (crammed.length === 0) return { lyrics, title };
-  console.log(`[claude] ${crammed.length} line(s) over ${budget} syllables; asking for them shorter`);
-  const shorter = await ask(claudeLyricsShorter(lyrics, crammed, budget), CLAUDE_LYRICS_SCHEMA)
+  const misshapen = misshapenSections(lyrics);
+  if (crammed.length === 0 && misshapen.length === 0) return { lyrics, title };
+  console.log(`[claude] ${crammed.length} line(s) over ${budget} syllables, ${misshapen.length} section(s) not 4 or 8 lines; asking for them fixed`);
+  const shorter = await ask(claudeLyricsShorter(lyrics, crammed, budget, misshapen), CLAUDE_LYRICS_SCHEMA)
     .then((answer) => (answer['lyrics'] as string).trim())
     .catch(() => lyrics);
   return { lyrics: shorter, title };

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { claudeLyricsSystem, claudeLyricsUser, crammedLines, syllableBudget, syllables } from '../shared/core/lyricist';
+import { claudeLyricsSystem, claudeLyricsUser, crammedLines, misshapenSections, syllableBudget, syllables } from '../shared/core/lyricist';
 import { STYLE_TASKS } from '../shared/core/yue2-style';
 
 test('a line is counted near enough to tell one YuE2 crams (Victoria, 2026-10-11)', () => {
@@ -41,4 +41,14 @@ test('an album track stands alone: no opener, closer or count of songs to write 
   });
   expect(user).not.toMatch(/opener|closer|track 1 of/i);
   expect(user).toContain('must stand alone');
+});
+
+test('sections are 4 lines, or 8 for a verse: a 6-line chorus is named (crucible-pc-1, 2026-10-11)', () => {
+  const four = 'a\nb\nc\nd';
+  const six = 'a\nb\nc\nd\ne\nf';
+  const eight = `${four}\n${four}`;
+  expect(misshapenSections(`[Verse]\n${eight}\n\n[Chorus]\n${four}\n\n[Bridge]\n${four}`)).toEqual([]);
+  expect(misshapenSections(`[Verse]\n${four}\n\n[Chorus]\n${six}`)).toEqual(['[Chorus] (6 lines)']);
+  expect(misshapenSections(`[Chorus]\n${eight}`)).toEqual(['[Chorus] (8 lines)']);
+  expect(claudeLyricsSystem()).toContain('Every section is exactly 4 lines, or 8 for a verse');
 });
