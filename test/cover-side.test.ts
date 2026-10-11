@@ -11,12 +11,16 @@ function serve(body: unknown, status = 200): void {
 
 const pc = { name: 'pc', url: 'http://pc:7100/', token: 't' };
 
-test("a cover is painted at the model's published minimum: 768 for the SDXL rung, 256 for qwen-image", async () => {
+test("a cover is painted at its native size when the model needs more than 256 (DreamShaper: 1024), at 256 for qwen-image", async () => {
   serve({ pages: [
-    { id: 'dreamshaper-xl-lightning', facts: { quality_min_side: 768 } },
-    { id: 'qwen-image-2.1', facts: { quality_min_side: 256 } },
+    { id: 'dreamshaper-xl-lightning', facts: { quality_min_side: 768, native_size: 1024 } },
+    { id: 'dreamshaper-pair', facts: { quality_min_side: 768, native_size: [1024, 1024] } },
+    { id: 'dreamshaper-object', facts: { quality_min_side: 768, native_size: { width: 1024, height: 1024 } } },
+    { id: 'qwen-image-2.1', facts: { quality_min_side: 256, native_size: 1024 } },
   ] });
-  expect(await coverSide(pc, 'dreamshaper-xl-lightning')).toBe(768);
+  expect(await coverSide(pc, 'dreamshaper-xl-lightning')).toBe(1024);
+  expect(await coverSide(pc, 'dreamshaper-pair')).toBe(1024);
+  expect(await coverSide(pc, 'dreamshaper-object')).toBe(1024);
   expect(await coverSide(pc, 'qwen-image-2.1')).toBe(256);
 });
 

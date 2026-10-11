@@ -183,22 +183,35 @@ const COVER_UPLOAD_MAX = 700 * 1024;
 const COVER_KEPT_PX = 512;
 
 /**
- * The side to paint `model`'s cover at: its published `quality_min_side` (Crucible 1.0.138's image
- * page facts), never under COVER_SIZE; COVER_SIZE when the server publishes none. Read from the
- * playground directly: the pinned SDK predates the facts and drops them.
+ * The side to paint `model`'s cover at, from Crucible 1.0.138's image page facts: a model that
+ * paints well at COVER_SIZE (`quality_min_side` at most that: qwen-image) keeps it, as Owen chose
+ * on 2026-10-06; one that does not paints at its `native_size` (Owen, 2026-10-10, comparing
+ * DreamShaper at 512 and 1024: "1024 is definitely better. lets stick to that"), else at its
+ * minimum. COVER_SIZE when the server publishes nothing. Read from the playground directly: the
+ * pinned SDK predates the facts and drops them.
  */
 export async function coverSide(server: StoredServer, model: string): Promise<number> {
   try {
     const response = await fetch(`${server.url.replace(/\/+$/, '')}/v1/playground`, { headers: { Authorization: `Bearer ${server.token}` } });
     if (!response.ok) return COVER_SIZE;
-    const body = (await response.json()) as { pages?: { id?: unknown; facts?: { quality_min_side?: unknown } }[] };
-    const least = body.pages?.find((page) => page.id === model)?.facts?.quality_min_side;
-    if (typeof least !== 'number' || !Number.isFinite(least)) return COVER_SIZE;
+    const body = (await response.json()) as { pages?: { id?: unknown; facts?: { quality_min_side?: unknown; native_size?: unknown } }[] };
+    const facts = body.pages?.find((page) => page.id === model)?.facts;
+    const least = facts?.quality_min_side;
+    if (typeof least !== 'number' || !Number.isFinite(least) || least <= COVER_SIZE) return COVER_SIZE;
+    const native = sideOf(facts?.native_size);
     // A multiple of 32, as the server takes.
-    return Math.max(COVER_SIZE, Math.ceil(least / 32) * 32);
+    return Math.ceil((native !== null && native >= least ? native : least) / 32) * 32;
   } catch {
     return COVER_SIZE;
   }
+}
+
+/** A published size as one side: a number, [width, height] or {width, height} (the smaller side). */
+function sideOf(size: unknown): number | null {
+  const pair = Array.isArray(size) ? size : size !== null && typeof size === 'object'
+    ? [(size as { width?: unknown }).width, (size as { height?: unknown }).height] : [size, size];
+  const sides = pair.filter((n): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0);
+  return sides.length === 0 ? null : Math.min(...sides);
 }
 
 /** The painted cover's width and height, in pixels. */
