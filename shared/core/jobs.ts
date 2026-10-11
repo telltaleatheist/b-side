@@ -93,7 +93,7 @@ interface Job {
   /** A held render waiting for (or in) its strip: what its done event said. */
   rendered?: { readonly artifact: string; readonly seed: number; readonly durationS: number | null; readonly effective: unknown };
   /** An instrumental version: the library song, and its audio file to upload. */
-  source?: { readonly song: Song; readonly file: string };
+  source?: { readonly song: Song; readonly file: string; readonly beside?: boolean };
 }
 
 /** What the runner needs to strip songs (strip.ts); without it nothing is stripped. */
@@ -114,6 +114,11 @@ export interface StripOptions {
 export interface VersionAsk {
   readonly song: Song;
   readonly file: string;
+  /**
+   * One song made instrumental (Owen, 2026-10-11): filed beside its original in the same
+   * playlist, titled "<title> (Instrumental)"; a whole playlist's go to their own playlist.
+   */
+  readonly beside?: boolean;
 }
 
 /** A seed B-Sides draws itself, as the server would (0 to MAX_SEED). */
@@ -208,7 +213,7 @@ export interface Landed {
    * failed (the render landed as made); `of` the library song an instrumental version was made from.
    * Absent: not stripped.
    */
-  readonly strip?: { readonly jobId?: string; readonly failed?: string; readonly of?: string };
+  readonly strip?: { readonly jobId?: string; readonly failed?: string; readonly of?: string; readonly beside?: boolean };
 }
 
 export interface JobHooks {
@@ -407,7 +412,7 @@ export class JobRunner {
         ...(made.seed !== null ? { seed: made.seed } : {}),
       };
       const job: Job = {
-        server, client, format, taskId: null, gone: false, source: { song: ask.song, file: ask.file },
+        server, client, format, taskId: null, gone: false, source: { song: ask.song, file: ask.file, ...(ask.beside === true ? { beside: true } : {}) },
         view: {
           key: crypto.randomUUID(), client: asker.id, clientKind: asker.kind, number: this.numbered, index: at + 1, batch: asks.length,
           server: server.name, jobId: null, phase: 'submitting', position: null, of: null, fraction: null,
@@ -1028,7 +1033,8 @@ export class JobRunner {
       job.view.jobId = done.jobId;
       landed = {
         fill: this.filler(job, done.jobId, done.stem), extension: extensionOf(done.stem), seed: source.song.params.seed,
-        durationS: source.song.durationS, effective: null, strip: { jobId: done.jobId, of: source.song.id },
+        durationS: source.song.durationS, effective: null,
+        strip: { jobId: done.jobId, of: source.song.id, ...(source.beside === true ? { beside: true } : {}) },
       };
     } catch (error) {
       if (job.gone) this.finish(job, 'cancelled');

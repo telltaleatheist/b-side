@@ -150,7 +150,11 @@ const COVER_PX = 768;
               }
             </div>
             @if (versionNote(); as note) {
-              <span class="hint version-note">{{ note.text }} <a [routerLink]="['/library', note.id]">Open {{ note.name }}</a></span>
+              <span class="hint version-note">{{ note.text }}
+                @if (note.id !== selected()?.id) {
+                  <button type="button" class="chip" (click)="openPlaylist(note.id)">Open {{ note.name }}</button>
+                }
+              </span>
             }
             @if (versionRefusal(); as refused) {
               <app-refusal [refusal]="refused" />
@@ -805,7 +809,14 @@ export class PlaylistsPageComponent {
     if (target === null) return;
     const name = this.library.playlist(target)?.name ?? `${playlist.name}${INSTRUMENTAL_SUFFIX}`;
     const count = outcome.value.length;
-    this.versionNote.set({ id: target, name, text: `${count === 1 ? 'One song is' : `${count} songs are`} being made instrumental, into ${name}.` });
+    // One song's version lands beside it, here (Owen, 2026-10-11); a playlist's in its own playlist.
+    this.versionNote.set(song !== undefined
+      ? { id: target, name, text: `${song.title} (Instrumental) is being made; it appears right after ${song.title}.` }
+      : { id: target, name, text: `${count === 1 ? 'One song is' : `${count} songs are`} being made instrumental, into ${name}.` });
+  }
+
+  protected openPlaylist(id: string): void {
+    void this.router.navigate(['/library', id]);
   }
 
   /** Where a song can move: every other playlist that is not an album. */

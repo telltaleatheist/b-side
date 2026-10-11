@@ -315,12 +315,13 @@ test('a playlist made instrumental files into "<name> (Instrumental)", made once
   expect(asks).toEqual([{ asks: 2, playlist: named[0]?.id as string }, { asks: 2, playlist: named[0]?.id as string }]);
 });
 
-test('a single song from New Songs files into "New Songs (Instrumental)"', async () => {
+test('one song made instrumental stays in its own playlist, with no new playlist (Owen, 2026-10-11)', async () => {
   const id = await songIn(null as never, 'Lonely');
   await route('POST', '/api/songs/:id/instrumental')({ id });
-  const target = (await core.libraryView()).playlists.find((p) => p.name === 'New Songs (Instrumental)');
-  expect(target).toBeDefined();
-  expect(asks).toEqual([{ asks: 1, playlist: target?.id as string }]);
+  const view = await core.libraryView();
+  const home = view.playlists.find((p) => p.songs.includes(id));
+  expect(view.playlists.some((p) => p.name === 'New Songs (Instrumental)')).toBe(false);
+  expect(asks).toEqual([{ asks: 1, playlist: home?.id as string }]);
 });
 
 test('a server that cannot strip refuses an instrumental version by name', async () => {

@@ -358,7 +358,7 @@ export class HubCore {
             const take = await this.takes.add({
               client: landed.job.client,
               kind: landed.job.clientKind,
-              title: original.title,
+              title: strip?.beside === true ? instrumentalName(original.title) : original.title,
               extension: landed.extension,
               fill: landed.fill,
               model: original.model,
@@ -374,6 +374,8 @@ export class HubCore {
             });
             const songId = landed.job.playlist == null ? null : await this.fileTake(landed.job.playlist, take.id);
             if (songId === null) this.sink.send(take.client, { type: 'take', take });
+            // One song's version sits right after its original (Owen, 2026-10-11).
+            if (songId !== null && strip?.beside === true) await this.placeAfter(landed.job.playlist as string, songId, original.id);
             return { take, songId };
           }
           const take = await this.takes.add({
@@ -1335,16 +1337,24 @@ export class HubCore {
     // ── instrumental versions (Owen, 2026-10-11; strip.ts) ──────────────────────
     // Whether the active server can make them now; the pages disable the buttons when not.
     this.route('GET', '/api/strip', () => this.stripAbility());
-    // One song: {playlist?} the playlist it was asked from, whose " (Instrumental)" it is filed into.
+    // One song: {playlist?} the playlist it was asked from. Its version goes into that same playlist,
+    // right after it, as "<title> (Instrumental)" (Owen, 2026-10-11: no new playlist for one song).
     this.route('POST', '/api/songs/:id/instrumental', async (request) => {
       const id = request.params['id'] as string;
       const song = await this.library.song(id);
       const view = await this.library.list();
       const asked = idOrNull((await request.body())['playlist'], 'playlist');
       const from = view.playlists.find((p) => p.id === asked && p.songs.includes(id))
-        ?? view.playlists.find((p) => p.songs.includes(id) && !p.name.endsWith(INSTRUMENTAL_SUFFIX))
+        ?? view.playlists.find((p) => p.songs.includes(id))
         ?? null;
-      return this.makeVersions(request.client(), [song], from?.name ?? SINGLES_NAME, from?.folder ?? null);
+      const target = from?.id ?? await this.singlesPlaylist();
+      const there = view.playlists.find((p) => p.id === target)?.songs ?? [];
+      if (there.some((songId) => view.songs.find((each) => each.id === songId)?.instrumentalOf === id)) {
+        throw new Refusal('already_instrumental', `${song.title} has an instrumental version beside it already.`, 409);
+      }
+      const ability = await this.stripAbility();
+      if (!ability.can) throw new Refusal('strip_unavailable', ability.why ?? 'This server cannot take the voice out of songs.', 409);
+      return this.jobs.versions(this.registry.active(), request.client(), [{ song, file: this.library.audioPath(song.file), beside: true }], this.preferences.songFormat, target);
     });
     // A playlist or an album: every song in it, in its order, in one run on the server.
     this.route('POST', '/api/playlists/:id/instrumental', async (request) => {
@@ -1452,6 +1462,17 @@ export class HubCore {
       await this.library.removeFrom(request.params['id'] as string, request.params['song'] as string);
       return this.libraryChanged();
     });
+  }
+
+  /** Put `songId` right after `after` in a playlist (where both are); left at the end otherwise. */
+  private async placeAfter(playlistId: string, songId: string, after: string): Promise<void> {
+    const playlist = (await this.library.list()).playlists.find((p) => p.id === playlistId);
+    if (playlist === undefined || !playlist.songs.includes(after)) return;
+    const rest = playlist.songs.filter((each) => each !== songId);
+    const at = rest.indexOf(after) + 1;
+    await this.library.reorder(playlistId, [...rest.slice(0, at), songId, ...rest.slice(at)])
+      .catch((err: unknown) => console.error(`[strip] could not place the instrumental version after its original:`, err));
+    await this.libraryChanged();
   }
 
   /** Whether instrumental versions can be made on the active server now, and why not. */
