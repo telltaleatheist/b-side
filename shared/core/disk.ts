@@ -17,7 +17,7 @@ export interface Disk {
   readText(file: string): Promise<string | null>;
   /** Write text so an interruption leaves the old file intact (temporary + rename). */
   writeText(file: string, text: string): Promise<void>;
-  /** Write bytes the same way. Absent where the platform cannot yet (the phone): what needs it says so. */
+  /** Write bytes the same way. Optional: a platform without it refuses what needs it, and says so. */
   writeBytes?(file: string, bytes: Uint8Array): Promise<void>;
   /** Whether a file exists. */
   exists(file: string): Promise<boolean>;

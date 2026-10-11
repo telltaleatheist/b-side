@@ -10,6 +10,8 @@ interface NativeDiskPlugin {
   list(options: { path: string }): Promise<{ names: string[] | null }>;
   readText(options: { path: string }): Promise<{ text: string | null }>;
   writeText(options: { path: string; text: string }): Promise<void>;
+  /** Bytes as base64: the bridge carries text. */
+  writeBytes(options: { path: string; base64: string }): Promise<void>;
   exists(options: { path: string }): Promise<{ exists: boolean }>;
   move(options: { from: string; to: string }): Promise<void>;
   copy(options: { from: string; to: string }): Promise<void>;
@@ -35,11 +37,19 @@ export const nativeDisk: Disk = {
   list: async (path) => (await NativeDisk.list({ path })).names,
   readText: async (path) => (await NativeDisk.readText({ path })).text,
   writeText: (path, text) => NativeDisk.writeText({ path, text }),
+  writeBytes: (path, bytes) => NativeDisk.writeBytes({ path, base64: toBase64(bytes) }),
   exists: async (path) => (await NativeDisk.exists({ path })).exists,
   move: (from, to) => NativeDisk.move({ from, to }),
   copy: (from, to) => NativeDisk.copy({ from, to }),
   remove: (path) => NativeDisk.remove({ path }),
 };
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let at = 0; at < bytes.length; at += CHUNK) binary += String.fromCharCode(...bytes.subarray(at, at + CHUNK));
+  return btoa(binary);
+}
 
 /** The server list, tokens and all, as one Keychain item. */
 export function keychainVault(key: string): Vault {

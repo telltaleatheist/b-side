@@ -23,6 +23,7 @@ public class NativeDiskPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "list", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "readText", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "writeText", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "writeBytes", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "exists", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "move", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "copy", returnType: CAPPluginReturnPromise),
@@ -131,6 +132,22 @@ public class NativeDiskPlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve()
         } catch {
             call.reject("writeText: \(error.localizedDescription)")
+        }
+    }
+
+    /// Bytes arrive as base64 (the bridge carries text): an album's own cover, a few MB at most.
+    @objc func writeBytes(_ call: CAPPluginCall) {
+        guard let path = call.getString("path"), let url = resolve(path),
+              let base64 = call.getString("base64"), let data = Data(base64Encoded: base64) else {
+            call.reject("writeBytes: needs a path inside B-Side's folder and base64 bytes"); return
+        }
+        do {
+            try parent(url)
+            try data.write(to: url, options: .atomic)
+            settle(url, path)
+            call.resolve()
+        } catch {
+            call.reject("writeBytes: \(error.localizedDescription)")
         }
     }
 
