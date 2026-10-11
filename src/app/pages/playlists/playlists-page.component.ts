@@ -345,7 +345,8 @@ const COVER_PX = 768;
     .item.upcoming:hover { background: transparent; }
     .item.upcoming.making { opacity: 1; }
     .item.upcoming.making .num, .item.upcoming.making .time { color: var(--audio); }
-    .head-actions { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+    /* Wraps onto more lines rather than running off the side (Victoria, 0.1.19: "I have to scroll back and forth"). */
+    .head-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin-top: 4px; min-width: 0; }
     .rename { padding: 6px 10px; font-size: 15px; }
     .rename.big { font-family: var(--font-display); font-size: 32px; font-weight: 800; }
     .keep { align-self: flex-start; }
