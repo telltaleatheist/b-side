@@ -194,6 +194,16 @@ export class JobRunner {
       && job.view.phase !== 'fetching' && !ENDED_PHASES.includes(job.view.phase)).length;
   }
 
+  /** Name songs still on their way (a title written while they render); one already landed keeps its own. */
+  retitle(keys: readonly string[], title: string): void {
+    for (const key of keys) {
+      const job = this.jobs.get(key);
+      if (job === undefined || job.view.takeId !== null || ENDED_PHASES.includes(job.view.phase)) continue;
+      job.view.title = title;
+      this.publish(job);
+    }
+  }
+
   list(client: string): JobView[] {
     return [...this.jobs.values()]
       .filter((job) => job.view.client === client)

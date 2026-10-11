@@ -80,3 +80,11 @@ test('an instrumental single names what carries its melody', async () => {
   const described = await describeSound(sound, page, 'calm piano', true, '');
   expect(described.tags).toContain('piano melody');
 });
+
+test('a song made without a name is named from its sound and words, never a list of its tags (Owen, 2026-10-11)', async () => {
+  const asked: TextRequest[] = [];
+  const named = await nameSong(answering({ title: 'Iron at Dawn' }, asked), '', ['heavy metal', 'epic', 'dark'], '[Verse]\nWe ride at first light');
+  expect(named).toBe('Iron at Dawn');
+  expect(asked[0]!.system).toContain('You name a song');
+  expect(asked[0]!.user).toContain('Lyrics:\n[Verse]\nWe ride at first light');
+});

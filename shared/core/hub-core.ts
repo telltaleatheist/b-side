@@ -1136,7 +1136,19 @@ export class HubCore {
       const title = typeof body.title === 'string' ? body.title.trim().slice(0, SONG_TITLE_MAX) : '';
       const { title: _given, ...rest } = body;
       const server = this.registry.active();
-      return this.jobs.generate(server, client, title === '' ? rest : { ...rest, title }, this.preferences.songFormat, null, await this.singlesPlaylist());
+      const made = this.jobs.generate(server, client, title === '' ? rest : { ...rest, title }, this.preferences.songFormat, null, await this.singlesPlaylist());
+      // Not named (a preset and Make, no Describe): Claude names it while it renders, so it never
+      // lands as a list of its tags (Owen, 2026-10-11). Without Claude (a phone) the server's model
+      // is not asked: it would take the card from the song. A name that is late or fails leaves the default.
+      const words = this.preferences.lyricist === 'claude' ? this.options.claude?.text ?? null : null;
+      if (title === '' && words !== null) {
+        const params = rest.params;
+        const tags = typeof params.tags === 'string' ? params.tags.split(',').map((tag) => tag.trim()).filter((tag) => tag !== '') : [];
+        void nameSong(words, '', tags, params.instrumental === true ? '' : (params.lyrics ?? ''))
+          .then((named) => { if (named !== null) this.jobs.retitle(made.map((job) => job.key), named); })
+          .catch((err: unknown) => console.error('[jobs] could not name a song made without one:', err));
+      }
+      return made;
     });
     this.route('POST', '/api/jobs/:key/cancel', async (request) => {
       this.ownJob(request);

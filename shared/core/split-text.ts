@@ -311,13 +311,19 @@ export async function writeIdeas(
   return tracks.map((track: Record<string, unknown>) => ({ title: textOf(track['title'], '[ideas]', 'title'), idea: textOf(track['idea'], '[ideas]', 'idea') }));
 }
 
-/** [song name]: an instrumental single's name (a sung one is named with its words). */
-export async function nameSong(writer: TextModel, about: string, tags: readonly string[]): Promise<string | null> {
+/**
+ * [song name]: a song's name from what it is about, its sound and, when sung, its words. An
+ * instrumental from Describe, and any song made without one (a preset and Make; Owen, 2026-10-11:
+ * one came out "Heavy metal · Epic · Dark"). A sung song named by its lyricist never comes here.
+ */
+export async function nameSong(writer: TextModel, about: string, tags: readonly string[], lyrics = ''): Promise<string | null> {
   const schema = { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 60 } } };
+  const sung = lyrics.trim() !== '';
   const got = await call(
     writer, '[song name]', 'song_name',
-    'You name a piece of instrumental music. Reply with JSON only: {"title": "..."}. A creative title, 1-5 words, that fits what it is about and how it sounds; never generic.',
-    `About: ${about}\nSound: ${tags.join(', ')}`, schema, 80, WORDS_TEMPERATURE,
+    `You name ${sung ? 'a song' : 'a piece of instrumental music'}. Reply with JSON only: {"title": "..."}. A creative title, 1-5 words, that fits ${sung ? 'its words (its hook, never its first line)' : 'what it is about'} and how it sounds; never generic, never a list of its tags.`,
+    [about ? `About: ${about}` : '', `Sound: ${tags.join(', ')}`, sung ? `Lyrics:\n${lyrics.trim().slice(0, 2000)}` : ''].filter((line) => line !== '').join('\n'),
+    schema, 80, WORDS_TEMPERATURE,
   );
   const title = textOf(got['title'], '[song name]', 'title').replace(/^["'“]+|["'”]+$/g, '').trim();
   return title === '' ? null : title;
