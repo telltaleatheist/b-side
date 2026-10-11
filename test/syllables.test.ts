@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { claudeLyricsSystem, claudeLyricsUser, crammedLines, misshapenSections, syllableBudget, syllables } from '../shared/core/lyricist';
+import { CLAUDE_SHAPES, claudeLyricsSystem, claudeLyricsUser, crammedLines, misshapenSections, SONG_SHAPES, syllableBudget, syllables } from '../shared/core/lyricist';
 import { STYLE_TASKS } from '../shared/core/yue2-style';
 
 test('a line is counted near enough to tell one YuE2 crams (Victoria, 2026-10-11)', () => {
@@ -51,4 +51,14 @@ test('sections are 4 lines, or 8 for a verse: a 6-line chorus is named (crucible
   expect(misshapenSections(`[Verse]\n${four}\n\n[Chorus]\n${six}`)).toEqual(['[Chorus] (6 lines)']);
   expect(misshapenSections(`[Chorus]\n${eight}`)).toEqual(['[Chorus] (8 lines)']);
   expect(claudeLyricsSystem()).toContain('Every section is exactly 4 lines, or 8 for a verse');
+});
+
+test("no pre-chorus: YuE2's score dropped it in most of Victoria's songs (Owen, 2026-10-11)", () => {
+  expect(CLAUDE_SHAPES.some((shape) => shape.includes('pre-chorus'))).toBe(false);
+  expect(CLAUDE_SHAPES.length).toBe(SONG_SHAPES.length);
+  expect(CLAUDE_SHAPES[0]).toBe('verse, chorus, verse, chorus, bridge, chorus');
+  expect(claudeLyricsSystem()).toContain('No [Pre-Chorus]');
+  expect(misshapenSections('[Verse]\na\nb\nc\nd\n\n[Pre-Chorus]\na\nb\nc\nd')[0]).toContain('[Pre-Chorus] (not a section');
+  // The trained shapes are left as B-Sides' model learned them.
+  expect(SONG_SHAPES[0]).toContain('pre-chorus');
 });

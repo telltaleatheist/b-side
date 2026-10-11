@@ -65,11 +65,13 @@ export function claudeLyricsSystem(): string {
     'soul like soul). No cliches, no filler, no line that only rhymes. Every line must make sense read aloud.',
     '',
     'Form, which YuE2 needs to sing every section:',
-    `- Use only these section tags, each alone on its own line, in Title Case, in square brackets: ${YUE_SECTIONS.map((s) => `[${s}]`).join(', ')}.`,
+    `- Use only these section tags, each alone on its own line, in Title Case, in square brackets: ${LYRIC_SECTIONS.map((s) => `[${s}]`).join(', ')}.`,
+    '  No [Pre-Chorus] and no [Interlude]: YuE2 drops a pre-chorus more often than it sings one, and its words then crowd the',
+    '  verse or chorus melody beside it.',
     '- Every section is exactly 4 lines, or 8 for a verse. YuE2 plans its melody in phrases of four, one line each: a',
     '  6-line chorus has every line after the first run across a phrase, and a section under 4 lines is dropped.',
     '- Use an [Intro] or [Outro] only as 4 sung lines; otherwise start on the first verse and end on the last chorus.',
-    '- Verses 8 lines (or 4); pre-choruses, choruses, bridges, intros and outros 4. The final chorus has its last two lines changed.',
+    '- Verses 8 lines (or 4); choruses, bridges, intros and outros 4. The final chorus has its last two lines changed.',
     '- Short lines: at most the syllables per line you are given. YuE2 sings about one bar per line, and a longer line is',
     '  crammed or loses words. Count every line\'s syllables before you answer, and split or cut any line over the budget.',
     '- Follow the shape you are given, if one is given.',
@@ -99,7 +101,7 @@ export function claudeLyricsUser(song: SongToWrite): string {
   lines.push(song.title ? `Song: "${song.title}"` : 'Song: not named yet; name it too (title: 1-5 words that fit its hook, never its first line, never generic)');
   lines.push(`Style line: ${song.tags}`);
   lines.push(`Syllables: at most ${syllableBudget(song.tags)} per line.`);
-  lines.push(`Shape: ${SONG_SHAPES[(song.album?.at ?? Math.floor(Math.random() * SONG_SHAPES.length)) % SONG_SHAPES.length]}`);
+  lines.push(`Shape: ${CLAUDE_SHAPES[(song.album?.at ?? Math.floor(Math.random() * CLAUDE_SHAPES.length)) % CLAUDE_SHAPES.length]}`);
   return lines.join('\n');
 }
 
@@ -166,7 +168,10 @@ export function misshapenSections(lyrics: string): string[] {
   let tag: string | null = null;
   let lines = 0;
   const close = (): void => {
-    if (tag !== null && !(lines === 4 || (lines === 8 && /verse/i.test(tag)))) found.push(`${tag} (${lines} lines)`);
+    if (tag === null) return;
+    const name = tag.slice(1, -1).trim().toLowerCase();
+    if (!LYRIC_SECTIONS.some((section) => section.toLowerCase() === name)) found.push(`${tag} (not a section YuE2 sings reliably: use Verse, Chorus or Bridge)`);
+    else if (!(lines === 4 || (lines === 8 && name === 'verse'))) found.push(`${tag} (${lines} lines)`);
   };
   for (const raw of lyrics.split(/\r?\n/)) {
     const line = raw.trim();
@@ -192,6 +197,21 @@ export function claudeLyricsShorter(lyrics: string, crammed: readonly string[], 
     lyrics,
   ].join('\n');
 }
+
+/**
+ * The sections a lyricist writes: the ones YuE2's own examples use, plus a 4-line intro or outro
+ * when the shape asks for one (Owen, 2026-10-11: "the lyrics should exactly match the format yue
+ * expects"). Not [Pre-Chorus]: across Victoria's 67 songs that had them, YuE2's score dropped both
+ * pre-choruses in 30 and one in 8, folding their words into the verse or chorus beside them.
+ * Not [Interlude]: an interlude is not sung.
+ */
+export const LYRIC_SECTIONS = ['Intro', 'Verse', 'Chorus', 'Bridge', 'Outro'] as const;
+
+/**
+ * SONG_SHAPES as Claude is handed them: the same six orders, without a pre-chorus. SONG_SHAPES
+ * itself stays as B-Sides' model was trained on it, for when that model writes again.
+ */
+export const CLAUDE_SHAPES: readonly string[] = SONG_SHAPES.map((shape) => shape.split(', ').filter((part) => part !== 'pre-chorus').join(', '));
 
 /** The JSON a Claude lyricist answers for a song it names too. */
 export const CLAUDE_TITLED_LYRICS_SCHEMA = {
