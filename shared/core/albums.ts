@@ -165,10 +165,10 @@ export interface AlbumHooks {
   /** Which of the album's tracks (plan places) are on the server now. */
   flyingTracks(id: string): readonly number[];
   /**
-   * Claude writing everything instead of B-Sides' model (the Settings choice, while that model is
-   * retrained): its text calls and its lyricist. Null: B-Sides' model on the server writes.
+   * Claude writing instead of B-Sides' model (the Settings choices): its text calls (`text`), its
+   * lyrics (`lyricist`), either or both. A null one, or null for both: B-Sides' model on the server.
    */
-  claude(): { readonly text: TextModel; readonly lyricist: Lyricist } | null;
+  claude(): { readonly text: TextModel | null; readonly lyricist: Lyricist | null } | null;
   /** A made track was named again: rename its song (the first of the album's songs with the old name). */
   renameSong(id: string, from: string, to: string): Promise<void>;
   /**
@@ -296,10 +296,10 @@ export class AlbumMaker {
     }
     const server = this.hooks.server(meta.server);
     const client = this.hooks.client(server, true);
-    const claude = this.hooks.claude();
+    const claude = this.hooks.claude()?.text ?? null;
     let writer: TextModel;
     if (claude !== null) {
-      writer = claude.text;
+      writer = claude;
     } else {
       const page = await this.hooks.page(server);
       if (page === null) throw new Refusal('page_unreadable', `Could not read ${server.name}'s song page, so B-Sides cannot tell which model writes.`);
@@ -447,10 +447,11 @@ export class AlbumMaker {
     }
     // Claude writing: nothing of the server is held while it writes (no text model to keep loaded).
     const claude = this.hooks.claude();
+    const claudeText = claude?.text ?? null;
     // Its own client name: Crucible counts every request from the session's name as one of its
     // items, and removes the ones still waiting when it closes. Under the install's own name, a song
     // made meanwhile would join the album's session and be dropped with it.
-    const session = claude !== null ? null : await this.hooks.client(server, true).session({ act: 'generate', idleS: SESSION_IDLE_S });
+    const session = claudeText !== null ? null : await this.hooks.client(server, true).session({ act: 'generate', idleS: SESSION_IDLE_S });
     if (session !== null) {
       this.sessions.set(id, session);
       meta = { ...(await this.hooks.meta(id) ?? meta), session: session.id };
@@ -476,8 +477,8 @@ export class AlbumMaker {
         await this.hooks.update(id, meta);
       };
       let writer: TextModel;
-      if (claude !== null || session === null) {
-        writer = (claude as NonNullable<typeof claude>).text;
+      if (claudeText !== null || session === null) {
+        writer = claudeText as TextModel;
       } else {
         // The plan and the lyrics ride the session, so the text model stays loaded between calls.
         if (page === null) throw new Refusal('page_unreadable', `Could not read ${server.name}'s song page, so B-Sides cannot tell which model writes.`);
@@ -521,6 +522,9 @@ export class AlbumMaker {
         // [lyrics], one call per track, each kept as it comes (a restart carries on). The stand-in
         // lyricist, when chosen, writes them instead, told the whole track list for a through-line.
         const lyricist = claude?.lyricist ?? null;
+        // Claude's lyrics with B-Sides' model's plan: the server's text model is let go first, not
+        // held on the card through minutes of Claude writing.
+        if (lyricist !== null) await release();
         for (const [done, at] of sungAt.entries()) {
           const track = plan.tracks[at] as AlbumTrack;
           if (track.lyrics !== null) continue;

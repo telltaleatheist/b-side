@@ -53,7 +53,7 @@ function fakeServer(failLyricsAt: number | null = null) {
   return { sent, client };
 }
 
-function fakeAlbum(ask: AlbumAsk, server: ReturnType<typeof fakeServer>, claude: { text: TextModel; lyricist: Lyricist } | null = null) {
+function fakeAlbum(ask: AlbumAsk, server: ReturnType<typeof fakeServer>, claude: { text: TextModel | null; lyricist: Lyricist | null } | null = null) {
   let stored: AlbumMeta = {
     artist: '', blurb: '', cover: null, ask, plan: null, stage: 'planning', sent: 0, madeS: 0,
     refusal: null, server: 'pc', writer: null,
@@ -211,6 +211,21 @@ test('with Claude writing, every text call is Claude\'s and the server is never 
   // Laid out for YuE: every section on its own line, a blank line before each after the first.
   expect(album.meta().plan!.tracks[0]!.lyrics).toBe('[intro]\noh\n\n[verse]\nla la\n\n[pre-chorus]\nhey\n\n[chorus]\nyeah');
   expect(album.meta().writer).toBe('claude-sonnet-5-5');
+  expect(album.meta().lyricsBy).toBe('claude-sonnet-5-5');
+  expect(album.meta().stage).toBe('making');
+});
+
+test("B-Sides' model plans the album and Claude writes only the lyrics (Owen, 2026-10-11)", async () => {
+  const server = fakeServer();
+  const asked: SongToWrite[] = [];
+  const lyricist: Lyricist = { name: 'claude-sonnet-5-5', write: async (song) => { asked.push(song); return '[verse]\na\nb\nc\nd\n[chorus]\ne\nf\ng\nh'; } };
+  const album = fakeAlbum({ description: 'sad songs about bananas', tags: [], minutes: 30, sung: true }, server, { text: null, lyricist });
+  album.maker.start('s');
+  await settle(album.maker, 's');
+  expect(server.sent.map((call) => call.tag)).toEqual(['[album]', '[tracks]']);
+  expect(server.sent.every((call) => call.model === MODEL)).toBe(true);
+  expect(asked.length).toBe(15);
+  expect(album.meta().writer).toBe(MODEL);
   expect(album.meta().lyricsBy).toBe('claude-sonnet-5-5');
   expect(album.meta().stage).toBe('making');
 });

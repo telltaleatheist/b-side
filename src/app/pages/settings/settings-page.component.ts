@@ -106,7 +106,7 @@ import { StudioService } from '../../core/studio.service';
       @if (!hub.onPhone()) {
         <div class="card">
           <h2 class="card-title">Writing</h2>
-          <p class="detail">Who writes everything that is words: a song's tags and lyrics, and an album's name, artist, track list, lyrics and cover description. The music is always the Crucible server's.</p>
+          <p class="detail">Who writes a song's tags and name, and an album's name, artist, track list and cover description. The music is always the Crucible server's.</p>
           <label class="toggle">
             <input type="radio" name="writer" [checked]="preferences()?.writer !== 'claude'" (change)="setWriter('bside')" />
             <span><strong>B-Sides' model</strong>, on the Crucible server.</span>
@@ -115,6 +115,18 @@ import { StudioService } from '../../core/studio.service';
             <input type="radio" name="writer" [checked]="preferences()?.writer === 'claude'" (change)="setWriter('claude')" />
             <span><strong>Claude Sonnet 5.5</strong> (<span class="mono">claude -p</span>), through Claude Code on this computer; its sign-in pays. A stand-in while B-Sides' model is retrained.</span>
           </label>
+          @if (preferences()?.writer !== 'claude') {
+          <h3 class="card-sub">Lyrics</h3>
+          <p class="detail">Who writes a sung song's words: B-Sides' model for the rest, and Claude for the lyrics if you like. (Claude writing the rest writes the lyrics too.)</p>
+          <label class="toggle">
+            <input type="radio" name="lyricist" [checked]="preferences()?.lyricist !== 'claude'" (change)="setLyricist('bside')" />
+            <span><strong>B-Sides' model</strong>, on the Crucible server.</span>
+          </label>
+          <label class="toggle">
+            <input type="radio" name="lyricist" [checked]="preferences()?.lyricist === 'claude'" (change)="setLyricist('claude')" />
+            <span><strong>Claude Sonnet 5.5</strong> (<span class="mono">claude -p</span>): a story within the song and across an album, YuE2's full sections.</span>
+          </label>
+          }
           @if (writerRefusal(); as refused) {
             <app-refusal [refusal]="refused" />
           }
@@ -291,6 +303,7 @@ import { StudioService } from '../../core/studio.service';
     </ng-template>
   `,
   styles: [`
+    .card-sub { font-family: var(--font-display); font-weight: 700; font-size: 17px; margin: 14px 0 0; }
     .peer-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted); flex: none; }
     .peer-dot.ok { background: #5fbf7a; }
     .peer-dot.away { background: var(--warn); }
@@ -408,8 +421,16 @@ export class SettingsPageComponent {
   protected readonly writerRefusal = signal<RefusalView | null>(null);
   private readonly studio = inject(StudioService);
 
-  protected async setWriter(writer: 'bside' | 'claude'): Promise<void> {
-    const outcome = await this.hub.call<HubPreferences>('PUT', '/api/preferences', { writer });
+  protected setWriter(writer: 'bside' | 'claude'): Promise<void> {
+    return this.setWriting({ writer });
+  }
+
+  protected setLyricist(lyricist: 'bside' | 'claude'): Promise<void> {
+    return this.setWriting({ lyricist });
+  }
+
+  private async setWriting(change: Partial<HubPreferences>): Promise<void> {
+    const outcome = await this.hub.call<HubPreferences>('PUT', '/api/preferences', change);
     this.writerRefusal.set(outcome.ok ? null : outcome.refusal);
     if (outcome.ok) {
       this.preferences.set(outcome.value);

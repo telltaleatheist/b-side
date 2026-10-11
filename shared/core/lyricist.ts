@@ -62,7 +62,9 @@ export function claudeLyricsSystem(): string {
     `- Use only these section tags, each alone on its own line, lowercase, in square brackets: ${YUE_SECTIONS.map((s) => `[${s}]`).join(', ')}.`,
     '- Every section has at least 4 lines. YuE2 drops shorter sections, above all at the start and end of a song.',
     '- Use an [intro] or [outro] only when it has 4 or more sung lines; otherwise start on the first verse and end on the last chorus.',
-    '- Verses 6-8 lines, pre-choruses 4, choruses 4-6, a bridge 4. The final chorus has its last two lines changed.',
+    '- Verses 4-6 lines, pre-choruses 4, choruses 4-6, a bridge 4. The final chorus has its last two lines changed.',
+    '- Short lines: at most the syllables per line you are given. YuE2 sings about one bar per line, and a longer line is',
+    '  crammed or loses words. Count every line\'s syllables before you answer, and split or cut any line over the budget.',
     '- Follow the shape you are given, if one is given.',
     '- Verses are longer than choruses. The chorus is the hook: singable and memorable, not the title repeated with a filler phrase.',
     '- Lines of similar length within a section so they sing well. A blank line between sections.',
@@ -83,6 +85,7 @@ export function claudeLyricsUser(song: SongToWrite): string {
   if (song.brief) lines.push(`The lyrics should be about: ${song.brief}`);
   lines.push(song.title ? `Song: "${song.title}"` : 'Song: not named yet');
   lines.push(`Style line: ${song.tags}`);
+  lines.push(`Syllables: at most ${syllableBudget(song.tags)} per line.`);
   lines.push(`Shape: ${SONG_SHAPES[(song.album?.at ?? Math.floor(Math.random() * SONG_SHAPES.length)) % SONG_SHAPES.length]}`);
   return lines.join('\n');
 }
@@ -104,6 +107,52 @@ export const SONG_SHAPES: readonly string[] = [
   'intro (4 lines), verse, pre-chorus, chorus, verse, pre-chorus, chorus, outro (4 lines)',
   'chorus, verse, chorus, verse, bridge, chorus',
 ];
+
+/**
+ * The most syllables a sung line takes (Victoria, 2026-10-11: "sometimes there are too many lyrics
+ * per measure for yue"). Her album's tracks that sang cleanly averaged 8 syllables a line, at most
+ * 10-12; "Nobody Poked the Cyclops", which YuE2 crammed, averaged 12.5, at most 16. Slow songs
+ * (lullabies, ballads, under 85 BPM) and fast ones (140 BPM and up, where a bar is short) take 8.
+ */
+export function syllableBudget(tags: string): number {
+  const bpm = Number(/\b\d{2,3}(?=\s*bpm\b)/i.exec(tags)?.[0] ?? NaN);
+  if (bpm < 85 || bpm >= 140) return 8;
+  if (/\b(lullaby|ballad|slow|lo-?fi|ambient)\b/i.test(tags)) return 8;
+  return 10;
+}
+
+/** A line's syllables, near enough to tell a crammed line (vowel groups, a silent final e dropped). */
+export function syllables(line: string): number {
+  return (line.toLowerCase().match(/[a-z']+/g) ?? []).reduce((sum, word) => {
+    const bare = word.replace(/'/g, '').replace(/(?:[^laeiouy]es|[^laeiouy]e|ed)$/, '').replace(/^y/, '');
+    return sum + Math.max(1, (bare.match(/[aeiouy]+/g) ?? []).length);
+  }, 0);
+}
+
+/**
+ * The sung lines well over the budget (two syllables of slack, for the count's guesses); section
+ * tags are not sung. Chinese is counted by character, one syllable each.
+ */
+export function crammedLines(lyrics: string, budget: number): string[] {
+  return lyrics.split(/\r?\n/).map((line) => line.trim())
+    .filter((line) => line !== '' && !/^\[[^\]]+\]$/.test(line))
+    .filter((line) => {
+      const han = (line.match(/[\u4e00-\u9fff]/g) ?? []).length;
+      return han + syllables(line) > budget + 2;
+    });
+}
+
+/** Asked again, once, when some lines are crammed: those lines named, the rest kept. */
+export function claudeLyricsShorter(lyrics: string, crammed: readonly string[], budget: number): string {
+  return [
+    `These lyrics have lines too long for YuE2 to sing (at most ${budget} syllables a line):`,
+    ...crammed.map((line) => `- ${line}`),
+    '',
+    'Rewrite only those lines, shorter (split one into two lines where the section can take it), and keep everything else as it is.',
+    '',
+    lyrics,
+  ].join('\n');
+}
 
 /** The JSON a Claude lyricist answers with. */
 export const CLAUDE_LYRICS_SCHEMA = {

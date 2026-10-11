@@ -15,7 +15,15 @@ import * as path from 'node:path';
 
 import { Refusal } from './refusal';
 import { STYLE_TASKS, YUE2_STYLE_GUIDE } from '../shared/core/yue2-style';
-import { CLAUDE_LYRICS_SCHEMA, claudeLyricsSystem, claudeLyricsUser, type Lyricist } from '../shared/core/lyricist';
+import {
+  CLAUDE_LYRICS_SCHEMA,
+  claudeLyricsShorter,
+  claudeLyricsSystem,
+  claudeLyricsUser,
+  crammedLines,
+  syllableBudget,
+  type Lyricist,
+} from '../shared/core/lyricist';
 import type { TextModel } from '../shared/core/text-model';
 
 export const CLAUDE_MODEL = 'claude-sonnet-5-5';
@@ -79,10 +87,18 @@ export function claudeWriter(): { readonly text: TextModel; readonly lyricist: L
     lyricist: {
       name: CLAUDE_MODEL,
       async write(song) {
-        const answer = await runClaude(claudeLyricsSystem(), claudeLyricsUser(song), CLAUDE_LYRICS_SCHEMA);
-        const lyrics = answer['lyrics'];
-        if (typeof lyrics !== 'string' || lyrics.trim() === '') throw new Refusal('claude_failed', 'Claude answered without lyrics.');
-        return lyrics.trim();
+        const ask = async (user: string): Promise<string> => {
+          const lyrics = (await runClaude(claudeLyricsSystem(), user, CLAUDE_LYRICS_SCHEMA))['lyrics'];
+          if (typeof lyrics !== 'string' || lyrics.trim() === '') throw new Refusal('claude_failed', 'Claude answered without lyrics.');
+          return lyrics.trim();
+        };
+        const lyrics = await ask(claudeLyricsUser(song));
+        // Lines YuE2 would cram are sent back once to be shortened; what comes back is kept either way.
+        const budget = syllableBudget(song.tags);
+        const crammed = crammedLines(lyrics, budget);
+        if (crammed.length === 0) return lyrics;
+        console.log(`[claude] ${crammed.length} line(s) over ${budget} syllables; asking for them shorter`);
+        return ask(claudeLyricsShorter(lyrics, crammed, budget)).catch(() => lyrics);
       },
     },
   };

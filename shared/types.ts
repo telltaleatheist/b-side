@@ -135,6 +135,8 @@ export interface SongPage {
   readonly tagModelReason: string | null;
   /** Who writes on this hub when not the tag model (Settings → Writing: Claude); set by the hub. */
   readonly writer?: string;
+  /** Who writes the lyrics when not the writer (Settings → Lyrics: Claude); set by the hub. */
+  readonly lyricist?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -201,6 +203,11 @@ export interface HubPreferences {
    * or Claude through Claude Code on this computer (desktop only), while that model is retrained.
    */
   readonly writer: 'bside' | 'claude';
+  /**
+   * Who writes a sung song's words, chosen apart from `writer` (Owen, 2026-10-11: "generate the
+   * lyrics with one model (claude -p for example) and everything else with the b-sides model").
+   */
+  readonly lyricist: 'bside' | 'claude';
 }
 
 /**
