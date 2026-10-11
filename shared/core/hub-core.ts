@@ -215,6 +215,8 @@ const COVER_UPLOAD_MAX = 700 * 1024;
 
 /** How long a cover may take before the album goes on without it (the standard cover stands in). */
 const COVER_WAIT_MS = 15 * 60_000;
+/** The size every cover is painted at (Owen, 2026-10-11), whichever model paints it. */
+const COVER_PAINT_PX = 1024;
 /** How often a cover job's status is read while it paints. */
 const COVER_POLL_MS = 2000;
 
@@ -566,10 +568,11 @@ export class HubCore {
     // sooner. 256 is the smallest size the server takes (a multiple of 32 on the PC).
     // The size the model paints well at, as the server publishes it (1.0.138: an SDXL model is crunchy
     // under 768; qwen-image is fine at 256). A server that publishes nothing gets the 256 it always had.
-    // No model and no size named: Crucible paints with the biggest image model the card holds, at
-    // its own native size (Owen, 2026-10-11: "if the gpu can fit qwen image then it should use that.
-    // if not, it should use dreamshape"; 2026-10-10: covers painted at 1024, kept small).
-    const jobId = await client.image({ prompt });
+    // No model named: Crucible paints with the biggest image model the card holds (Owen, 2026-10-11:
+    // "if the gpu can fit qwen image then it should use that. if not, it should use dreamshape").
+    // 1024 across the board, kept as a 512 JPEG: DreamShaper paints well only near 1024, and until
+    // B-Sides can learn which model Crucible will pick, one size serves both ("its simpler").
+    const jobId = await client.image({ prompt, width: COVER_PAINT_PX, height: COVER_PAINT_PX });
     console.log(`[albums] painting the cover for ${id} (the server's pick; ${model} is ready there): job ${jobId}`);
     // The job's status is read every few seconds until it ends. Its event stream was followed
     // instead, and on Victoria's laptop (2026-10-11) the Iliad's cover finished on the server at
