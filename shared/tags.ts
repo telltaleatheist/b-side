@@ -46,7 +46,7 @@ export function toggleTag(tags: readonly string[], tag: string): string[] {
  * harmonies", the song page's own Vocal tag). An instrumental never carries one. Harmonies count
  * only as "<n>-part harmonies": "guitar harmonies" is an instrument's.
  */
-export const VOICE_TAG = /\b(vocals?|voices?|vocalists?|singing|sung|singers?|choir|choral|rap|rapping|a cappella|crooner|duets?|[a-z]+-part harmon(?:y|ies))\b/i;
+export const VOICE_TAG = /\b(vocals?|voices?|vocalists?|vocali[sz](?:e|es|ing)|singing|sung|singers?|choir|choral|chant(?:s|ing)?|humm(?:ing|ed)|whisper(?:s|ed|ing)?|spoken|scat|beatbox(?:ing)?|yodel(?:s|ing)?|rap|rapping|a cappella|crooner|duets?|[a-z]+-part harmon(?:y|ies))\b/i;
 
 /**
  * The tags without any that asks for a voice (Owen, 2026-10-08: instrumental
