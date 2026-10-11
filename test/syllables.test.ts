@@ -26,3 +26,12 @@ test("Claude is told the song's syllable budget, and the shape stays last", () =
   expect(lines).toContain('Syllables: at most 8 per line.');
   expect(lines.at(-1)!.startsWith('Shape: ')).toBe(true);
 });
+
+test('an album track stands alone: no opener, closer or count of songs to write toward (Victoria, 2026-10-11)', () => {
+  const user = claudeLyricsUser({
+    title: 'Stomp Like a Cyclops', tags: 'English, kids pop, 110 BPM', about: 'Greek myths', brief: '',
+    album: { title: 'Myths', artist: 'V', blurb: '', tracks: ['Stomp Like a Cyclops', 'Sirens', 'Last'], at: 0 },
+  });
+  expect(user).not.toMatch(/opener|closer|track 1 of/i);
+  expect(user).toContain('must stand alone');
+});

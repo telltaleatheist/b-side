@@ -124,7 +124,7 @@ import { StudioService } from '../../core/studio.service';
           </label>
           <label class="toggle">
             <input type="radio" name="lyricist" [checked]="preferences()?.lyricist === 'claude'" (change)="setLyricist('claude')" />
-            <span><strong>Claude Sonnet 5.5</strong> (<span class="mono">claude -p</span>): a story within the song and across an album, YuE2's full sections.</span>
+            <span><strong>Claude Sonnet 5.5</strong> (<span class="mono">claude -p</span>): a story in each song, every song standing on its own, YuE2's full sections.</span>
           </label>
           }
           @if (writerRefusal(); as refused) {

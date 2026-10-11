@@ -9,8 +9,8 @@
  *            sides model is trained"). Desktop only: the phone has no Claude Code.
  *
  * Claude is not held to the v2 contract (it was never trained on it), so its prompt is written
- * for what Victoria's first album lacked (2026-10-10): a story within the song and across the
- * album, verses longer than choruses, a final chorus that turns, and a shape that changes from
+ * for what Victoria's first album lacked (2026-10-10): a story within the song, each song standing
+ * alone within the album's theme (2026-10-11: no bookends), verses longer than choruses, a final chorus that turns, and a shape that changes from
  * track to track (SONG_SHAPES) with no section under 4 lines, which keeps every section sung.
  */
 
@@ -79,7 +79,10 @@ export function claudeLyricsUser(song: SongToWrite): string {
     const { album } = song;
     lines.push(`Album: "${album.title}" by ${album.artist}. ${album.blurb}`.trim());
     lines.push(`The track list: ${album.tracks.map((title, at) => `${at + 1}. ${title}`).join('; ')}`);
-    lines.push(`This is track ${album.at + 1} of ${album.tracks.length}${album.at === 0 ? ', the opener' : album.at === album.tracks.length - 1 ? ', the closer' : ''}. Let it carry its part of the album's story.`);
+    // No opener or closer: an album is played on shuffle, and a first track that welcomes or a last
+    // one that says goodbye ("Thirty Greek myths are coming your way!") undercuts the song itself
+    // (Victoria, 2026-10-11). The track list is for variety, not for songs that point at each other.
+    lines.push('The album shares a theme, but this song must stand alone, played on shuffle: never mention the album, other songs, how many songs there are, what comes next, and no welcome or goodbye to the listener. Make it different from the other titles, not a part of them.');
   }
   lines.push(`About: ${song.about || '(the person said nothing; take it from the style)'}`);
   if (song.brief) lines.push(`The lyrics should be about: ${song.brief}`);
