@@ -56,6 +56,8 @@ export class StudioService {
   readonly name = signal('');
   /** Lyrics with a pre-chorus (Owen, 2026-10-11: an option, with a warning), as last chosen on this device. */
   readonly preChorus = signal(readPreChorus());
+  /** "Pronounce phonetically" (Owen, 2026-10-11): as last left on this device. */
+  readonly phonetic = signal(readChoice(PHONETIC_KEY));
   /** The length to aim for (LENGTH_AIMS' key), or '' for the server's own; songs and albums share it. */
   readonly lengthAim = signal('');
   /**
@@ -161,7 +163,7 @@ export class StudioService {
     const lyrics = instrumental || forAlbum ? '' : this.lyricsBrief().trim();
     const name = this.name().trim();
     const outcome = await this.hub.call<DescribeResult>('POST', '/api/describe', {
-      text, instrumental, lyrics, preChorus: this.preChorus(), ...(name !== '' && !forAlbum ? { title: name } : {}),
+      text, instrumental, lyrics, preChorus: this.preChorus(), phonetic: this.phonetic(), ...(name !== '' && !forAlbum ? { title: name } : {}),
     });
     clearInterval(ticker);
     this.describing.set(false);
@@ -355,21 +357,32 @@ export class StudioService {
 }
 
 const PRE_CHORUS_KEY = 'b-sides.preChorus';
+export const PHONETIC_KEY = 'b-sides.phonetic';
 
-/** The pre-chorus choice last made on this device; none until one is chosen. */
-function readPreChorus(): boolean {
+/** A checkbox's choice last made on this device; off until one is chosen. */
+function readChoice(key: string): boolean {
   try {
-    return localStorage.getItem(PRE_CHORUS_KEY) === 'yes';
+    return localStorage.getItem(key) === 'yes';
   } catch {
     return false;
   }
 }
 
-/** Keep the pre-chorus choice for next time (Owen: the checkbox starts as it was last left). */
-export function keepPreChorus(on: boolean): void {
+/** The pre-chorus choice last made on this device; none until one is chosen. */
+function readPreChorus(): boolean {
+  return readChoice(PRE_CHORUS_KEY);
+}
+
+/** Keep a checkbox's choice for next time (Owen: the checkbox starts as it was last left). */
+export function keepChoice(key: string, on: boolean): void {
   try {
-    localStorage.setItem(PRE_CHORUS_KEY, on ? 'yes' : 'no');
+    localStorage.setItem(key, on ? 'yes' : 'no');
   } catch {
     // A private window: it is only forgotten.
   }
+}
+
+/** Keep the pre-chorus choice for next time. */
+export function keepPreChorus(on: boolean): void {
+  keepChoice(PRE_CHORUS_KEY, on);
 }

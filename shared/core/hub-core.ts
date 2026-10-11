@@ -26,6 +26,7 @@ import { PresetStore } from './presets';
 import { describe, layLyrics, lyricsBrief } from './describe';
 import { describeSound, nameSong } from './split-text';
 import { freshLine } from './fresh-names';
+import { voiceCheck } from './voice-check';
 import type { Lyricist } from './lyricist';
 import { crucibleText, WRITERS, type TextModel, type Writer } from './text-model';
 import { join, type Disk } from './disk';
@@ -1004,6 +1005,7 @@ export class HubCore {
       const song = {
         title: named, tags: described.tags.join(', '), about, brief,
         ...(body['preChorus'] === true ? { preChorus: true } : {}),
+        ...(body['phonetic'] === true ? { phonetic: true } : {}),
         ...(named === null ? { fresh: await this.freshNames() } : {}),
       };
       const written = named === null && lyricist.writeTitled !== undefined
@@ -1036,6 +1038,7 @@ export class HubCore {
         description: albumDescription(body['description']), tags: tags as string[], minutes, sung, cfg,
         ...(title !== null ? { title } : {}),
         ...(sung && body['preChorus'] === true ? { preChorus: true } : {}),
+        ...(sung && body['phonetic'] === true ? { phonetic: true } : {}),
         ...(lyrics ? { lyrics } : {}), ...(body['exactTags'] === true ? { exactTags: true } : {}),
         // Make's Lead (Owen, 2026-10-11): every track's; blank, each track picks its own.
         ...(typeof body['lead'] === 'string' && body['lead'].trim() !== '' ? { lead: body['lead'].replace(/\s+/g, ' ').trim().slice(0, 80) } : {}),
@@ -1191,6 +1194,28 @@ export class HubCore {
 
     // ── the library: saved songs and playlists ──────────────────────────────
     this.route('GET', '/api/library', () => this.libraryView());
+    // What the active server says it is doing: its activity and its line, as the SDK reads them
+    // (for working out a stall, 2026-10-11: a model loaded and nothing running).
+    this.route('GET', '/api/server-activity', async () => {
+      const client = clientFor(this.registry.active());
+      const [activity, queue] = await Promise.all([client.activity(), client.queue()]);
+      return { activity, queue };
+    });
+    // How much voice a song holds (voice-check.ts; Owen, 2026-10-11): a 44.1 kHz WAV by its bare name
+    // in the library folder, separated on the active server; its vocal stem is kept beside it.
+    this.route('POST', '/api/voice-check', async (request) => {
+      const name = (await request.body())['file'];
+      if (typeof name !== 'string' || !/^[\w.-]+\.wav$/i.test(name) || name.includes('..')) {
+        throw new Refusal('body_invalid', 'A voice check is {file}: a .wav in the library folder, by its name.');
+      }
+      const dir = (await this.libraryView()).dir;
+      const wav = await this.options.disk.readBytes?.(join(dir, name));
+      if (wav == null) throw new Refusal('not_found', `There is no ${name} in the library folder.`);
+      const checked = await voiceCheck(clientFor(this.registry.active()), wav, name);
+      await this.options.disk.writeBytes?.(join(dir, name.replace(/\.wav$/i, '.vocals.wav')), checked.stem);
+      const { stem: _stem, ...levels } = checked;
+      return levels;
+    });
     // Who this hub is (its computer's name), for another B-Sides listing its library.
     this.route('GET', '/api/info', () => this.options.info);
     this.route('PATCH', '/api/songs/:id', async (request) => {

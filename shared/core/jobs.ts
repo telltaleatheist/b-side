@@ -113,7 +113,8 @@ export function settleSong(params: SongParams): SongParams {
 export function songJob(params: SongParams, format: SongFormat, key: string): JobRequest {
   const wire: Record<string, unknown> = { format };
   if (params.tags !== undefined) wire['tags'] = params.tags;
-  if (params.instrumental === true) wire['planning_lyrics'] = planningOf(params).lyrics;
+  if (params.instrumental === true && params.experiment?.lyrics !== undefined) wire['lyrics'] = params.experiment.lyrics;
+  else if (params.instrumental === true) wire['planning_lyrics'] = planningOf(params).lyrics;
   else if (params.lyrics !== undefined) wire['lyrics'] = params.lyrics;
   if (params.instrumental !== undefined) wire['instrumental'] = params.instrumental;
   if (params.cfg !== undefined) wire['cfg'] = params.cfg;
@@ -270,8 +271,9 @@ export class JobRunner {
       ? { ...given, tags: styleLine(tags, given.instrumental, lead) }
       // A server whose YuE2 takes no `instrumental` (older ones): the lead is put first, as typed.
       : lead !== undefined && lead.trim() !== '' ? { ...given, tags: [lead.trim(), tags].filter((part) => part !== '' && part !== undefined).join(', ') } : given;
+    const exact = given.experiment?.tags;
     const made: Job[] = seeds.map((seed, at) => {
-      const asked: Mutable<SongParams> = { ...base };
+      const asked: Mutable<SongParams> = { ...base, ...(exact !== undefined ? { tags: exact } : {}) };
       delete asked.seed;
       if (seed !== null) asked.seed = seed;
       // An instrumental's seed and set, settled now so the job shows them from the start.

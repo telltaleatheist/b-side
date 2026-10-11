@@ -34,6 +34,14 @@ export const nodeDisk: Disk = {
   },
   writeText: (file, text) => writeAtomically(file, text),
   writeBytes: (file, bytes) => writeAtomically(file, bytes),
+  async readBytes(file) {
+    try {
+      return new Uint8Array(await fsp.readFile(file));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw err;
+    }
+  },
   async exists(file) {
     try {
       await fsp.access(file);

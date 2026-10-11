@@ -575,6 +575,7 @@ export class AlbumMaker {
         brief: meta.ask.lyrics ?? '',
         ...(track.idea ? { idea: track.idea } : {}),
         ...(meta.ask.preChorus === true ? { preChorus: true } : {}),
+        ...(meta.ask.phonetic === true ? { phonetic: true } : {}),
         album: { title: concept.title, artist: concept.artist, blurb: concept.blurb, tracks: plan.tracks.map((t) => t.title), at },
       });
     return layLyrics(written);
@@ -868,6 +869,7 @@ export class AlbumMaker {
               brief: meta.ask.lyrics ?? '',
               ...(track.idea ? { idea: track.idea } : {}),
               ...(meta.ask.preChorus === true ? { preChorus: true } : {}),
+              ...(meta.ask.phonetic === true ? { phonetic: true } : {}),
               album: { title: concept.title, artist: concept.artist, blurb: concept.blurb, tracks: plan.tracks.map((t) => t.title), at },
             });
           const lyrics = layLyrics(written);

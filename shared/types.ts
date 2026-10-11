@@ -182,6 +182,12 @@ export interface SongParams {
    * take the sets in turn, a song on its own the seed's (2026-10-11). Absent when sung.
    */
   readonly planning_set?: string;
+  /**
+   * A listening test's exact request (Owen, 2026-10-11: what stops an instrumental's voice): `tags`
+   * sent as written, not through styleLine; `lyrics` sent as an instrumental's lyrics (section tags
+   * only, YuE2's own empty-lyrics path) in place of planning lyrics. Never set by the app's pages.
+   */
+  readonly experiment?: { readonly tags?: string; readonly lyrics?: string };
 }
 
 /**
@@ -609,6 +615,8 @@ export interface AlbumAsk {
   readonly title?: string;
   /** Sung: its lyrics may have a pre-chorus (Make's checkbox, Owen 2026-10-11); YuE2 often drops one. */
   readonly preChorus?: boolean;
+  /** Sung: names and rare words written as they sound (Make's "Pronounce phonetically", Owen 2026-10-11). */
+  readonly phonetic?: boolean;
   readonly exactTags?: boolean;
   /**
    * Make's Lead (Owen, 2026-10-11): every track's lead, the singer or the instrument carrying the

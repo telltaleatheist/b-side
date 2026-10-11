@@ -34,6 +34,11 @@ export interface SongToWrite {
   readonly idea?: string;
   /** The person chose a pre-chorus (Make's checkbox; Owen, 2026-10-11: an option, with a warning). */
   readonly preChorus?: boolean;
+  /**
+   * Make's "Pronounce phonetically" (Owen, 2026-10-11; Victoria: YuE2 mangles Persephone, Odysseus,
+   * Penelope): names and uncommon words are written as they sound, so YuE2 sings them right.
+   */
+  readonly phonetic?: boolean;
   /** Worn words and a spark for its name (fresh-names.ts); only when it names the song. */
   readonly fresh?: string;
   /** For an album's track: the record around it. */
@@ -59,6 +64,13 @@ export interface Lyricist {
 
 /** The sections YuE2 composes (crucible/jobs/audio/yue2music/compile_score.py SECTIONS). */
 export const YUE_SECTIONS = ['Intro', 'Verse', 'Pre-Chorus', 'Chorus', 'Bridge', 'Interlude', 'Outro'] as const;
+
+/** The instruction "Pronounce phonetically" adds: YuE2 sings what it reads, and has never met most names. */
+export const PHONETIC = [
+  'Pronounce phonetically: YuE2 sings each word as it reads it, and gets names and rare words wrong. Write every name and',
+  'uncommon word the way it sounds, syllables joined by hyphens, the stressed one in capitals: Persephone as per-SEF-oh-nee,',
+  'Odysseus as oh-DISS-ee-us, Penelope as peh-NEL-oh-pee, Achilles as uh-KILL-eez. Everyday English words stay as they are.',
+].join(' ');
 
 export function claudeLyricsSystem(preChorus = false): string {
   return [
@@ -106,6 +118,7 @@ export function claudeLyricsUser(song: SongToWrite): string {
   lines.push(song.title ? `Song: "${song.title}"` : 'Song: not named yet; name it too (title: 1-5 words that fit its hook, never its first line, never generic)');
   if (!song.title && song.fresh) lines.push(song.fresh);
   lines.push(`Style line: ${song.tags}`);
+  if (song.phonetic === true) lines.push(PHONETIC);
   lines.push(`Syllables: at most ${syllableBudget(song.tags)} per line.`);
   const shapes = song.preChorus === true ? SONG_SHAPES : CLAUDE_SHAPES;
   lines.push(`Shape: ${shapes[(song.album?.at ?? Math.floor(Math.random() * shapes.length)) % shapes.length]}`);

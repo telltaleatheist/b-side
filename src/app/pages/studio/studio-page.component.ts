@@ -19,7 +19,7 @@ import { JobsService } from '../../core/jobs.service';
 import { PlayerService } from '../../core/player.service';
 import { RememberHeightDirective } from '../../core/remember-height.directive';
 import { LibraryService } from '../../core/library.service';
-import { StudioService, keepPreChorus } from '../../core/studio.service';
+import { PHONETIC_KEY, StudioService, keepChoice, keepPreChorus } from '../../core/studio.service';
 import { RefusalComponent } from '../../components/refusal/refusal.component';
 
 /**
@@ -183,6 +183,13 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
               <input type="checkbox" [checked]="studio.preChorus()" (change)="setPreChorus($any($event.target).checked)" />
               Pre-chorus
             </label>
+            <label class="switch" title="Names and rare words are written the way they sound, so YuE2 sings them right">
+              <input type="checkbox" [checked]="studio.phonetic()" (change)="setPhonetic($any($event.target).checked)" />
+              Pronounce phonetically
+            </label>
+            @if (studio.phonetic()) {
+              <p class="hint">Names and rare words are written as they sound (Persephone as per-SEF-oh-nee), so YuE2 says them right. The lyrics show that spelling too.</p>
+            }
             @if (studio.preChorus()) {
               <p class="hint warn">YuE2 often leaves a pre-chorus out of the melody (in 38 of 67 of Victoria's songs it dropped at least one), and its lines are then squeezed into the verse or chorus. Unticked, the verses build into the chorus instead.</p>
             }
@@ -440,6 +447,11 @@ export class StudioPageComponent {
     this.studio.preChorus.set(on);
     keepPreChorus(on);
   }
+
+  protected setPhonetic(on: boolean): void {
+    this.studio.phonetic.set(on);
+    keepChoice(PHONETIC_KEY, on);
+  }
   /** "What the lyrics are about": counted near its limit, refused by name past it (Victoria, 2026-10-11). */
   protected readonly briefMax = 2000;
   /** A sung song's language when it is not English or Chinese, the two YuE2 sings (Owen, 2026-10-11): said, not changed. */
@@ -596,6 +608,7 @@ export class StudioPageComponent {
       server: this.albumServer() ?? '',
       folder: this.albumFolder(),
       preChorus: this.albumSung() && this.studio.preChorus(),
+      phonetic: this.albumSung() && this.studio.phonetic(),
       ...(this.studio.name().trim() !== '' ? { title: this.studio.name().trim() } : {}),
     });
     this.albumSending.set(false);

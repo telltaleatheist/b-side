@@ -12,3 +12,9 @@ test("an album's tracks are handed different shapes, in turn", () => {
 test('no shape asks for an intro or outro shorter than 4 lines', () => {
   for (const shape of SONG_SHAPES) expect(shape).not.toMatch(/(intro|outro)(?! \(4 lines\))/);
 });
+
+test('"Pronounce phonetically" asks for names written as they sound', () => {
+  const song = { title: 'Ithaca', tags: 'English, folk', about: 'the long way home', brief: '' };
+  expect(claudeLyricsUser({ ...song, phonetic: true })).toContain('per-SEF-oh-nee');
+  expect(claudeLyricsUser(song)).not.toContain('Pronounce phonetically');
+});
