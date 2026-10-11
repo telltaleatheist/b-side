@@ -18,6 +18,13 @@ import { keepLog } from './log-file';
 import { Hub } from './hub/hub';
 import { registerIpc } from './ipc';
 import { ICONS, isDev, openWindow } from './window';
+import { Agent, setGlobalDispatcher } from 'undici';
+
+// A chat whose model is not loaded waits in Crucible's line, with no response headers, for up
+// to its queue.max_wait_s (an hour). Node's fetch gave up after 300 s (Victoria's laptop,
+// 2026-10-11: "[cover] ... Headers Timeout Error" while the 4B reloaded), so it waits a little
+// longer than the server does, and the server answers by name first. undici 6 is Node 20's own.
+setGlobalDispatcher(new Agent({ headersTimeout: 65 * 60_000 }));
 
 function buildMenu(): void {
   const isMac = process.platform === 'darwin';
