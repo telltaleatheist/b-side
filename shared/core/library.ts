@@ -30,7 +30,8 @@
 import { basename, join, type Disk } from './disk';
 import { Refusal } from './refusal';
 import { AUDIO_FILE, checkId, isId, stamp } from './takes';
-import { FOLDER_DEPTH, type AlbumMeta, type Folder, type LibraryView, type Playlist, type Song, type SongFacts } from '../types';
+import { holds } from '../planning-sets';
+import { FOLDER_DEPTH, type AlbumMeta, type Folder, type LibraryView, type Playlist, type Song, type SongFacts, type SongMade } from '../types';
 
 /** Marks a sidecar as B-Sides', and its shape's version. */
 const SIDECAR_VERSION = 1;
@@ -90,22 +91,35 @@ function songOf(sidecar: Sidecar): Song {
     batch: sidecar.batch,
     album: sidecar.album,
     bytes: typeof sidecar.bytes === 'number' ? sidecar.bytes : null,
-    structure: structureOf(sidecar.effective),
-    aim: aimOf(sidecar.effective),
+    structure: structureOf(sidecar.params, sidecar.effective),
+    aim: aimOf(sidecar.params, sidecar.effective),
   };
 }
 
-/** The length a song aimed for and whether it landed in it (`length`), when it was given one. */
-function aimOf(effective: unknown): Song['aim'] {
-  const length = (effective as { length?: { min_duration_s?: unknown; max_duration_s?: unknown; in_range?: unknown } } | null)?.length;
-  const min = typeof length?.min_duration_s === 'number' ? length.min_duration_s : null;
-  const max = typeof length?.max_duration_s === 'number' ? length.max_duration_s : null;
+/**
+ * The length a song aimed for and whether its score landed in it, when it was given one. B-Sides
+ * keeps the aim itself since 2026-10-11 and no longer sends it, so it holds the score's length
+ * (`length.score_seconds`, which Crucible records for every song) against it as Crucible did
+ * (planning-sets.ts holds); an older song has the server's own `min_duration_s`/`in_range`.
+ */
+export function aimOf(params: SongMade, effective: unknown): Song['aim'] {
+  const length = (effective as { length?: { min_duration_s?: unknown; max_duration_s?: unknown; in_range?: unknown; score_seconds?: unknown } } | null)?.length;
+  const ours = params.min_duration_s !== undefined || params.max_duration_s !== undefined;
+  const min = ours ? params.min_duration_s ?? null : typeof length?.min_duration_s === 'number' ? length.min_duration_s : null;
+  const max = ours ? params.max_duration_s ?? null : typeof length?.max_duration_s === 'number' ? length.max_duration_s : null;
   if (min === null && max === null) return null;
-  return { min, max, inRange: typeof length?.in_range === 'boolean' ? length.in_range : null };
+  const inRange = !ours && typeof length?.in_range === 'boolean' ? length.in_range
+    : typeof length?.score_seconds === 'number' ? holds({ min, max }, length.score_seconds) : null;
+  return { min, max, inRange };
 }
 
-/** The planning set an instrumental was scored from, as the server recorded it (`planning_lyrics.id`). */
-function structureOf(effective: unknown): string | null {
+/**
+ * The planning set an instrumental was scored from: the one B-Sides picked (`params.planning_set`,
+ * 2026-10-11), or on an older song the server's record (`planning_lyrics.id`). Planning lyrics
+ * B-Sides sent are recorded by the server with no id, whatever source it names.
+ */
+export function structureOf(params: SongMade, effective: unknown): string | null {
+  if (typeof params.planning_set === 'string' && params.planning_set !== '') return params.planning_set;
   const planning = (effective as { planning_lyrics?: { id?: unknown } } | null)?.planning_lyrics;
   return typeof planning?.id === 'string' && planning.id !== '' ? planning.id : null;
 }

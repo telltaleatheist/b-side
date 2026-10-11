@@ -34,8 +34,9 @@ import type { StoredServer } from './servers';
 import { layLyrics } from './describe';
 import { writeConcept, writeCore, writeCover, writeIdeas, writeTurns } from './split-text';
 import { leadPhrase, VOICE_TAG, withoutVoice } from '../tags';
+import { trackSet } from '../planning-sets';
 import {
-  LENGTH_AIMS, type AlbumAsk, type AlbumMeta, type AlbumOrder, type AlbumPlan, type AlbumRemake, type AlbumTrack, type LengthAim, type SinglesOrder, type SongPage,
+  LENGTH_AIMS, type AlbumAsk, type AlbumMeta, type AlbumOrder, type AlbumPlan, type AlbumRemake, type AlbumTrack, type LengthAim, type SinglesOrder, type SongPage, type SongParams,
 } from '../types';
 
 /** A song is about this long: how many are counted as on their way. */
@@ -178,6 +179,23 @@ export interface AlbumTrackParams {
   readonly cfg?: number;
   /** The length every track aims for, in seconds. */
   readonly aim?: { readonly min: number; readonly max: number };
+}
+
+/**
+ * Track `track`'s song, as the hub sends it to `page`'s server: the aim when a length can be aimed
+ * there, and an instrumental's structure, the sets in turn (crucible-pc-1, 2026-10-10: each
+ * instrumental its own), B-Sides' own since 2026-10-11 and sent as planning_lyrics (jobs.ts songJob).
+ */
+export function trackSong(params: AlbumTrackParams, track: number, page: SongPage | undefined): SongParams {
+  return {
+    tags: params.tags,
+    ...(params.lead !== undefined ? { lead: params.lead } : {}),
+    instrumental: params.instrumental,
+    ...(params.lyrics !== undefined ? { lyrics: params.lyrics } : {}),
+    ...(params.cfg !== undefined ? { cfg: params.cfg } : {}),
+    ...(params.aim !== undefined && page?.length === true ? { min_duration_s: params.aim.min, max_duration_s: params.aim.max } : {}),
+    ...(params.instrumental ? { planning_set: trackSet(track).id } : {}),
+  };
 }
 
 /** What the album maker needs from the hub around it. */

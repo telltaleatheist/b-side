@@ -226,7 +226,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
                 @if (mode() === 'album') {
                   <p class="opt-note hint">An aim, not a promise: instrumentals are sized toward it and most land in it; a sung track runs as long as its lyrics. Longer songs fill the album's length with fewer tracks.</p>
                 } @else {
-                  <p class="opt-note hint">{{ studio.instrumental() ? 'An aim, not a promise: the server sizes the song toward it, and most land in it.' : 'A sung song runs as long as its lyrics; the aim is noted with it, and the lyrics are never cut to fit.' }}</p>
+                  <p class="opt-note hint">{{ studio.instrumental() ? 'An aim, not a promise: its structure is sized toward it, and most land in it.' : 'A sung song runs as long as its lyrics; the aim is noted with it, and the lyrics are never cut to fit.' }}</p>
                 }
               }
             }

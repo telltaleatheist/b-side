@@ -43,6 +43,7 @@ import type { Disk } from './disk';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { batchSeeds } from '../batch';
+import { namedSet, pickSet, planningLyrics, type Planned } from '../planning-sets';
 import { styleLine } from '../tags';
 import {
   ENDED_PHASES,
@@ -79,21 +80,55 @@ interface Job {
   retried?: boolean;
 }
 
+/** A seed B-Sides draws itself, as the server would (0 to MAX_SEED). */
+function drawSeed(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0]!;
+}
+
+/**
+ * An instrumental's seed and planning set, settled before it is sent (2026-10-11): Crucible has no
+ * default planning set (Owen), and planned from YuE2's bare section tags a score can run to its
+ * token cap, so every instrumental B-Sides sends names a set (planning-sets.ts). One already named
+ * (an album's turn, kept on a remake) stays; otherwise, or when B-Sides no longer has that set, the
+ * seed's, drawn here when none was asked so the set and the seed sent agree. Sung songs, and a
+ * server whose YuE2 takes no `instrumental`, are left as they are.
+ */
+export function settleSong(params: SongParams): SongParams {
+  if (params.instrumental !== true) return params;
+  const seed = params.seed ?? drawSeed();
+  const set = params.planning_set !== undefined && namedSet(params.planning_set) !== null ? params.planning_set : pickSet(seed).id;
+  return { ...params, seed, planning_set: set };
+}
+
 /**
  * A song job, as the playground's `audio` helper builds it, plus `client_ref` (the helper does not
  * send one): `b-sides:<key>` names the song in Crucible's queue and in a restart's sweep (guide §6.3).
+ *
+ * An instrumental always carries `planning_lyrics` (its set, sized to the aim: planningLyrics, which
+ * runs them through the ported check), and never `lyrics`, `planning_set` or a range: Crucible plans
+ * them exactly as sent, and the server's own pool and sizing are no longer leaned on (2026-10-11).
+ * A sung song sends no range either: Crucible only recorded it against the score, and the library
+ * works that out from the score's length itself (library.ts aimOf).
  */
 export function songJob(params: SongParams, format: SongFormat, key: string): JobRequest {
   const wire: Record<string, unknown> = { format };
   if (params.tags !== undefined) wire['tags'] = params.tags;
-  if (params.lyrics !== undefined) wire['lyrics'] = params.lyrics;
+  if (params.instrumental === true) wire['planning_lyrics'] = planningOf(params).lyrics;
+  else if (params.lyrics !== undefined) wire['lyrics'] = params.lyrics;
   if (params.instrumental !== undefined) wire['instrumental'] = params.instrumental;
   if (params.cfg !== undefined) wire['cfg'] = params.cfg;
   if (params.seed !== undefined) wire['seed'] = params.seed;
-  if (params.min_duration_s !== undefined) wire['min_duration_s'] = params.min_duration_s;
-  if (params.max_duration_s !== undefined) wire['max_duration_s'] = params.max_duration_s;
-  if (params.planning_set !== undefined && params.instrumental === true) wire['planning_set'] = params.planning_set;
   return { type: 'audio', model: SONG_MODEL, params: wire, inputs: {}, clientRef: `b-sides:${key}` };
+}
+
+/** An instrumental's planning lyrics: its set (else the seed's; settleSong names one), sized to its aim. */
+function planningOf(params: SongParams): Planned {
+  const set = (params.planning_set === undefined ? null : namedSet(params.planning_set))
+    ?? (params.seed === undefined ? null : pickSet(params.seed));
+  // A bug in B-Sides, never the person's: every path settles an instrumental before it is sent.
+  if (set === null) throw new Error('an instrumental reached the wire with neither a planning set nor a seed; settleSong it first');
+  const sized = params.min_duration_s !== undefined || params.max_duration_s !== undefined;
+  return planningLyrics(set, sized ? { min: params.min_duration_s ?? null, max: params.max_duration_s ?? null } : null);
 }
 
 /** Removed by the server for a reason that is not the song's: a session closing, a restart. */
@@ -236,9 +271,11 @@ export class JobRunner {
       // A server whose YuE2 takes no `instrumental` (older ones): the lead is put first, as typed.
       : lead !== undefined && lead.trim() !== '' ? { ...given, tags: [lead.trim(), tags].filter((part) => part !== '' && part !== undefined).join(', ') } : given;
     const made: Job[] = seeds.map((seed, at) => {
-      const params: Mutable<SongParams> = { ...base };
-      delete params.seed;
-      if (seed !== null) params.seed = seed;
+      const asked: Mutable<SongParams> = { ...base };
+      delete asked.seed;
+      if (seed !== null) asked.seed = seed;
+      // An instrumental's seed and set, settled now so the job shows them from the start.
+      const params = settleSong(asked);
       this.numbered += 1;
       const job: Job = {
         server,
@@ -263,7 +300,7 @@ export class JobRunner {
           install: null,
           refusal: null,
           params,
-          seed,
+          seed: params.seed ?? null,
           title: request.title ?? null,
           takeId: null,
           since: Date.now(),
@@ -421,6 +458,10 @@ export class JobRunner {
     for (let round = 0; jobId === null; round += 1) {
       if (job.gone) return;
       try {
+        // The guard every path passes (a single, a preset, an album track, a remake, a resend, a
+        // retry, a job resumed from pending.json, the phone's hub): an instrumental goes with its set.
+        job.view.params = settleSong(job.view.params);
+        if (job.view.params.seed !== undefined) job.view.seed = job.view.params.seed;
         jobId = await client.submit(songJob(job.view.params, job.format, job.view.key));
       } catch (error) {
         if (job.gone) return;
@@ -602,8 +643,9 @@ export class JobRunner {
   private retry(job: Job, code: string): boolean {
     if (!RETRY_CODES.includes(code) || job.retried === true) return false;
     job.retried = true;
-    const { seed: _crashed, ...params } = job.view.params;
-    job.view.params = params;
+    const { seed: _crashed, planning_set: set, ...params } = job.view.params;
+    // A song on its own takes the new seed's set too, as Crucible's pick did; an album's track keeps its turn's.
+    job.view.params = job.view.album != null && set !== undefined ? { ...params, planning_set: set } : params;
     job.view.seed = null;
     job.view.jobId = null;
     job.view.phase = 'submitting';

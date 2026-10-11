@@ -302,7 +302,7 @@ export class StudioService {
       if (!Number.isFinite(value)) return { code: 'cfg_invalid', message: `Guidance "${cfg}" is not a number.` };
       params.cfg = value;
     }
-    // A length to aim for, when this server's YuE2 takes one (Crucible 1.0.140).
+    // A length to aim for, when this server's YuE2 makes instrumentals (B-Sides sizes them, 2026-10-11).
     const aim = LENGTH_AIMS.find((choice) => choice.key === this.lengthAim());
     if (aim !== undefined && this.page()?.length === true) {
       params.min_duration_s = aim.min;

@@ -61,19 +61,6 @@ export async function probe(server: StoredServer): Promise<ServerProbe> {
   };
 }
 
-/**
- * A choice field's option ids, whether the server lists them as text or as {value|id, label}.
- * The empty option ("the server's choice") is not one to send.
- */
-function optionIds(field: PlaygroundField | undefined): string[] {
-  return (field?.options ?? []).flatMap((option) => {
-    if (typeof option === 'string') return option === '' ? [] : [option];
-    const row = option as { value?: unknown; id?: unknown } | null;
-    const id = row?.value ?? row?.id;
-    return typeof id === 'string' && id !== '' ? [id] : [];
-  });
-}
-
 function numberField(field: PlaygroundField | undefined): NumberField | null {
   if (field === undefined) return null;
   return {
@@ -194,8 +181,9 @@ export async function songPage(server: StoredServer): Promise<SongPage> {
     lyricsPlaceholder: SONG_FIELD_WORDING.lyricsPlaceholder,
     lyricsHint: lyrics === undefined ? null : SONG_FIELD_WORDING.lyricsHint,
     instrumental: named('instrumental') !== undefined,
-    length: named('min_duration_s') !== undefined && named('max_duration_s') !== undefined,
-    planningSets: optionIds(named('planning_set')),
+    // B-Sides sizes an instrumental's planning set itself (shared/planning-sets.ts, 2026-10-11): the
+    // server's `planning_set` options and its own range are no longer read, and may go.
+    length: named('instrumental') !== undefined,
     cfg: numberField(named('cfg')),
     seed: numberField(named('seed')),
     tagModel: tagModel.model,

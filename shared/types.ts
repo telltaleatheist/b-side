@@ -123,10 +123,12 @@ export interface SongPage {
   readonly lyricsHint: string | null;
   /** Whether this server's YuE2 takes `instrumental`. */
   readonly instrumental: boolean;
-  /** Whether it takes a length to aim for (`min_duration_s` / `max_duration_s`, Crucible 1.0.140). */
+  /**
+   * Whether a length can be aimed for here: B-Sides sizes an instrumental's planning lyrics itself
+   * (shared/planning-sets.ts, 2026-10-11), so any YuE2 that makes instrumentals (and with them takes
+   * `planning_lyrics`, Crucible 1.0.93) can. A sung song only notes the aim.
+   */
   readonly length?: boolean;
-  /** Its instrumentals' planning sets (`planning_set`'s options), in order; empty when it takes none. */
-  readonly planningSets?: readonly string[];
   readonly cfg: NumberField | null;
   readonly seed: NumberField | null;
   /** The tag and lyrics model this server gets (chooseTagModel), or null when it can hold none of them. */
@@ -166,16 +168,25 @@ export interface SongParams {
   readonly instrumental?: boolean;
   readonly cfg?: number;
   readonly seed?: number;
-  /** The length to aim for, in seconds (Crucible 1.0.140): an aim for instrumentals, a note for sung songs. */
+  /**
+   * The length to aim for, in seconds. B-Sides' own since 2026-10-11 (Crucible serves models; the
+   * app sizes): an instrumental's planning set is sized toward it (shared/planning-sets.ts), a sung
+   * song only notes it. Never sent: Crucible's own range only sized its pool sets and recorded the
+   * rest, and the library works out whether a song landed from the score's length itself.
+   */
   readonly min_duration_s?: number;
   readonly max_duration_s?: number;
-  /** An instrumental's structure: one of the server's planning sets (SongPage.planningSets). */
+  /**
+   * An instrumental's structure: the id of the planning set (PLANNING_SETS) B-Sides plans it from
+   * and sends as `planning_lyrics`, sized to the aim. Settled before it is sent: an album's tracks
+   * take the sets in turn, a song on its own the seed's (2026-10-11). Absent when sung.
+   */
   readonly planning_set?: string;
 }
 
 /**
  * The song lengths to aim for (Victoria, 2026-10-10: "a slider ... between 3 and 5 minutes"; Owen:
- * "if its close, thats good enough"). Crucible sizes an instrumental toward it in its one pass; a
+ * "if its close, thats good enough"). B-Sides sizes an instrumental's planning set toward it, for one pass; a
  * sung song runs as long as its lyrics, which are never cut or padded for it.
  */
 export interface LengthAim {
@@ -368,6 +379,11 @@ export interface SongMade {
   readonly instrumental: boolean;
   readonly cfg: number | null;
   readonly seed: number | null;
+  /** The planning set B-Sides planned an instrumental from (SongParams.planning_set); absent when sung, and on songs made before 2026-10-11. */
+  readonly planning_set?: string;
+  /** The length it aimed for (SongParams), kept by B-Sides since 2026-10-11; before, only the server's record (`length`) had it. */
+  readonly min_duration_s?: number;
+  readonly max_duration_s?: number;
 }
 
 /** What a take and a saved song both say about themselves. */
@@ -406,11 +422,12 @@ export interface Song extends SongFacts {
   /** The audio file's size, when it was recorded (songs saved before sizes were kept say null). */
   readonly bytes: number | null;
   /**
-   * An instrumental's structure: the planning lyrics YuE2 scored it from (Crucible's pool set id,
-   * e.g. "tidewater"), shown so a report can name it (crucible-pc-1, 2026-10-10). Absent when sung.
+   * An instrumental's structure: the planning set YuE2 scored it from (e.g. "tidewater"), shown so a
+   * report can name it (crucible-pc-1, 2026-10-10). B-Sides' own pick (SongMade.planning_set), or on
+   * older songs the server's (`planning_lyrics.id`). Absent when sung.
    */
   readonly structure?: string | null;
-  /** The length it aimed for, and whether it landed in it (null: not told), as the server recorded. */
+  /** The length it aimed for, and whether its score landed in it (null: not told). */
   readonly aim?: { readonly min: number | null; readonly max: number | null; readonly inRange: boolean | null } | null;
 }
 

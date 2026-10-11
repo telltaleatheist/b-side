@@ -20,7 +20,7 @@
  */
 import type { CrucibleClient } from '@crucible/client';
 
-import { AlbumMaker, albumLine } from './albums';
+import { AlbumMaker, albumLine, trackSong } from './albums';
 import { clientFor, clientName, probe, serverPresets, setClientName, songPage, startInstall } from './crucible';
 import { PresetStore } from './presets';
 import { describe, layLyrics, lyricsBrief } from './describe';
@@ -65,7 +65,6 @@ import {
   type Song,
   type SongForm,
   type SongPage,
-  type SongParams,
 } from '../types';
 
 /** The device a request comes from. */
@@ -320,6 +319,10 @@ export class HubCore {
               instrumental: params.instrumental === true,
               cfg: params.cfg ?? null,
               seed: landed.seed,
+              // B-Sides' own since 2026-10-11: the server's record of planning lyrics it was sent names no set.
+              ...(params.instrumental === true && params.planning_set !== undefined ? { planning_set: params.planning_set } : {}),
+              ...(params.min_duration_s !== undefined ? { min_duration_s: params.min_duration_s } : {}),
+              ...(params.max_duration_s !== undefined ? { max_duration_s: params.max_duration_s } : {}),
             },
             server: { name: landed.server.name, url: landed.server.url },
             jobId: landed.job.jobId as string,
@@ -373,19 +376,8 @@ export class HubCore {
       paint: (id, server, client, model, prompt) => this.paintCover(id, server, client, model, prompt),
       removeCover: (file) => this.library.removeCover(file),
       render: (id, track, server, params) => {
-        // What this server takes, as its song page said when the album was written (older ones take neither).
-        const page = this.pages.get(server.name);
-        const sets = page?.planningSets ?? [];
-        const song: SongParams = {
-          tags: params.tags,
-          ...(params.lead !== undefined ? { lead: params.lead } : {}),
-          instrumental: params.instrumental,
-          ...(params.lyrics !== undefined ? { lyrics: params.lyrics } : {}),
-          ...(params.cfg !== undefined ? { cfg: params.cfg } : {}),
-          ...(params.aim !== undefined && page?.length === true ? { min_duration_s: params.aim.min, max_duration_s: params.aim.max } : {}),
-          // Each instrumental its own structure, in turn through the server's sets (crucible-pc-1, 2026-10-10).
-          ...(params.instrumental && sets.length > 0 ? { planning_set: sets[track % sets.length] as string } : {}),
-        };
+        // Whether this server's YuE2 makes instrumentals, as its song page said when the album was written.
+        const song = trackSong(params, track, this.pages.get(server.name));
         this.jobs.generate(server, { id: albumClient(id), kind: 'desktop' }, { params: song, count: 1 }, this.preferences.songFormat, { id, track });
       },
       inFlight: (id) => this.jobs.list(albumClient(id)).filter((job) => !ENDED_PHASES.includes(job.phase)).length,
