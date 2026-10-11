@@ -5,11 +5,12 @@ import { missingOf, moduleForBackend, ServerNeeds } from '../shared/core/server-
 import type { ServerNeedsView } from '../shared/types';
 
 const row = (installed: boolean): CatalogRow => ({ kind: 'denoise', id: 'vocals-roformer', installed } as unknown as CatalogRow);
+const yue = (installed = true): CatalogRow => ({ kind: 'model', id: 'yue2-3b', installed } as unknown as CatalogRow);
 
-test('the module asks for the rvc environment and the vocals separator, without its generated backends', () => {
+test('the module asks for the separator and YuE2 (Owen, 2026-10-11), without its generated backends', () => {
   const module = moduleForBackend('cuda-linux');
-  expect(module.job_types).toEqual([{ type: 'rvc' }]);
-  expect(module.subjects).toEqual([{ kind: 'denoise', id: 'vocals-roformer' }]);
+  expect(module.job_types).toEqual([{ type: 'rvc' }, { type: 'audio' }]);
+  expect(module.subjects).toEqual([{ kind: 'denoise', id: 'vocals-roformer' }, { kind: 'model', id: 'yue2-3b' }]);
   expect(module.name).toBe('b-sides');
   expect(JSON.stringify(module)).not.toContain('backends');
 });
@@ -22,9 +23,10 @@ test('a Windows-native engine is asked for nothing: it has no separator', () => 
 
 test('missing: the model by the catalog, the environment by the job types served', () => {
   const module = moduleForBackend('mlx-darwin');
-  expect(missingOf(module, [row(true)], ['denoise'])).toEqual([]);
-  expect(missingOf(module, [row(false)], ['denoise'])).toEqual(['denoise vocals-roformer']);
-  expect(missingOf(module, [row(true)], ['audio'])).toEqual(['the rvc environment']);
+  expect(missingOf(module, [row(true), yue()], ['denoise', 'audio'])).toEqual([]);
+  expect(missingOf(module, [row(false), yue()], ['denoise', 'audio'])).toEqual(['denoise vocals-roformer']);
+  expect(missingOf(module, [row(true), yue()], ['audio'])).toEqual(['the rvc environment']);
+  expect(missingOf(module, [row(true), yue(false)], ['denoise'])).toEqual(['model yue2-3b', 'the audio environment']);
 });
 
 function fakeClient(over: Partial<Record<'catalog' | 'submitTask' | 'task', unknown>>, backend = 'cuda-linux', jobTypes = ['audio']): { client: CrucibleClient; posted: unknown[] } {
@@ -56,7 +58,7 @@ test('a server missing the separator is posted the module and followed to done, 
 
 test('a server that has it is not posted anything', async () => {
   const needs = new ServerNeeds(undefined, 1);
-  const { client, posted } = fakeClient({ catalog: [row(true)] }, 'cuda-linux', ['audio', 'denoise']);
+  const { client, posted } = fakeClient({ catalog: [row(true), yue()] }, 'cuda-linux', ['audio', 'denoise']);
   await needs.ensure('pc', client);
   expect(posted).toHaveLength(0);
   expect(needs.of('pc')?.state).toBe('ready');

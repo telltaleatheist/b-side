@@ -34,13 +34,21 @@ interface ModuleRow {
   readonly backends?: readonly string[];
 }
 
-/** What `modules/b-sides.toml` generates (see the header), as Crucible 2.0.4 generated it. */
+/**
+ * What `modules/b-sides.toml` generates (see the header). Since Crucible 2.0.5 it brings YuE2 as well
+ * as the separator (Owen, 2026-10-11: on connecting, ask the server for "the rvc and the yue
+ * packages"), turns on each job type it brings, and skips what the card cannot hold (`unmet`).
+ * The tag model is left out by design: it installs on its first chat (crucible-pc-1).
+ */
 export const B_SIDES_MODULE = {
   name: 'b-sides',
-  version: '2.0.4+085acd33d0c6',
-  job_types: [{ type: 'rvc', backends: ['cuda-linux', 'mlx-darwin'] }],
+  version: '2.0.4+1e1458912f77',
+  job_types: [{ type: 'rvc', backends: ['cuda-linux', 'mlx-darwin'] }, { type: 'audio', backends: ['cuda-linux', 'mlx-darwin'] }],
   needs: [],
-  subjects: [{ kind: 'denoise', id: SEPARATOR_MODEL, backends: ['cuda-linux', 'mlx-darwin'] }],
+  subjects: [
+    { kind: 'denoise', id: SEPARATOR_MODEL, backends: ['cuda-linux', 'mlx-darwin'] },
+    { kind: 'model', id: 'yue2-3b', backends: ['cuda-linux', 'mlx-darwin'] },
+  ],
 } as const;
 
 const here = (row: ModuleRow, backend: string): boolean => row.backends === undefined || row.backends.includes(backend);
@@ -158,14 +166,21 @@ export class ServerNeeds {
       }
       throw error;
     }
-    this.set({ server, state: 'installing', sentence: `${server} is installing the vocal separator (${missing.join(', ')}). It keeps going if you close this.`, task });
+    this.set({ server, state: 'installing', sentence: `${server} is installing what B-Sides needs (${missing.join(', ')}). It keeps going if you close this.`, task });
     for (;;) {
       await new Promise((resolve) => setTimeout(resolve, this.pollMs));
       const status = await client.task(task);
       if (status.state === 'running') continue;
       if (status.state === 'done') {
-        await enable();
-        this.set({ server, state: 'ready', sentence: `${server} has the vocal separator.`, task });
+        // 2.0.5 turns on what it brings; an older server leaves denoise off, and B-Sides turns it on.
+        await enable().catch((err: unknown) => console.log(`[needs] ${server}: ${err instanceof Error ? err.message : String(err)}`));
+        // What this card cannot hold is skipped, not installed unusable (2.0.5): said, not hidden.
+        const unmet = (status.unmet ?? []).map((need) => need.reason);
+        if (unmet.length > 0) console.log(`[needs] ${server} skipped what its card cannot hold: ${unmet.join('; ')}`);
+        this.set({
+          server, state: 'ready', task,
+          sentence: unmet.length === 0 ? `${server} has what B-Sides needs.` : `${server} has what B-Sides needs that its card can hold; not: ${unmet.join('; ')}.`,
+        });
       } else {
         const why = status.error?.message ?? status.state;
         this.set({ server, state: 'failed', sentence: `${server} did not install the vocal separator: ${why}. B-Sides asks again the next time it starts.`, task });
