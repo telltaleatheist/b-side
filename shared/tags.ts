@@ -59,7 +59,7 @@ export function withoutVoice(tags: readonly string[]): string[] {
 /** The phrases that end every instrumental style line (YuE2's own instrumental examples). */
 export const NO_VOICE_CLAUSE: readonly string[] = ['no vocals', 'no singing', 'no choir', 'no spoken words'];
 
-/** A language named on its own ("Swahili", "Japanese lyrics"): any a person may sing in (Owen, 2026-10-11). */
+/** A language named on its own ("Spanish", "Japanese lyrics"): recognised so English is never added beside it. */
 const LANGUAGE = /^(english|chinese|mandarin|cantonese|japanese|korean|spanish|french|german|italian|portuguese|brazilian portuguese|russian|ukrainian|polish|czech|slovak|slovenian|croatian|serbian|bosnian|bulgarian|romanian|hungarian|greek|turkish|dutch|flemish|swedish|norwegian|danish|finnish|icelandic|estonian|latvian|lithuanian|irish|gaelic|scottish gaelic|welsh|breton|basque|catalan|galician|maltese|albanian|macedonian|armenian|georgian|azerbaijani|kazakh|uzbek|mongolian|arabic|hebrew|yiddish|persian|farsi|kurdish|pashto|urdu|hindi|punjabi|bengali|gujarati|marathi|tamil|telugu|kannada|malayalam|sinhala|nepali|thai|lao|khmer|burmese|vietnamese|indonesian|malay|filipino|tagalog|cebuano|javanese|hawaiian|maori|samoan|tongan|swahili|amharic|somali|yoruba|igbo|hausa|zulu|xhosa|afrikaans|shona|wolof|lingala|haitian creole|creole|patois|latin|esperanto|sanskrit)( language| lyrics| vocals?| singing)?$/i;
 const NO_VOICE = /^(instrumental|no vocals?|no singing|no choir|no spoken words?|without vocals|vocal-free)$/i;
 const TEMPO = /\b\d{2,3}\s*BPM\b/i;
@@ -67,8 +67,8 @@ const TEMPO = /\b\d{2,3}\s*BPM\b/i;
 const SINGER = /^(male|female|man|woman|boy|girl|child|children)\b/i;
 
 /**
- * The languages YuE2 declares (its model card, m-a-p/YuE2-3B: zh and en). Any other is sent all the
- * same (Owen, 2026-10-11: any language a person wants), but it is not one YuE2 is known to sing well.
+ * The languages YuE2 sings (its model card, m-a-p/YuE2-3B: zh and en), the only two B-Sides offers
+ * (Owen, 2026-10-11). Another one the person typed is sent as typed, and the Studio says so.
  */
 const DECLARED_LANGUAGE = /^(english|chinese|mandarin|cantonese)\b/i;
 
@@ -86,8 +86,8 @@ function isVoice(tag: string): boolean {
  * A style line in YuE2's official form (the yue2-music skill, YuE rev 18a07bb6, read 2026-10-10;
  * Owen via crucible-pc-1), applied to whatever wrote the tags, the person included:
  *   sung          the language first (every official example), "English" when the tags name none
- *                 (Owen, 2026-10-11: "id like any language to be available if somebody wants to
- *                 choose another. but i speak english"), the rest as written; exactly one
+ *                 (Owen, 2026-10-11: English or Chinese, the two YuE2 sings; another the person typed
+ *                 is kept, and the Studio says YuE2 does not support it), the rest as written; exactly one
  *                 "N BPM" ("describe them consistently in the style"). The voice's place varies
  *                 across the official examples, so it is not moved.
  *   instrumental  "Instrumental" first; no language and no voice; exactly one "N BPM"; ending

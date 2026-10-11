@@ -110,7 +110,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
           <div class="fold-body">
             <app-tag-input />
             @if (offLanguage(); as language) {
-              <p class="hint">YuE2 is trained on English and Chinese; {{ language }} is sent as asked, but it may be sung less well.</p>
+              <p class="hint">YuE2 sings English and Chinese only; "{{ language }}" is sent as you typed it, but it is not a language YuE2 supports.</p>
             }
             @if (sentAs(); as sent) {
               <!-- Said, never done silently (crucible-pc-1, 2026-10-10): what YuE2's form changes in the person's tags. -->
@@ -365,7 +365,7 @@ export class StudioPageComponent {
   protected readonly albumMinutes = ALBUM_MINUTES;
   protected readonly lengthAims = LENGTH_AIMS;
   protected readonly descriptionMax = DESCRIPTION_MAX;
-  /** A sung song's language when YuE2 does not declare it (Owen, 2026-10-11: any language, said honestly). */
+  /** A sung song's language when it is not English or Chinese, the two YuE2 sings (Owen, 2026-10-11): said, not changed. */
   protected readonly offLanguage = computed(() => (this.instrumentalHere() ? null : undeclaredLanguage(this.studio.tagLine())));
   /** The tags as they are sent (YuE2's official form), when that differs from what is picked. */
   protected readonly sentAs = computed(() => {

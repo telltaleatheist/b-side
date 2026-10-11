@@ -141,13 +141,3 @@ test('a titled describe asks for a title first and answers it tidied; untitled, 
   expect(trained.required).not.toContain('title');
   expect(asked[1]!.system).not.toContain('- title:');
 });
-
-test("Claude may write any language; the trained prompt's English-or-Chinese line is not in its prompt", async () => {
-  const asked: { system: string; schema: object }[] = [];
-  const claude: TextModel = { name: 'claude-sonnet-5-5', ask: async (request) => { asked.push(request); return { content: JSON.stringify({ title: 'T', ...fields, language: 'Swahili' }), truncated: false }; } };
-  const answer = await describeMusic(claude, page, 'a Swahili afrobeat love song', false, '', true);
-  expect(answer.tags[0]).toBe('Swahili');
-  expect(asked[0]!.system).not.toContain('English unless the description asks for Chinese');
-  expect(asked[0]!.system).toContain('any language at all');
-  expect(tagPrompt(page, false)).toContain('- language: English unless the description asks for Chinese.');
-});
