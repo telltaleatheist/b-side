@@ -97,6 +97,15 @@ export class LibraryService {
     return outcome.ok ? null : outcome.refusal;
   }
 
+  /** Whether this device can save files itself (the desktop app): album downloads. */
+  readonly canSave = desktop !== null;
+
+  async saveAlbum(playlistId: string): Promise<RefusalView | null> {
+    if (desktop === null) return null;
+    const outcome = await desktop.saveAlbum(playlistId);
+    return outcome.ok ? null : outcome.refusal;
+  }
+
   async reveal(song: Song): Promise<RefusalView | null> {
     if (desktop === null) return null;
     const outcome = await desktop.reveal(song.id);

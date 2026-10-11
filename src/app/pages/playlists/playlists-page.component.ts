@@ -95,6 +95,9 @@ const COVER_PX = 768;
               @if (!remote()) {
                 <button type="button" class="ghost" [disabled]="songs().length < 2" title="Play it in a random order" (click)="player.shufflePlaylist(playlist.id)"><app-icon name="shuffle" [size]="18" />Shuffle</button>
               }
+              @if (!remote() && playlist.album && library.canSave) {
+                <button type="button" class="ghost" [disabled]="songs().length === 0" title="Save the album as a zip: its songs in order, their lyrics, the cover" (click)="downloadAlbum(playlist)"><app-icon name="download" [size]="18" />Download</button>
+              }
               <button type="button" class="icon-btn outlined" aria-label="Play next" title="Play next: right after the song playing" [disabled]="songs().length === 0"
                       (click)="queue(playlist, true)"><app-icon name="play-next" [size]="18" /></button>
               <button type="button" class="icon-btn outlined" aria-label="Add to queue" title="Add to queue: at the end" [disabled]="songs().length === 0"
@@ -546,6 +549,10 @@ export class PlaylistsPageComponent {
     if (this.isPeer()) this.player.playPeer(this.peerKey(), playlist.id);
     else if (this.isCloud()) this.player.playCloud(playlist.id);
     else this.player.playPlaylist(playlist.id);
+  }
+
+  protected async downloadAlbum(playlist: Playlist): Promise<void> {
+    this.refusal.set(await this.library.saveAlbum(playlist.id));
   }
 
   /** Dragging an image over the cover. */

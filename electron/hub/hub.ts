@@ -32,7 +32,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { APP_CLIENT, clientFor } from '../../shared/core/crucible';
-import { HubCore, matchRoute, routeOf, type CoreRequest } from '../../shared/core/hub-core';
+import { HubCore, matchRoute, routeOf, type AlbumFiles, type CoreRequest } from '../../shared/core/hub-core';
 import type { ImportedAlbum } from '../../shared/core/library';
 import type { ServerRegistry } from '../../shared/core/servers';
 import type { TakeStore } from '../../shared/core/takes';
@@ -166,6 +166,11 @@ export class Hub {
     await this.core.openLibrary(view.libraryDir);
     await this.core.libraryChanged();
     return this.settingsView(view, true);
+  }
+
+  /** An album's files, for the desktop's "download album". */
+  albumFiles(id: string): Promise<AlbumFiles> {
+    return this.core.albumFiles(id);
   }
 
   /** The audio file of a saved song, for the desktop's "save a copy" and "show in folder". */

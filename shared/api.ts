@@ -73,6 +73,8 @@ export interface DesktopBridge {
   resetLibraryDir(): Promise<Outcome<HubSettingsView>>;
   /** Ask where to save a copy of a saved song, then copy it there. Null when the person cancelled. */
   saveCopy(songId: string): Promise<Outcome<string | null>>;
+  /** Ask where to save an album as a zip (its songs, lyrics, cover), then write it. Null when cancelled. */
+  saveAlbum(playlistId: string): Promise<Outcome<string | null>>;
   /** Show a saved song in its folder. */
   reveal(songId: string): Promise<Outcome<null>>;
   /** Windows' firewall and the hub's port; null off Windows. */

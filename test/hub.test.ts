@@ -243,3 +243,12 @@ test("an album's cover can be the person's own image, which replaces the one bef
   const refused = await api('/api/albums/own-cover/cover', { method: 'PUT', body: JSON.stringify({ image: png, type: 'image/svg+xml' }) });
   expect(refused.status).toBe(400);
 });
+
+test("an album's download lists its songs in order, with the cover", async () => {
+  const files = await hub.albumFiles('own-cover');
+  expect(files.name).toBe('Own Cover');
+  expect(files.tracks.map((track) => track.title)).toEqual(['T']);
+  expect(files.tracks[0]?.lyrics).toBeNull();
+  expect(files.cover).toMatch(/\.cover\.jpg$/);
+  expect(fs.existsSync(files.tracks[0]?.file as string)).toBe(true);
+});

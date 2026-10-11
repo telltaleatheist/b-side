@@ -18,6 +18,7 @@ const bridge: DesktopBridge = {
   chooseLibraryDir: () => ipcRenderer.invoke('desktop:chooseLibraryDir'),
   resetLibraryDir: () => ipcRenderer.invoke('desktop:resetLibraryDir'),
   saveCopy: (id) => ipcRenderer.invoke('desktop:saveCopy', id),
+  saveAlbum: (id) => ipcRenderer.invoke('desktop:saveAlbum', id),
   reveal: (id) => ipcRenderer.invoke('desktop:reveal', id),
   firewall: () => ipcRenderer.invoke('desktop:firewall'),
   allowThroughFirewall: () => ipcRenderer.invoke('desktop:allowThroughFirewall'),

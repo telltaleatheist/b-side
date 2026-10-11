@@ -153,6 +153,16 @@ export function matchRoute<R extends { method: string; pattern: RegExp; names: r
 /** The longest name a song is given when it lands (a writer's title, cut to fit). */
 const SONG_TITLE_MAX = 80;
 
+/** What an album download holds. */
+export interface AlbumFiles {
+  readonly name: string;
+  readonly artist: string;
+  readonly blurb: string;
+  /** The cover file, when it has one (painted, or the person's own). */
+  readonly cover: string | null;
+  readonly tracks: readonly { readonly title: string; readonly file: string; readonly lyrics: string | null }[];
+}
+
 /** The albums making their music on `server`, oldest first. */
 function making(playlists: readonly Playlist[], server: string): Playlist[] {
   return playlists
@@ -474,6 +484,31 @@ export class HubCore {
   /** The audio file of a take in the playing list. */
   takeAudio(id: string): string {
     return this.takes.audioPath(id);
+  }
+
+  /** An album's files for a download: its songs in order (each with its lyrics), its cover, and its words. */
+  async albumFiles(id: string): Promise<AlbumFiles> {
+    const view = await this.library.list();
+    const playlist = view.playlists.find((p) => p.id === id);
+    if (playlist === undefined) throw new Refusal('album_missing', 'That album is gone.', 404);
+    const songs = new Map(view.songs.map((song) => [song.id, song]));
+    const tracks = playlist.songs.flatMap((songId) => {
+      const song = songs.get(songId);
+      return song === undefined ? [] : [{
+        title: song.title,
+        file: this.library.audioPath(song.file),
+        lyrics: song.params.instrumental ? null : song.params.lyrics || null,
+      }];
+    });
+    if (tracks.length === 0) throw new Refusal('album_empty', 'That album has no songs to download yet.', 409);
+    const album = playlist.album ?? null;
+    return {
+      name: playlist.name,
+      artist: album?.artist ?? '',
+      blurb: album?.blurb ?? '',
+      cover: album?.cover != null ? this.library.coverPath(album.cover) : null,
+      tracks,
+    };
   }
 
   /** The audio file of a saved song, and its title. */

@@ -38,6 +38,8 @@ function fileNameOf(title: string): string | null {
   return /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i.test(name) ? `${name} (song)` : name;
 }
 
+import { writeZip, type ZipEntry } from './zip';
+
 export function registerIpc(hub: Hub): void {
   ipcMain.on('hub:address', (event) => {
     event.returnValue = hub.localAddress();
@@ -79,6 +81,39 @@ export function registerIpc(hub: Hub): void {
       const choice = window === null ? await dialog.showSaveDialog(options) : await dialog.showSaveDialog(window, options);
       if (choice.canceled || choice.filePath === undefined) return null;
       await fsp.copyFile(song.file, choice.filePath);
+      return choice.filePath;
+    }));
+  // A whole album as one zip (Victoria, 2026-10-10): "NN - Title.ext" in order, each sung track's
+  // lyrics beside it, the cover, and album.txt with its name, artist, blurb and track list.
+  ipcMain.handle('desktop:saveAlbum', (_e, id: string) =>
+    answer(async () => {
+      const album = await hub.albumFiles(id);
+      const folder = fileNameOf(album.artist ? `${album.artist} - ${album.name}` : album.name) ?? 'Album';
+      const window = appWindow();
+      const options = {
+        title: 'Download this album',
+        defaultPath: path.join(app.getPath('downloads'), `${folder}.zip`),
+        filters: [{ name: 'Zip', extensions: ['zip'] }],
+      };
+      const choice = window === null ? await dialog.showSaveDialog(options) : await dialog.showSaveDialog(window, options);
+      if (choice.canceled || choice.filePath === undefined) return null;
+      const width = Math.max(2, String(album.tracks.length).length);
+      const entries: ZipEntry[] = [];
+      for (const [at, track] of album.tracks.entries()) {
+        const stem = `${String(at + 1).padStart(width, '0')} - ${fileNameOf(track.title) ?? `Track ${at + 1}`}`;
+        entries.push({ name: `${folder}/${stem}${path.extname(track.file)}`, file: track.file });
+        if (track.lyrics !== null) entries.push({ name: `${folder}/${stem}.txt`, text: `${track.title}\r\n\r\n${track.lyrics.replace(/\r?\n/g, '\r\n')}\r\n` });
+      }
+      if (album.cover !== null) entries.push({ name: `${folder}/cover${path.extname(album.cover)}`, file: album.cover });
+      const about = [
+        album.name,
+        album.artist ? `by ${album.artist}` : '',
+        album.blurb,
+        '',
+        ...album.tracks.map((track, at) => `${at + 1}. ${track.title}`),
+      ].filter((line, at) => line !== '' || at > 2);
+      entries.push({ name: `${folder}/album.txt`, text: `${about.join('\r\n')}\r\n` });
+      await writeZip(choice.filePath, entries);
       return choice.filePath;
     }));
   ipcMain.handle('desktop:reveal', (_e, id: string) =>
