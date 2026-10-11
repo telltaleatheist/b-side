@@ -286,8 +286,14 @@ export class AlbumMaker {
 
   /** Close every writing session open now (the app is quitting): the server is free at once, not after the idle time. */
   async closeSessions(): Promise<void> {
+    // A session still waiting in the server's line is left too: one opened after B-Sides quit held
+    // Victoria's only slot doing nothing until it idled out (2026-10-11), with four jobs behind it.
+    for (const waiting of this.waiting) waiting.abort();
     await Promise.all([...this.sessions.values()].map((session) => session.close().catch(() => undefined)));
   }
+
+  /** Albums' sessions still waiting in a server's line to open, aborted when B-Sides quits. */
+  private readonly waiting = new Set<AbortController>();
 
   /**
    * Carry on with an album that did not finish (Owen, 2026-10-06): stopped by
@@ -553,7 +559,10 @@ export class AlbumMaker {
         // meanwhile would join the album's session and be dropped with it.
         if (page === null) throw new Refusal('page_unreadable', `Could not read ${server.name}'s song page, so B-Sides cannot tell which model writes.`);
         if (page.tagModel === null) throw new Refusal('no_tag_model', page.tagModelReason ?? 'This server has no tag model to write an album with.');
-        const opened = await this.hooks.client(server, true).session({ act: 'generate', idleS: SESSION_IDLE_S });
+        const leave = new AbortController();
+        this.waiting.add(leave);
+        const opened = await this.hooks.client(server, true).session({ act: 'generate', idleS: SESSION_IDLE_S, signal: leave.signal })
+          .finally(() => this.waiting.delete(leave));
         session = opened;
         this.sessions.set(id, opened);
         meta = { ...(await this.hooks.meta(id) ?? meta), session: opened.id };

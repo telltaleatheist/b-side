@@ -188,7 +188,7 @@ export function conceptPrompt(ask: AlbumAsk, count: number): string {
   return [
     'You name a music album made with an AI music model. Reply with JSON only: {"title", "artist", "blurb"}.',
     `It will have ${count} tracks. ${ask.sung ? 'It is sung.' : 'It is instrumental.'}`,
-    '- title: a creative album title, 1-5 words, not generic.',
+    ask.title ? `- title: exactly "${ask.title}", the name the person gave it.` : '- title: a creative album title, 1-5 words, not generic.',
     '- artist: an invented band or artist name that fits it, never a real one.',
     '- blurb: one sentence about the record, like a liner note.',
     ask.sung && ask.lyrics ? `The lyrics will be about: ${ask.lyrics}. Let the title fit them.` : '',
@@ -208,7 +208,8 @@ export async function writeConcept(writer: TextModel, ask: AlbumAsk, count: numb
   };
   const got = await call(writer, '[concept]', 'album_concept', conceptPrompt(ask, count), conceptUser(ask), schema, 400, WORDS_TEMPERATURE);
   return {
-    title: textOf(got['title'], '[concept]', 'title') || 'Untitled',
+    // The person's own name stands whatever came back.
+    title: ask.title || textOf(got['title'], '[concept]', 'title') || 'Untitled',
     artist: textOf(got['artist'], '[concept]', 'artist') || 'Unknown Artist',
     blurb: textOf(got['blurb'], '[concept]', 'blurb'),
   };

@@ -176,6 +176,14 @@ export function matchRoute<R extends { method: string; pattern: RegExp; names: r
 /** The longest name a song is given when it lands (a writer's title, cut to fit). */
 const SONG_TITLE_MAX = 80;
 
+/** A name the person gave a song or an album in Make, tidied; null when they gave none. */
+function givenName(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const name = value.replace(/\s+/g, ' ').trim();
+  if (name.length > 120) throw new Refusal('name_too_long', `A name is at most 120 characters; this one is ${name.length}.`);
+  return name === '' ? null : name;
+}
+
 /** An album's description: refused by name when too long, never cut (DESCRIPTION_MAX). */
 function albumDescription(value: unknown): string {
   const description = text(value ?? '', 'description');
@@ -425,6 +433,9 @@ export class HubCore {
   /** Follow again the jobs that were generating when this hub last stopped, and the albums being made. */
   async resume(): Promise<void> {
     await this.jobs.resume();
+    // Before any album opens a new one: this install's album sessions left over from a run that
+    // ended (crucible-pc-1, 2026-10-11: every hold has an owner and a reconciler that finds orphans).
+    await Promise.all(this.registry.views().map((view) => this.closeOrphanSessions(view.name)));
     for (const playlist of (await this.libraryView()).playlists) {
       const stage = playlist.album?.stage;
       if (stage === 'planning' || stage === 'cover' || stage === 'making') this.albums.start(playlist.id);
@@ -555,9 +566,11 @@ export class HubCore {
     // sooner. 256 is the smallest size the server takes (a multiple of 32 on the PC).
     // The size the model paints well at, as the server publishes it (1.0.138: an SDXL model is crunchy
     // under 768; qwen-image is fine at 256). A server that publishes nothing gets the 256 it always had.
-    const side = await coverSide(server, model);
-    const jobId = await client.image({ model, prompt, width: side, height: side });
-    console.log(`[albums] painting the cover for ${id}: ${model} job ${jobId}`);
+    // No model and no size named: Crucible paints with the biggest image model the card holds, at
+    // its own native size (Owen, 2026-10-11: "if the gpu can fit qwen image then it should use that.
+    // if not, it should use dreamshape"; 2026-10-10: covers painted at 1024, kept small).
+    const jobId = await client.image({ prompt });
+    console.log(`[albums] painting the cover for ${id} (the server's pick; ${model} is ready there): job ${jobId}`);
     // The job's status is read every few seconds until it ends. Its event stream was followed
     // instead, and on Victoria's laptop (2026-10-11) the Iliad's cover finished on the server at
     // 16:43:21 while B-Sides waited on, never saving it: the album sat at "planning" with no cover,
@@ -580,7 +593,7 @@ export class HubCore {
     const file = `${id}-${Date.now().toString(36)}.cover.png`;
     await this.options.fetchAudio(server, jobId, 'image.png', this.library.coverPath(file));
     console.log(`[albums] the cover for ${id} is in: ${file}`);
-    if (side > COVER_KEPT_PX && this.options.shrinkCover !== undefined) {
+    if (this.options.shrinkCover !== undefined) {
       const small = await this.options.shrinkCover(this.library.coverPath(file), COVER_KEPT_PX).catch((err: unknown) => {
         console.error(`[albums] could not shrink the cover for ${id}; keeping it as painted:`, err);
         return null;
@@ -591,6 +604,34 @@ export class HubCore {
       }
     }
     return file;
+  }
+
+  /**
+   * Close the queue sessions on `name` that this install's albums opened in an earlier run, open or
+   * still waiting in the line. On Victoria's laptop (2026-10-11) one opened 30 s after B-Sides
+   * restarted and held her only slot, doing nothing, with two songs and two sessions behind it.
+   * Nothing this run opened exists yet when it is called. A server that does not answer is passed by.
+   */
+  private async closeOrphanSessions(name: string): Promise<void> {
+    const owner = `${clientName()}/album`;
+    try {
+      const client = clientFor(this.registry.get(name), owner);
+      // A sleeping server must not hold up every album: 8 s, then it is passed by.
+      const [activity, queue] = await Promise.race([
+        Promise.all([client.activity(), client.queue()]),
+        new Promise<never>((_, fail) => setTimeout(() => fail(new Error('no answer within 8 s')), 8000)),
+      ]);
+      const orphans = [
+        ...(activity.session !== null && activity.session.client === owner ? [activity.session.sessionId] : []),
+        ...queue.items.filter((item) => item.kind === 'session' && item.client === owner).map((item) => item.jobId),
+      ];
+      for (const id of new Set(orphans)) {
+        console.log(`[albums] closing ${id} on ${name}: an album session left from an earlier run`);
+        await client.closeSession(id).catch((err: unknown) => console.error(`[albums] could not close ${id} on ${name}:`, err));
+      }
+    } catch (err) {
+      console.error(`[albums] could not look for leftover sessions on ${name}:`, err);
+    }
   }
 
   /** Close the album writing sessions open now (the app is quitting). */
@@ -885,18 +926,23 @@ export class HubCore {
       };
       const sound = claude?.text ?? await serverText();
       const lyricist = claude?.lyricist ?? null;
+      // The person's own name (Victoria, 2026-10-11): kept, and the words written to it.
+      const named = givenName(body['title']);
       // No Claude for the words (a phone): the server's model writes the tags and the words in one call.
-      if (lyricist === null || claude?.words == null) return describe(sound, page, about, instrumental, brief);
+      if (lyricist === null || claude?.words == null) {
+        const described = await describe(sound, page, about, instrumental, brief);
+        return named === null ? described : { ...described, title: named };
+      }
       // The sound from the tag model, then the words and the name from the lyricist (Owen, 2026-10-11:
       // whoever writes the lyrics names the song, so the name fits its hook).
       const described: DescribeResult = await describeSound(sound, page, about, instrumental, brief);
       if (described.instrumental) {
-        return { ...described, title: await nameSong(claude.words, about, described.tags), lyricsModel: claude.words.name };
+        return { ...described, title: named ?? await nameSong(claude.words, about, described.tags), lyricsModel: claude.words.name };
       }
-      const song = { title: null, tags: described.tags.join(', '), about, brief };
-      const written = lyricist.writeTitled !== undefined
+      const song = { title: named, tags: described.tags.join(', '), about, brief };
+      const written = named === null && lyricist.writeTitled !== undefined
         ? await lyricist.writeTitled(song)
-        : { lyrics: await lyricist.write(song), title: null };
+        : { lyrics: await lyricist.write(song), title: named };
       return { ...described, lyrics: layLyrics(written.lyrics), title: written.title, lyricsModel: lyricist.name };
     });
     this.route('PUT', '/api/presets/:name', async (request) =>
@@ -916,8 +962,10 @@ export class HubCore {
       const cfg = typeof body['cfg'] === 'number' && Number.isFinite(body['cfg']) ? body['cfg'] : null;
       const sung = body['sung'] === true;
       const lyrics = sung ? lyricsBrief(body['lyrics']) : '';
+      const title = givenName(body['title']);
       const ask: AlbumAsk = {
         description: albumDescription(body['description']), tags: tags as string[], minutes, sung, cfg,
+        ...(title !== null ? { title } : {}),
         ...(lyrics ? { lyrics } : {}), ...(body['exactTags'] === true ? { exactTags: true } : {}),
         ...(LENGTH_AIMS.some((aim) => aim.key === body['trackLength']) ? { trackLength: body['trackLength'] as string } : {}),
       };
@@ -938,7 +986,7 @@ export class HubCore {
       // made at once, one on each; Victoria, 2026-10-10), else the active one.
       const server = typeof body['server'] === 'string' && body['server'] !== '' ? this.registry.get(body['server']) : this.registry.active();
       // Make → Album's "Add to folder" (Victoria, 2026-10-11): it lands in the folder from the start.
-      const album = await this.library.createAlbum('A new album', {
+      const album = await this.library.createAlbum(title ?? 'A new album', {
         artist: '', blurb: '', cover: null, ask, plan: null, stage: 'planning', sent: 0, madeS: 0, refusal: null,
         server: server.name, writer: null,
       }, idOrNull(body['folder'], 'folder'));

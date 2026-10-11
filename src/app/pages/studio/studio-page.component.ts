@@ -66,6 +66,14 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
           <p class="hint">Reading the song page from {{ hub.activeServer()?.name }}…</p>
         }
 
+        <div class="field">
+          <label class="label" for="make-name">Name <span class="hint">(optional)</span></label>
+          <input id="make-name" type="text" maxlength="120" autocomplete="off"
+                 [placeholder]="mode() === 'album' ? 'e.g. Greek Myths: Magical Creatures' : 'e.g. Brown Banana Blues'"
+                 [value]="studio.name()" (input)="studio.name.set($any($event.target).value)" />
+          <p class="hint">Blank: it's named for you. Given, it keeps your name{{ mode() === 'album' ? ', and the album is written around it' : ' and the lyrics are written to it' }}.</p>
+        </div>
+
         <form class="field" (submit)="$event.preventDefault(); fillTags()">
           <label class="label" for="describe">Describe it</label>
           <textarea id="describe" appRememberHeight="describe" rows="2" class="describe" [class.over]="studio.description().length > descriptionMax"
@@ -526,6 +534,7 @@ export class StudioPageComponent {
       ...(this.studio.lengthAim() !== '' && this.studio.page()?.length ? { trackLength: this.studio.lengthAim() } : {}),
       server: this.albumServer() ?? '',
       folder: this.albumFolder(),
+      ...(this.studio.name().trim() !== '' ? { title: this.studio.name().trim() } : {}),
     });
     this.albumSending.set(false);
     this.albumRefusal.set(outcome.ok ? null : outcome.refusal);

@@ -45,6 +45,8 @@ export class StudioService {
   /** The chat model the hub asks on this server (the full one, or 4-bit on a small card), named in the hint. */
   readonly tagModel = computed(() => this.page()?.writer ?? this.page()?.tagModel ?? null);
   readonly description = signal('');
+  /** The person's own name for the song or album (Victoria, 2026-10-11); '' leaves it to the writer. */
+  readonly name = signal('');
   /** The length to aim for (LENGTH_AIMS' key), or '' for the server's own; songs and albums share it. */
   readonly lengthAim = signal('');
   /**
@@ -147,7 +149,8 @@ export class StudioService {
     const ticker = setInterval(() => this.describeElapsed.set(Math.floor((Date.now() - started) / 1000)), 1000);
     const text = this.description().trim() || this.tagLine() || this.lyricsBrief().trim();
     const lyrics = instrumental || forAlbum ? '' : this.lyricsBrief().trim();
-    const outcome = await this.hub.call<DescribeResult>('POST', '/api/describe', { text, instrumental, lyrics });
+    const name = this.name().trim();
+    const outcome = await this.hub.call<DescribeResult>('POST', '/api/describe', { text, instrumental, lyrics, ...(name !== '' && !forAlbum ? { title: name } : {}) });
     clearInterval(ticker);
     this.describing.set(false);
     if (!outcome.ok) {
@@ -187,6 +190,8 @@ export class StudioService {
 
   /** The writer's name for the song, while its lyrics are still the ones it named. */
   songTitle(): string | null {
+    // The person's own name stands, whatever lyrics it is sent with.
+    if (this.name().trim() !== '') return this.name().replace(/\s+/g, ' ').trim();
     const title = this.title();
     return title !== null && this.lyricsSent() === this.titledLyrics ? title : null;
   }

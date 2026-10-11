@@ -543,6 +543,8 @@ export interface AlbumAsk {
    * varies on them (Victoria, 2026-10-10: "stick exactly to [the] tags" or "stick to the
    * general vibe of the tags with variations"; Owen agreed).
    */
+  /** The name the person gave it in Make (Victoria, 2026-10-11): kept, and the words written to it. */
+  readonly title?: string;
   readonly exactTags?: boolean;
 }
 
