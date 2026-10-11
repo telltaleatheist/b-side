@@ -19,7 +19,9 @@ export type PlaySource =
   /** A playlist in the phone's cloud (a B-Sides computer): streamed from it, or played from the phone's copy. */
   | { readonly kind: 'cloud'; readonly id: string }
   /** A playlist in another B-Sides library on the network (`peer` is its id): played from that computer. */
-  | { readonly kind: 'peer'; readonly peer: string; readonly id: string };
+  | { readonly kind: 'peer'; readonly peer: string; readonly id: string }
+  /** Every album and playlist in a folder, one after another (Play folder; Victoria, 2026-10-11). */
+  | { readonly kind: 'folder'; readonly id: string };
 
 /** One thing the player can play, whichever list it came from. */
 export interface PlayItem {
@@ -118,6 +120,7 @@ export class PlayerService {
     const source = this.source();
     if (source.kind === 'takes') return this.library.takes().map(itemOfTake);
     if (source.kind === 'peer') return this.peerItems(source.peer, source.id);
+    if (source.kind === 'folder') return this.folderItems(source.id);
     const playlist = this.library.playlist(source.id);
     if (source.kind === 'cloud') {
       const remote = this.cloud.playlist(source.id);
@@ -139,6 +142,7 @@ export class PlayerService {
       const name = this.peers.playlist(source.peer, source.id)?.name ?? 'A playlist no longer there';
       return peer === null ? name : `${name} · ${this.peers.name(peer)}`;
     }
+    if (source.kind === 'folder') return this.library.folder(source.id)?.name ?? 'A deleted folder';
     return this.library.playlist(source.id)?.name ?? 'A deleted playlist';
   });
 
@@ -487,6 +491,35 @@ export class PlayerService {
     // Shuffled, a whole list starts anywhere in it, not always on its first track (Victoria, 2026-10-10).
     const first = song ?? (this.shuffle() ? songs[Math.floor(Math.random() * songs.length)] : songs[0]);
     if (first !== undefined) this.play(itemOfSong(first, (playlist.album ? this.hub.coverUrl(playlist) : null)), { kind: 'playlist', id: playlistId });
+  }
+
+  /**
+   * Play a folder (Victoria, 2026-10-11): every song of every album and playlist in it and in the
+   * folders inside it, in the order shown, as one list; shuffled when shuffle is on. As a playlist
+   * does, the queue follows the folder while it plays: an album filed in it, or a track that lands, joins.
+   */
+  playFolder(folderId: string): void {
+    const items = this.folderItems(folderId);
+    const first = this.shuffle() ? items[Math.floor(Math.random() * items.length)] : items[0];
+    if (first !== undefined) this.play(first, { kind: 'folder', id: folderId });
+  }
+
+  /** Play a folder shuffled: shuffle on, from anywhere in it. */
+  shuffleFolder(folderId: string): void {
+    this.shuffle.set(true);
+    this.playFolder(folderId);
+  }
+
+  /** A folder's songs as play items, each album's with its cover; a song in two of its playlists plays once. */
+  folderItems(folderId: string): PlayItem[] {
+    const seen = new Set<string>();
+    return this.library.playlistsUnder(folderId)
+      .flatMap((playlist) => this.itemsOf(playlist.id, false))
+      .filter((item) => {
+        if (seen.has(item.key)) return false;
+        seen.add(item.key);
+        return true;
+      });
   }
 
   toggle(): void {

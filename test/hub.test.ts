@@ -244,6 +244,72 @@ test("an album's cover can be the person's own image, which replaces the one bef
   expect(refused.status).toBe(400);
 });
 
+test('folders: made, renamed, filled, reordered and deleted over the API; the snapshot and every client see them', async () => {
+  const call = async (route: string, method: string, body?: unknown): Promise<LibraryView> => {
+    const response = await api(route, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    expect(response.status).toBe(200);
+    return (await response.json()) as LibraryView;
+  };
+  let view = await call('/api/folders', 'POST', { name: 'Greek Myths' });
+  const myths = view.folders?.find((f) => f.name === 'Greek Myths') as { id: string };
+  view = await call('/api/folders', 'POST', { name: 'Odyssey', parent: myths.id });
+  const odyssey = view.folders?.find((f) => f.name === 'Odyssey') as { id: string; parent: string | null };
+  expect(odyssey.parent).toBe(myths.id);
+  view = await call(`/api/folders/${odyssey.id}`, 'PATCH', { name: 'The Odyssey' });
+  expect(view.folders?.find((f) => f.id === odyssey.id)?.name).toBe('The Odyssey');
+
+  view = await call('/api/playlists', 'POST', { name: 'Sirens' });
+  const sirens = view.playlists.find((p) => p.name === 'Sirens') as { id: string };
+  view = await call('/api/playlists', 'POST', { name: 'Cyclops' });
+  const cyclops = view.playlists.find((p) => p.name === 'Cyclops') as { id: string };
+  await call(`/api/playlists/${sirens.id}`, 'PATCH', { folder: odyssey.id });
+  view = await call(`/api/playlists/${cyclops.id}`, 'PATCH', { folder: odyssey.id, before: sirens.id });
+  expect(view.playlists.filter((p) => p.folder === odyssey.id).map((p) => p.name)).toEqual(['Cyclops', 'Sirens']);
+
+  // Out to the top, and the folder moved to the top too.
+  view = await call(`/api/folders/${odyssey.id}`, 'PATCH', { parent: null });
+  expect(view.folders?.find((f) => f.id === odyssey.id)?.parent).toBeNull();
+
+  const snapshot = await snapshotOf(tab);
+  expect(snapshot.library.folders?.map((f) => f.name)).toEqual(['Greek Myths', 'The Odyssey']);
+
+  // Deleted: its albums and playlists move up a level, never deleted.
+  view = await call(`/api/folders/${odyssey.id}`, 'DELETE');
+  expect(view.folders?.some((f) => f.id === odyssey.id)).toBe(false);
+  expect(view.playlists.filter((p) => p.id === sirens.id || p.id === cyclops.id).map((p) => p.folder)).toEqual([null, null]);
+
+  const missing = await api(`/api/folders/${odyssey.id}`, { method: 'PATCH', body: JSON.stringify({ name: 'x' }) });
+  expect(missing.status).toBe(404);
+  expect(((await missing.json()) as { error: { code: string } }).error.code).toBe('folder_missing');
+  const nowhere = await api(`/api/playlists/${sirens.id}`, { method: 'PATCH', body: JSON.stringify({ folder: 'gone' }) });
+  expect(nowhere.status).toBe(404);
+  const empty = await api(`/api/folders/${myths.id}`, { method: 'PATCH', body: JSON.stringify({}) });
+  expect(((await empty.json()) as { error: { code: string } }).error.code).toBe('body_invalid');
+});
+
+test("Make → Album's folder: the new album lands in it; a folder that is gone is refused, and nothing is started", async () => {
+  // A server nobody answers at: the album is filed, then its writing fails on its own time.
+  expect((await api('/api/servers', { method: 'POST', body: JSON.stringify({ name: 'nowhere', url: 'http://127.0.0.1:9', token: 't' }) })).status).toBe(200);
+  try {
+    const made = (await (await api('/api/folders', { method: 'POST', body: JSON.stringify({ name: 'Lullabies' }) })).json()) as LibraryView;
+    const lullabies = made.folders?.find((f) => f.name === 'Lullabies') as { id: string };
+    const ask = { description: 'lullabies', tags: [], minutes: 15 };
+    const refused = await api('/api/albums', { method: 'POST', body: JSON.stringify({ ...ask, folder: 'gone' }) });
+    expect(refused.status).toBe(404);
+    expect(((await refused.json()) as { error: { code: string } }).error.code).toBe('folder_missing');
+    const before = ((await (await api('/api/library')).json()) as LibraryView).playlists.length;
+    const started = await api('/api/albums', { method: 'POST', body: JSON.stringify({ ...ask, folder: lullabies.id }) });
+    expect(started.status).toBe(200);
+    const { id } = (await started.json()) as { id: string };
+    const library = (await (await api('/api/library')).json()) as LibraryView;
+    expect(library.playlists.length).toBe(before + 1);
+    expect(library.playlists.find((p) => p.id === id)?.folder).toBe(lullabies.id);
+    await api(`/api/playlists/${id}`, { method: 'DELETE' });
+  } finally {
+    await api('/api/servers/nowhere', { method: 'DELETE' });
+  }
+});
+
 test("an album's download lists its songs in order, with the cover", async () => {
   const files = await hub.albumFiles('own-cover');
   expect(files.name).toBe('Own Cover');

@@ -135,6 +135,13 @@ export function text(value: unknown, what: string): string {
   return value;
 }
 
+/** A folder or playlist named in a body: its id, or null for none (the top of the library). */
+function idOrNull(value: unknown, what: string): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value !== 'string') throw new Refusal('body_invalid', `${what} must be an id, or null.`);
+  return value;
+}
+
 /** Turn `/api/things/:id` into a matcher; the door decodes each `:name` it captures. */
 export function routeOf<H>(method: string, template: string, handler: H): { method: string; template: string; pattern: RegExp; names: string[]; handler: H } {
   const names: string[] = [];
@@ -918,10 +925,11 @@ export class HubCore {
       // Its own server when the person picked one (another computer's Crucible, so two albums are
       // made at once, one on each; Victoria, 2026-10-10), else the active one.
       const server = typeof body['server'] === 'string' && body['server'] !== '' ? this.registry.get(body['server']) : this.registry.active();
+      // Make → Album's "Add to folder" (Victoria, 2026-10-11): it lands in the folder from the start.
       const album = await this.library.createAlbum('A new album', {
         artist: '', blurb: '', cover: null, ask, plan: null, stage: 'planning', sent: 0, madeS: 0, refusal: null,
         server: server.name, writer: null,
-      });
+      }, idOrNull(body['folder'], 'folder'));
       this.albums.start(album.id);
       await this.libraryChanged();
       return { id: album.id };
@@ -1043,6 +1051,8 @@ export class HubCore {
         }
         await this.library.reorder(id, songs as string[]);
       }
+      // Filed in a folder (null: the top of the library), before the playlist `before` there or last.
+      if (body['folder'] !== undefined) await this.library.movePlaylist(id, idOrNull(body['folder'], 'folder'), idOrNull(body['before'], 'before'));
       return this.libraryChanged();
     });
     this.route('DELETE', '/api/playlists/:id', async (request) => {
@@ -1053,6 +1063,26 @@ export class HubCore {
       await this.library.deletePlaylist(id);
       // The next album in line on its server makes its music now.
       if (album !== null) await this.albums.next(album.server);
+      return this.libraryChanged();
+    });
+    // ── folders: albums and playlists grouped, in the library view (Victoria, 2026-10-11) ──
+    this.route('POST', '/api/folders', async (request) => {
+      const body = await request.body();
+      await this.library.createFolder(text(body['name'], 'name'), idOrNull(body['parent'], 'parent'));
+      return this.libraryChanged();
+    });
+    // {name} renames; {parent, before?} moves it (parent null: the top), before the folder `before` there or last.
+    this.route('PATCH', '/api/folders/:id', async (request) => {
+      const id = request.params['id'] as string;
+      const body = await request.body();
+      if (body['name'] === undefined && body['parent'] === undefined) throw new Refusal('body_invalid', 'A folder change is {name} and/or {parent, before}.');
+      if (body['name'] !== undefined) await this.library.renameFolder(id, text(body['name'], 'name'));
+      if (body['parent'] !== undefined) await this.library.moveFolder(id, idOrNull(body['parent'], 'parent'), idOrNull(body['before'], 'before'));
+      return this.libraryChanged();
+    });
+    // What was in it moves up a level: nothing in a folder is deleted with it.
+    this.route('DELETE', '/api/folders/:id', async (request) => {
+      await this.library.deleteFolder(request.params['id'] as string);
       return this.libraryChanged();
     });
     this.route('POST', '/api/playlists/:id/songs', async (request) => {

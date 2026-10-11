@@ -161,6 +161,26 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
                 <p class="opt-note hint">An aim, not a promise: instrumentals are sized toward it and most land in it; a sung track runs as long as its lyrics. Longer songs fill the album's length with fewer tracks.</p>
               }
             }
+            <!-- Add to folder (Victoria, 2026-10-11): the new album is filed there from the start. -->
+            <div class="opt">
+              <label class="opt-name" for="album-folder">Add to folder</label>
+              <div class="opt-chips">
+                <select id="album-folder" class="folder-pick" (change)="pickFolder($any($event.target))">
+                  <option value="" [selected]="albumFolder() === null">No folder</option>
+                  @for (row of library.folderRows(); track row.folder.id) {
+                    <option [value]="row.folder.id" [selected]="albumFolder() === row.folder.id">{{ row.path }}</option>
+                  }
+                  <option value="new">New folder…</option>
+                </select>
+              </div>
+            </div>
+            @if (namingFolder()) {
+              <form class="opt-note folder-new" (submit)="$event.preventDefault(); makeFolder(folderName.value)">
+                <input #folderName type="text" maxlength="120" placeholder="New folder name" aria-label="New folder name" />
+                <button type="submit" class="ghost small">Make folder</button>
+                <button type="button" class="ghost small" (click)="namingFolder.set(false)">Cancel</button>
+              </form>
+            }
             <div class="opt">
               <span class="opt-name">Vocals</span>
               <div class="opt-chips">
@@ -313,6 +333,10 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
     .opt-name { font-size: 15px; }
     .opt-chips { display: flex; gap: 6px; flex-wrap: wrap; }
     .opt-note { padding: 12px 14px; }
+    .folder-pick { max-width: min(320px, 100%); }
+    .opt-chips:has(.folder-pick) { min-width: 0; max-width: 100%; }
+    .folder-new { display: flex; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid var(--border-subtle); }
+    .folder-new input { flex: 1 1 160px; min-width: 0; }
     .room-card { display: flex; flex-direction: column; gap: 12px; padding: 18px; border: 1px solid #5a4126; border-radius: 16px; background: #1d1711; }
     .room-title { font-family: var(--font-display); font-size: 28px; font-weight: 800; line-height: 1; }
     .room-bar > span { background: var(--audio); }
@@ -393,6 +417,38 @@ export class StudioPageComponent {
     const servers = this.hub.servers();
     return picked !== null && servers.some((server) => server.name === picked) ? picked : (this.hub.activeServer()?.name ?? null);
   });
+  /** The folder the new album is filed in (Victoria, 2026-10-11); null: none. One deleted meanwhile reads as none. */
+  private readonly pickedFolder = signal<string | null>(null);
+  protected readonly albumFolder = computed(() => {
+    const picked = this.pickedFolder();
+    return picked !== null && this.library.folder(picked) !== null ? picked : null;
+  });
+  protected readonly albumFolderPick = computed(() => this.albumFolder() ?? '');
+  protected readonly namingFolder = signal(false);
+
+  protected pickFolder(select: HTMLSelectElement): void {
+    if (select.value === 'new') {
+      // Back to what was picked until the new folder is made.
+      select.value = this.albumFolderPick();
+      this.namingFolder.set(true);
+      return;
+    }
+    this.namingFolder.set(false);
+    this.pickedFolder.set(select.value === '' ? null : select.value);
+  }
+
+  protected async makeFolder(name: string): Promise<void> {
+    if (name.trim() === '') return;
+    const made = await this.library.createFolder(name);
+    if ('code' in made) {
+      this.albumRefusal.set(made);
+      return;
+    }
+    this.albumRefusal.set(null);
+    this.namingFolder.set(false);
+    this.pickedFolder.set(made.id);
+  }
+
   /** Instrumental where the person is: the album's Vocals choice, or the song's switch. */
   protected readonly instrumentalHere = computed(() => (this.mode() === 'album' ? !this.albumSung() : this.studio.instrumental()));
 
@@ -469,6 +525,7 @@ export class StudioPageComponent {
       exactTags: this.albumExact(),
       ...(this.studio.lengthAim() !== '' && this.studio.page()?.length ? { trackLength: this.studio.lengthAim() } : {}),
       server: this.albumServer() ?? '',
+      folder: this.albumFolder(),
     });
     this.albumSending.set(false);
     this.albumRefusal.set(outcome.ok ? null : outcome.refusal);

@@ -11,7 +11,10 @@
  *                    created time, duration, batch place — and `effective`, the
  *                    server's own record of every parameter it used (the `done`
  *                    event's `audio`), kept verbatim so a song can be made again
- *   playlists.json   the named playlists, each an ordered list of song ids
+ *   playlists.json   the named playlists, each an ordered list of song ids,
+ *                    and the folders they are filed in (`folders`, written
+ *                    only once there is one, so a library from before folders
+ *                    is left as it was)
  *
  * A song lives exactly as long as some playlist holds it: one that leaves its
  * last playlist is deleted (the UI says so first). Songs a v1 B-Sides saved
@@ -27,7 +30,7 @@
 import { basename, join, type Disk } from './disk';
 import { Refusal } from './refusal';
 import { AUDIO_FILE, checkId, isId, stamp } from './takes';
-import type { AlbumMeta, LibraryView, Playlist, Song, SongFacts } from '../types';
+import { FOLDER_DEPTH, type AlbumMeta, type Folder, type LibraryView, type Playlist, type Song, type SongFacts } from '../types';
 
 /** Marks a sidecar as B-Sides', and its shape's version. */
 const SIDECAR_VERSION = 1;
@@ -44,6 +47,17 @@ interface Sidecar extends Song {
 interface PlaylistsDocument {
   readonly bsidePlaylists: number;
   readonly playlists: Playlist[];
+  /**
+   * Added beside the playlists, not a new version: a B-Sides from before folders still reads the
+   * file (it keeps each playlist's `folder` and drops the folders, which then read as the top level).
+   */
+  readonly folders?: Folder[];
+}
+
+/** The playlists and the folders, as one file holds them. */
+interface Shelf {
+  readonly playlists: Playlist[];
+  readonly folders: Folder[];
 }
 
 /** An album as another B-Sides sends it: the playlist, its details, and each song's sidecar. */
@@ -103,6 +117,43 @@ function cleanName(name: string): string {
   return trimmed;
 }
 
+function cleanFolderName(name: string): string {
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  if (trimmed === '') throw new Refusal('folder_name_missing', 'A folder needs a name.');
+  if (trimmed.length > 120) throw new Refusal('folder_name_long', 'A folder name is at most 120 characters.');
+  return trimmed;
+}
+
+/**
+ * The folders as they can be trusted: each once, each parent one that exists, no folder inside
+ * itself. A folder whose parent is gone (or that loops) sits at the top, and a playlist filed in a
+ * folder that is gone (an older B-Sides dropped the folders) is at the top too: nothing is lost.
+ */
+function tidyShelf(playlists: Playlist[], folders: Folder[]): Shelf {
+  const seen = new Set<string>();
+  const kept = folders.filter((folder) => {
+    const fine = typeof folder?.id === 'string' && typeof folder.name === 'string' && !seen.has(folder.id);
+    if (fine) seen.add(folder.id);
+    return fine;
+  });
+  const parentOf = new Map(kept.map((folder) => [folder.id, typeof folder.parent === 'string' && seen.has(folder.parent) ? folder.parent : null]));
+  const loops = (id: string): boolean => {
+    const met = new Set<string>();
+    for (let at: string | null = id; at !== null; at = parentOf.get(at) ?? null) {
+      if (met.has(at)) return true;
+      met.add(at);
+    }
+    return false;
+  };
+  const tidy = kept.map((folder) => {
+    const parent = parentOf.get(folder.id) ?? null;
+    return parent === folder.parent && !loops(folder.id) ? folder : { ...folder, parent: null };
+  });
+  const tidyPlaylists = playlists.map((playlist) =>
+    playlist.folder == null || seen.has(playlist.folder) ? playlist : { ...playlist, folder: null });
+  return { playlists: tidyPlaylists, folders: tidy };
+}
+
 export class Library {
   /** Writes, one at a time: a playlist edit reads what the last one wrote. */
   private line: Promise<unknown> = Promise.resolve();
@@ -144,8 +195,12 @@ export class Library {
   }
 
   private async readPlaylists(): Promise<Playlist[]> {
+    return (await this.readShelf()).playlists;
+  }
+
+  private async readShelf(): Promise<Shelf> {
     const text = await this.disk.readText(join(this.dir, PLAYLISTS_FILE));
-    if (text === null) return [];
+    if (text === null) return { playlists: [], folders: [] };
     const parsed = JSON.parse(text) as Partial<PlaylistsDocument>;
     if (parsed.bsidePlaylists !== PLAYLISTS_VERSION || !Array.isArray(parsed.playlists)) {
       throw new Refusal(
@@ -153,19 +208,21 @@ export class Library {
         `${join(this.dir, PLAYLISTS_FILE)} is not a B-Sides playlist file; move it aside to start over.`,
       );
     }
-    return parsed.playlists;
+    return tidyShelf(parsed.playlists, Array.isArray(parsed.folders) ? parsed.folders : []);
   }
 
-  private async writePlaylists(playlists: Playlist[]): Promise<void> {
-    const document: PlaylistsDocument = { bsidePlaylists: PLAYLISTS_VERSION, playlists };
+  /** Write the playlists; the folders as given, else as they are on disk (a playlist edit leaves them be). */
+  private async writePlaylists(playlists: Playlist[], folders?: Folder[]): Promise<void> {
+    const shelf = folders ?? (await this.readShelf()).folders;
+    const document: PlaylistsDocument = { bsidePlaylists: PLAYLISTS_VERSION, playlists, ...(shelf.length > 0 ? { folders: shelf } : {}) };
     await this.disk.writeText(join(this.dir, PLAYLISTS_FILE), `${JSON.stringify(document, null, 2)}\n`);
   }
 
   /** Every saved song (oldest first) and every playlist. A sidecar that will not read is listed as a problem, never removed. */
   async list(): Promise<LibraryView> {
-    const playlists = await this.readPlaylists();
+    const { playlists, folders } = await this.readShelf();
     const names = await this.disk.list(this.dir);
-    if (names === null) return { dir: this.dir, songs: [], playlists, problems: [] };
+    if (names === null) return { dir: this.dir, songs: [], playlists, folders, problems: [] };
     const songs: Song[] = [];
     const problems: string[] = [];
     for (const name of names) {
@@ -188,7 +245,7 @@ export class Library {
       songs.push(songOf(sidecar));
     }
     songs.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
-    return { dir: this.dir, songs, playlists, problems };
+    return { dir: this.dir, songs, playlists, folders, problems };
   }
 
   /**
@@ -306,11 +363,18 @@ export class Library {
 
   // ── albums: playlists with `album` details ────────────────────────────────
 
-  /** Start an album: an empty playlist named for now, its details beside it. */
-  async createAlbum(name: string, album: AlbumMeta): Promise<Playlist> {
+  /**
+   * Start an album: an empty playlist named for now, its details beside it, filed in `folder` when
+   * one was picked in Make (Victoria, 2026-10-11: lullaby albums in their own folder).
+   */
+  async createAlbum(name: string, album: AlbumMeta, folder: string | null = null): Promise<Playlist> {
     return this.serial(async () => {
-      const playlists = await this.readPlaylists();
-      const playlist: Playlist = { id: crypto.randomUUID(), name: cleanName(name), songs: [], createdAt: new Date().toISOString(), album };
+      const { playlists, folders } = await this.readShelf();
+      if (folder !== null) this.folderIndex(folders, folder);
+      const playlist: Playlist = {
+        id: crypto.randomUUID(), name: cleanName(name), songs: [], createdAt: new Date().toISOString(), album,
+        ...(folder === null ? {} : { folder }),
+      };
       await this.disk.mkdir(this.dir);
       await this.writePlaylists([...playlists, playlist]);
       return playlist;
@@ -359,13 +423,17 @@ export class Library {
         const sidecar: Sidecar = { ...song, bside: SIDECAR_VERSION };
         await this.disk.writeText(this.sidecarPath(song.id), `${JSON.stringify(sidecar, null, 2)}\n`);
       }
-      const playlists = (await this.readPlaylists()).filter((playlist) => playlist.id !== album.id);
+      const before = await this.readPlaylists();
+      // Sent again: it stays in the folder it was filed in here.
+      const folder = before.find((playlist) => playlist.id === album.id)?.folder ?? null;
+      const playlists = before.filter((playlist) => playlist.id !== album.id);
       const playlist: Playlist = {
         id: checkId(album.id, 'playlist'),
         name: cleanName(album.name),
         songs: album.songs.map((song) => song.id),
         createdAt: album.createdAt,
         album: album.album,
+        ...(folder === null ? {} : { folder }),
       };
       await this.writePlaylists([...playlists, playlist]);
       return playlist;
@@ -449,6 +517,111 @@ export class Library {
     });
   }
 
+  // ── folders: albums and playlists grouped (Victoria, 2026-10-11) ───────────
+
+  /** Make a folder at the top of the library, or inside `parent`; it goes after the folders beside it. */
+  async createFolder(name: string, parent: string | null = null): Promise<Folder> {
+    return this.serial(async () => {
+      const clean = cleanFolderName(name);
+      const { playlists, folders } = await this.readShelf();
+      if (parent !== null) {
+        this.folderIndex(folders, parent);
+        if (this.depth(folders, parent) + 1 > FOLDER_DEPTH) throw this.tooDeep();
+      }
+      this.nameFree(folders, clean, parent, null);
+      const folder: Folder = { id: crypto.randomUUID(), name: clean, parent, createdAt: new Date().toISOString() };
+      await this.disk.mkdir(this.dir);
+      await this.writePlaylists(playlists, [...folders, folder]);
+      return folder;
+    });
+  }
+
+  async renameFolder(id: string, name: string): Promise<void> {
+    await this.serial(async () => {
+      const clean = cleanFolderName(name);
+      const { playlists, folders } = await this.readShelf();
+      const at = this.folderIndex(folders, id);
+      const folder = folders[at] as Folder;
+      this.nameFree(folders, clean, folder.parent, id);
+      folders[at] = { ...folder, name: clean };
+      await this.writePlaylists(playlists, folders);
+    });
+  }
+
+  /**
+   * Delete a folder, never what is in it: its folders, albums and playlists move up a level, into
+   * the folder it was in (or the top), its folders taking its place among their new siblings.
+   */
+  async deleteFolder(id: string): Promise<void> {
+    await this.serial(async () => {
+      const shelf = await this.readShelf();
+      const at = this.folderIndex(shelf.folders, id);
+      const gone = shelf.folders[at] as Folder;
+      const inside = shelf.folders.filter((folder) => folder.parent === id).map((folder) => ({ ...folder, parent: gone.parent }));
+      const rest = shelf.folders.filter((folder) => folder.id !== id && folder.parent !== id);
+      // Its place in the order, counted among the folders that stay where they are.
+      const place = shelf.folders.slice(0, at).filter((folder) => folder.parent !== id).length;
+      const folders = [...rest.slice(0, place), ...inside, ...rest.slice(place)];
+      const playlists = shelf.playlists.map((playlist) => (playlist.folder === id ? { ...playlist, folder: gone.parent } : playlist));
+      await this.writePlaylists(playlists, folders);
+    });
+  }
+
+  /**
+   * Move a folder into `parent` (null: the top), just before the folder `before` there, or after
+   * the folders there when `before` is null. A folder never goes inside itself.
+   */
+  async moveFolder(id: string, parent: string | null, before: string | null = null): Promise<void> {
+    await this.serial(async () => {
+      const { playlists, folders } = await this.readShelf();
+      const folder = folders[this.folderIndex(folders, id)] as Folder;
+      if (parent !== null) {
+        this.folderIndex(folders, parent);
+        for (let up: string | null = parent; up !== null; up = folders.find((other) => other.id === up)?.parent ?? null) {
+          if (up === id) throw new Refusal('folder_inside_itself', `${folder.name} cannot go inside itself.`);
+        }
+        if (this.depth(folders, parent) + this.height(folders, id) > FOLDER_DEPTH) throw this.tooDeep();
+      }
+      if (parent !== folder.parent) this.nameFree(folders, folder.name, parent, id);
+      const rest = folders.filter((other) => other.id !== id);
+      const moved: Folder = { ...folder, parent };
+      if (before === null) {
+        rest.push(moved);
+      } else {
+        const next = rest.findIndex((other) => other.id === before);
+        if (next < 0 || (rest[next] as Folder).parent !== parent) {
+          throw new Refusal('folder_place_invalid', 'A folder goes before another folder in the same place.');
+        }
+        rest.splice(next, 0, moved);
+      }
+      await this.writePlaylists(playlists, rest);
+    });
+  }
+
+  /**
+   * File an album or playlist in a folder (null: the top of the library), just before the playlist
+   * `before` there, or after the ones there when `before` is null. It stays whole: only its place changes.
+   */
+  async movePlaylist(id: string, folder: string | null, before: string | null = null): Promise<void> {
+    await this.serial(async () => {
+      const { playlists, folders } = await this.readShelf();
+      const at = this.playlistIndex(playlists, id);
+      if (folder !== null) this.folderIndex(folders, folder);
+      const moved: Playlist = { ...(playlists[at] as Playlist), folder };
+      const rest = playlists.filter((playlist) => playlist.id !== id);
+      if (before === null) {
+        rest.push(moved);
+      } else {
+        const next = rest.findIndex((playlist) => playlist.id === before);
+        if (next < 0 || ((rest[next] as Playlist).folder ?? null) !== folder) {
+          throw new Refusal('playlist_place_invalid', 'A playlist goes before another playlist in the same folder.');
+        }
+        rest.splice(next, 0, moved);
+      }
+      await this.writePlaylists(rest, folders);
+    });
+  }
+
   async rename(id: string, title: string): Promise<Song> {
     return this.serial(async () => {
       const trimmed = title.trim();
@@ -480,6 +653,36 @@ export class Library {
     const at = playlists.findIndex((playlist) => playlist.id === id);
     if (at < 0) throw new Refusal('playlist_missing', 'That playlist is no longer in the library.', 404);
     return at;
+  }
+
+  private folderIndex(folders: Folder[], id: string): number {
+    const at = folders.findIndex((folder) => folder.id === id);
+    if (at < 0) throw new Refusal('folder_missing', 'That folder is no longer in the library.', 404);
+    return at;
+  }
+
+  /** How deep a folder sits: 1 at the top of the library. (The folders are tidy: no loops.) */
+  private depth(folders: Folder[], id: string): number {
+    let depth = 0;
+    for (let at: string | null = id; at !== null; at = folders.find((folder) => folder.id === at)?.parent ?? null) depth += 1;
+    return depth;
+  }
+
+  /** How many levels a folder takes with the folders inside it: 1 when it holds none. */
+  private height(folders: Folder[], id: string): number {
+    const inside = folders.filter((folder) => folder.parent === id);
+    return 1 + Math.max(0, ...inside.map((folder) => this.height(folders, folder.id)));
+  }
+
+  private tooDeep(): Refusal {
+    return new Refusal('folder_too_deep', `Folders go at most ${FOLDER_DEPTH} deep.`);
+  }
+
+  /** Two folders side by side never share a name; the same name in different folders is fine. */
+  private nameFree(folders: Folder[], name: string, parent: string | null, self: string | null): void {
+    if (folders.some((folder) => folder.id !== self && folder.parent === parent && folder.name.toLowerCase() === name.toLowerCase())) {
+      throw new Refusal('folder_name_taken', `There is already a folder named ${name} there.`);
+    }
   }
 
   /** Delete each of `songs` no playlist holds: the audio, then the sidecar (a crash between leaves a listed problem). */

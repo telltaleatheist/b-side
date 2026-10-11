@@ -176,3 +176,114 @@ test('an upload can only land as a song or a cover inside the library', () => {
   expect(() => library.importPath('notes.txt')).toThrow();
   expect(library.importPath('abc-1.cover.png')).toBe(path.join(dir, 'abc-1.cover.png'));
 });
+
+// ── folders (Victoria, 2026-10-11) ────────────────────────────────────────────
+
+test('a library from before folders loads unchanged: no folders, playlists as they were, the file left alone', async () => {
+  const old = { bsidePlaylists: 1, playlists: [{ id: 'p1', name: 'Old', songs: [], createdAt: '2026-10-01T00:00:00.000Z' }] };
+  const text = `${JSON.stringify(old, null, 2)}\n`;
+  fs.writeFileSync(path.join(dir, 'playlists.json'), text);
+  const view = await library.list();
+  expect(view.folders).toEqual([]);
+  expect(view.playlists).toEqual(old.playlists);
+  // A playlist edit writes no folders key while there are none.
+  await library.renamePlaylist('p1', 'Old');
+  expect(fs.readFileSync(path.join(dir, 'playlists.json'), 'utf8')).toBe(text);
+});
+
+test('folders group playlists and albums, nest, and keep across a restart and playlist edits', async () => {
+  const myths = await library.createFolder('Greek Myths');
+  const lullabies = await library.createFolder('Lullabies');
+  const inner = await library.createFolder('Odyssey', myths.id);
+  await library.createAlbum('Sirens', ALBUM, inner.id);
+  const plain = await library.createPlaylist('Kitchen');
+  await library.movePlaylist(plain.id, lullabies.id);
+  // A playlist edit (a new playlist) keeps the folders.
+  await library.createPlaylist('Loose');
+  const view = await new Library(nodeDisk, dir).list();
+  expect(view.folders?.map((f) => [f.name, f.parent])).toEqual([['Greek Myths', null], ['Lullabies', null], ['Odyssey', myths.id]]);
+  expect(view.playlists.map((p) => [p.name, p.folder ?? null])).toEqual([['Sirens', inner.id], ['Kitchen', lullabies.id], ['Loose', null]]);
+  expect(view.playlists[0]?.album?.artist).toBe('Velvet Circuit');
+  await expect(library.createAlbum('Nowhere', ALBUM, 'gone')).rejects.toThrow('no longer in the library');
+});
+
+test('moving and reordering: before a sibling, or last; never into itself; never before something elsewhere', async () => {
+  const a = await library.createFolder('A');
+  const b = await library.createFolder('B');
+  const c = await library.createFolder('C');
+  await library.moveFolder(c.id, null, a.id);
+  expect((await library.list()).folders?.map((f) => f.name)).toEqual(['C', 'A', 'B']);
+  await library.moveFolder(a.id, b.id);
+  await expect(library.moveFolder(b.id, a.id)).rejects.toThrow('inside itself');
+  await expect(library.moveFolder(b.id, b.id)).rejects.toThrow('inside itself');
+  await expect(library.moveFolder(c.id, null, a.id)).rejects.toThrow('same place');
+
+  const one = await library.createPlaylist('One');
+  const two = await library.createPlaylist('Two');
+  const three = await library.createPlaylist('Three');
+  await library.movePlaylist(three.id, null, one.id);
+  expect((await library.list()).playlists.map((p) => p.name)).toEqual(['Three', 'One', 'Two']);
+  await library.movePlaylist(one.id, a.id);
+  await library.movePlaylist(two.id, a.id, one.id);
+  const view = await library.list();
+  expect(view.playlists.filter((p) => p.folder === a.id).map((p) => p.name)).toEqual(['Two', 'One']);
+  await expect(library.movePlaylist(three.id, null, one.id)).rejects.toThrow('same folder');
+  await expect(library.movePlaylist(three.id, 'nope')).rejects.toThrow('no longer in the library');
+  // Out again, to the top.
+  await library.movePlaylist(one.id, null);
+  expect((await library.list()).playlists.find((p) => p.id === one.id)?.folder).toBeNull();
+});
+
+test('deleting a folder moves what was in it up a level, in its place; nothing in it is deleted', async () => {
+  const top = await library.createFolder('Top');
+  const first = await library.createFolder('First');
+  const mid = await library.createFolder('Mid', top.id);
+  const deep = await library.createFolder('Deep', mid.id);
+  await library.createFolder('Last');
+  await library.moveFolder(first.id, null, top.id);
+  const kept = await library.createPlaylist('Kept');
+  await library.movePlaylist(kept.id, mid.id);
+  const saved = await library.saveTo(kept.id, null, song(9, new Date()));
+  await library.deleteFolder(mid.id);
+  const view = await library.list();
+  expect(view.folders?.map((f) => [f.name, f.parent])).toEqual([['First', null], ['Top', null], ['Deep', top.id], ['Last', null]]);
+  expect(view.playlists.map((p) => [p.name, p.folder, p.songs])).toEqual([['Kept', top.id, [saved.id]]]);
+  expect(view.songs.map((s) => s.id)).toEqual([saved.id]);
+  await library.deleteFolder(top.id);
+  const after = await library.list();
+  expect(after.folders?.map((f) => f.name)).toEqual(['First', 'Deep', 'Last']);
+  expect(after.folders?.find((f) => f.id === deep.id)?.parent).toBeNull();
+  expect(after.playlists[0]?.folder).toBeNull();
+});
+
+test('folder names: required, unique beside each other only; folders go at most four deep', async () => {
+  await expect(library.createFolder('  ')).rejects.toThrow('needs a name');
+  const a = await library.createFolder('Lullabies');
+  await expect(library.createFolder('LULLABIES')).rejects.toThrow('already a folder');
+  const b = await library.createFolder('Lullabies', a.id);
+  await expect(library.renameFolder(b.id, 'x'.repeat(121))).rejects.toThrow('at most 120');
+  const c = await library.createFolder('Three', b.id);
+  const d = await library.createFolder('Four', c.id);
+  await expect(library.createFolder('Five', d.id)).rejects.toThrow('at most 4 deep');
+  const other = await library.createFolder('Other');
+  await library.createFolder('Under', other.id);
+  // Other holds a folder: two levels, which do not fit under Three (depth 3).
+  await expect(library.moveFolder(other.id, c.id)).rejects.toThrow('at most 4 deep');
+  await library.moveFolder(other.id, b.id);
+});
+
+test('a playlist filed in a folder that is gone, or a folder whose parent is gone, reads as the top', async () => {
+  const shelf = {
+    bsidePlaylists: 1,
+    playlists: [{ id: 'p1', name: 'P', songs: [], createdAt: '2026-10-01T00:00:00.000Z', folder: 'gone' }],
+    folders: [
+      { id: 'f1', name: 'Orphan', parent: 'gone', createdAt: '2026-10-01T00:00:00.000Z' },
+      { id: 'f2', name: 'Loop A', parent: 'f3', createdAt: '2026-10-01T00:00:00.000Z' },
+      { id: 'f3', name: 'Loop B', parent: 'f2', createdAt: '2026-10-01T00:00:00.000Z' },
+    ],
+  };
+  fs.writeFileSync(path.join(dir, 'playlists.json'), JSON.stringify(shelf));
+  const view = await library.list();
+  expect(view.playlists[0]?.folder).toBeNull();
+  expect(view.folders?.map((f) => f.parent)).toEqual([null, null, null]);
+});

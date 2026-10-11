@@ -281,6 +281,15 @@ select:disabled { cursor: default; background-image: none; opacity: 0.7; }
 .bar.indeterminate > span { width: 30%; animation: bar-slide 1.2s ease-in-out infinite; }
 @keyframes bar-slide { from { left: -30%; } to { left: 100%; } }
 
+/* Folders' drag and drop (Victoria, 2026-10-11): where a dragged album, playlist or folder lands.
+   A line before or after a row (.drop-x: beside a tile in a grid), or the folder it goes into. */
+[data-drop='into'] { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-faint); border-radius: var(--radius-md); }
+[data-drop='level'] { outline: 2px dashed var(--accent); outline-offset: -2px; border-radius: var(--radius-md); }
+[data-drop='before'] { box-shadow: inset 0 2px 0 var(--accent); }
+[data-drop='after'] { box-shadow: inset 0 -2px 0 var(--accent); }
+.drop-x[data-drop='before'] { box-shadow: -4px 0 0 -1px var(--accent); }
+.drop-x[data-drop='after'] { box-shadow: 4px 0 0 -1px var(--accent); }
+
 /* A switch: a checkbox drawn as a toggle. */
 .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; }
 .switch input {

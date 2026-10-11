@@ -19,6 +19,7 @@ import { LibraryService } from './core/library.service';
 import { PeersService, peerId } from './core/peers.service';
 import { PlayerService } from './core/player.service';
 import { UiService } from './core/ui.service';
+import { FoldersService, type DropTarget, type ShelfItem } from './core/folders.service';
 
 interface Room {
   readonly path: string;
@@ -63,24 +64,20 @@ interface Room {
             </a>
           }
         </nav>
-        @if (library.playlists().length > 0) {
-          <div class="side-list">
-            <span class="kicker">Playlists</span>
-            @for (playlist of library.playlists(); track playlist.id) {
-              <a class="side-item" [routerLink]="['/library', playlist.id]" routerLinkActive="on" [attr.data-drop-playlist]="playlist.id">
-                <app-cover class="side-art" [key]="playlist.id" [src]="hub.coverUrl(playlist)" />
-                <span class="side-names">
-                  <span class="side-name">{{ playlist.name }}</span>
-                  <span class="side-sub">{{ playlist.songs.length }} {{ playlist.songs.length === 1 ? 'song' : 'songs' }}</span>
-                  @if (making(playlist); as progress) {
-                    <!-- An album being made: how far along, without opening it (Victoria, 2026-10-10). -->
-                    <span class="side-progress" [class.sliding]="progress.waiting" [title]="progress.label">
-                      <span [style.width.%]="progress.share * 100"></span>
-                    </span>
-                  }
-                </span>
-              </a>
+        @if (library.playlists().length > 0 || library.folders().length > 0) {
+          <!-- Dropped in the open space of the list, an album, playlist or folder leaves its folder for the top. -->
+          <div class="side-list" [attr.data-drop]="folders.mark(top)" (dragover)="folders.over($event, top)" (drop)="dropOn($event, top)">
+            <span class="side-head">
+              <span class="kicker">Playlists</span>
+              <button type="button" class="side-add" aria-label="New folder" title="New folder: group albums and playlists" (click)="namingFolder.set(!namingFolder())"><app-icon name="plus" [size]="16" /></button>
+            </span>
+            @if (namingFolder()) {
+              <form class="side-new" (submit)="$event.preventDefault(); makeFolder(folderName.value)">
+                <input #folderName type="text" maxlength="120" placeholder="New folder" aria-label="New folder name" (keydown.escape)="namingFolder.set(false)" />
+              </form>
             }
+            @if (folderRefusal(); as refused) { <span class="side-refusal" role="alert">{{ refused }}</span> }
+            <ng-container *ngTemplateOutlet="sideShelf; context: { $implicit: null }" />
           </div>
         }
         @for (offer of peers.offered(); track offer.hostname) {
@@ -198,6 +195,47 @@ interface Room {
       </div>
     }
 
+    <!-- One level of the sidebar's list: its folders (each opening onto the next level), then its albums and playlists. -->
+    <ng-template #sideShelf let-parent>
+      @for (folder of library.foldersIn(parent); track folder.id) {
+        <div class="side-folder" draggable="true" [class.open]="folders.isOpen(folder.id)" [attr.data-drop]="folders.mark(edge(folder.id))"
+             (dragstart)="folders.dragStart($event, shelfFolder(folder.id))" (dragend)="folders.dragEnd()"
+             (dragover)="folders.over($event, edge(folder.id))" (drop)="dropOn($event, edge(folder.id))">
+          <button type="button" class="side-folder-btn" [attr.aria-expanded]="folders.isOpen(folder.id)" (click)="folders.toggle(folder.id)">
+            <app-icon name="chevron" [size]="14" class="side-chev" />
+            <app-icon name="folder" [size]="18" class="side-folder-icon" />
+            <span class="side-name">{{ folder.name }}</span>
+          </button>
+          <button type="button" class="side-play" aria-label="Play folder" title="Play folder: every album and playlist in it, in order" (click)="player.playFolder(folder.id)"><app-icon name="play" [size]="16" /></button>
+        </div>
+        @if (folders.isOpen(folder.id)) {
+          <div class="side-nest" [attr.data-drop]="folders.mark(inside(folder.id))" (dragover)="folders.over($event, inside(folder.id))" (drop)="dropOn($event, inside(folder.id))">
+            <ng-container *ngTemplateOutlet="sideShelf; context: { $implicit: folder.id }" />
+            @if (library.foldersIn(folder.id).length === 0 && library.playlistsIn(folder.id).length === 0) {
+              <span class="side-empty">Drag albums and playlists here</span>
+            }
+          </div>
+        }
+      }
+      @for (playlist of library.playlistsIn(parent); track playlist.id) {
+        <a class="side-item" [routerLink]="['/library', playlist.id]" routerLinkActive="on" [attr.data-drop-playlist]="playlist.id" [attr.data-drop]="folders.mark(onPlaylist(playlist.id))"
+           (dragstart)="folders.dragStart($event, shelfPlaylist(playlist.id))" (dragend)="folders.dragEnd()"
+           (dragover)="folders.over($event, onPlaylist(playlist.id))" (drop)="dropOn($event, onPlaylist(playlist.id))">
+          <app-cover class="side-art" [key]="playlist.id" [src]="hub.coverUrl(playlist)" />
+          <span class="side-names">
+            <span class="side-name">{{ playlist.name }}</span>
+            <span class="side-sub">{{ playlist.songs.length }} {{ playlist.songs.length === 1 ? 'song' : 'songs' }}</span>
+            @if (making(playlist); as progress) {
+              <!-- An album being made: how far along, without opening it (Victoria, 2026-10-10). -->
+              <span class="side-progress" [class.sliding]="progress.waiting" [title]="progress.label">
+                <span [style.width.%]="progress.share * 100"></span>
+              </span>
+            }
+          </span>
+        </a>
+      }
+    </ng-template>
+
     <ng-template #status>
       @switch (hub.state()) {
         @case ('reconnecting') { <span class="server none" [title]="hub.trouble() ?? ''">Reconnecting…</span> }
@@ -294,6 +332,26 @@ interface Room {
       .side-rooms a.on { background: var(--accent-faint); color: var(--accent); }
       .side-list { display: flex; flex-direction: column; gap: 2px; }
       .side-list .kicker { padding: 0 12px 6px; }
+      .side-head { display: flex; align-items: center; justify-content: space-between; }
+      .side-head .kicker { padding-bottom: 0; }
+      .side-add { width: 28px; height: 28px; padding: 0; border: none; border-radius: 50%; background: transparent; color: var(--text-tertiary); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+      .side-add:hover { background: var(--bg-hover); color: var(--accent); }
+      .side-new { padding: 4px 8px; }
+      .side-new input { width: 100%; }
+      .side-refusal { padding: 2px 12px; font-size: 12px; color: var(--error); }
+      /* Folders (Victoria, 2026-10-11): a row that opens and shuts, its contents indented beneath it. */
+      .side-folder { display: flex; align-items: center; border-radius: var(--radius-md); cursor: grab; }
+      .side-folder:hover { background: var(--bg-hover); }
+      .side-folder-btn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 8px; border: none; background: transparent; color: var(--text-secondary); text-align: left; cursor: pointer; }
+      .side-folder-btn:hover { color: var(--text-primary); }
+      .side-chev { color: var(--text-muted); transition: transform .15s ease; }
+      .side-folder.open .side-chev { transform: rotate(90deg); }
+      .side-folder-icon { color: var(--accent); }
+      .side-play { width: 32px; height: 32px; flex: none; padding: 0; border: none; border-radius: 50%; background: transparent; color: var(--text-tertiary); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; }
+      .side-folder:hover .side-play, .side-play:focus-visible { opacity: 1; }
+      .side-play:hover { color: var(--accent); }
+      .side-nest { display: flex; flex-direction: column; gap: 2px; margin-left: 15px; padding-left: 6px; border-left: 1px solid var(--border-subtle); min-height: 12px; }
+      .side-empty { padding: 6px 8px; font-size: 11px; color: var(--text-muted); }
       .side-item { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: var(--radius-md); text-decoration: none; color: var(--text-secondary); }
       .side-item:hover { background: var(--bg-hover); }
       .side-item.on { background: var(--bg-active); color: var(--text-primary); }
@@ -329,6 +387,44 @@ export class App {
   // Built with the shell, so a song that lands while another room is open still plays.
   protected readonly player = inject(PlayerService);
 
+  // ── folders in the sidebar (Victoria, 2026-10-11) ───────────────────────────
+  protected readonly folders = inject(FoldersService);
+  protected readonly namingFolder = signal(false);
+  protected readonly folderRefusal = signal<string | null>(null);
+  protected readonly top: DropTarget = { kind: 'folder', id: null, edge: false };
+
+  protected edge(id: string): DropTarget {
+    return { kind: 'folder', id, edge: true };
+  }
+
+  protected inside(id: string): DropTarget {
+    return { kind: 'folder', id, edge: false };
+  }
+
+  protected onPlaylist(id: string): DropTarget {
+    return { kind: 'playlist', id };
+  }
+
+  protected shelfFolder(id: string): ShelfItem {
+    return { kind: 'folder', id };
+  }
+
+  protected shelfPlaylist(id: string): ShelfItem {
+    return { kind: 'playlist', id };
+  }
+
+  protected dropOn(event: DragEvent, target: DropTarget): void {
+    if (this.folders.dragging() === null) return;
+    void this.folders.drop(event, target).then((refusal) => this.folderRefusal.set(refusal?.message ?? null));
+  }
+
+  protected async makeFolder(name: string): Promise<void> {
+    if (name.trim() === '') return;
+    const made = await this.library.createFolder(name);
+    this.folderRefusal.set('code' in made ? made.message : null);
+    if (!('code' in made)) this.namingFolder.set(false);
+  }
+
   /** An album being made (and not interrupted): its progress, for the sidebar's bar. */
   protected making(playlist: Playlist): AlbumProgress | null {
     const album = playlist.album;
@@ -354,6 +450,8 @@ export class App {
 
   /** Songs dragged in from the computer: the playlist under the pointer, else New Songs. */
   protected dragOver(event: DragEvent): void {
+    // A folder drag over nowhere it can land (a target stops its own dragover): no mark is shown.
+    if (this.folders.dragging() !== null && this.folders.dropAt() !== null) this.folders.dropAt.set(null);
     if (!this.carriesFiles(event)) return;
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';

@@ -1,11 +1,14 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, HostListener, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
 
-import { SINGLES_NAME, type AlbumMeta, type AlbumStage, type JobView, type Playlist, type RefusalView, type Song } from '@shared/types';
+import { SINGLES_NAME, type AlbumMeta, type AlbumStage, type Folder, type JobView, type Playlist, type RefusalView, type Song } from '@shared/types';
 
 import { CoverComponent } from '../../components/cover/cover.component';
+import { FolderMoveComponent } from '../../components/folder-move/folder-move.component';
+import { FoldersService, type DropTarget, type ShelfItem } from '../../core/folders.service';
 import { IconComponent } from '../../components/icon/icon.component';
 import { albumProgress, coverNote } from '../../core/album-progress';
 import { CloudService } from '../../core/cloud.service';
@@ -33,7 +36,7 @@ const COVER_PX = 768;
 @Component({
   selector: 'app-playlists-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RefusalComponent, RouterLink, CoverComponent, IconComponent],
+  imports: [RefusalComponent, RouterLink, CoverComponent, IconComponent, NgTemplateOutlet, FolderMoveComponent],
   template: `
     <div class="page" [attr.data-drop-playlist]="remote() ? null : (selected()?.id ?? null)">
       @if (selected(); as playlist) {
@@ -54,9 +57,9 @@ const COVER_PX = 768;
             } @else if (isCloud()) {
               <span class="kicker">{{ playlist.album ? 'Album' : 'Playlist' }} · in the cloud on {{ cloud.host() }}</span>
             } @else if (playlist.album; as album) {
-              <span class="kicker" [class.amber]="busy(album.stage) && !interrupted(album)">Album · {{ interrupted(album) ? 'interrupted' : stageWords(album.stage) }}</span>
+              <span class="kicker" [class.amber]="busy(album.stage) && !interrupted(album)">Album · {{ interrupted(album) ? 'interrupted' : stageWords(album.stage) }}{{ folderPath(playlist) }}</span>
             } @else {
-              <span class="kicker">Playlist</span>
+              <span class="kicker">Playlist{{ folderPath(playlist) }}</span>
             }
             @if (renaming() === 'playlist') {
               <input type="text" class="rename big" maxlength="120" aria-label="Playlist name" [value]="playlist.name"
@@ -132,6 +135,7 @@ const COVER_PX = 768;
               }
               @if (!remote()) {
                 <button type="button" class="icon-btn outlined" aria-label="Rename" title="Rename" (click)="renaming.set('playlist')"><app-icon name="edit" [size]="18" /></button>
+                <button type="button" class="icon-btn outlined" aria-label="Move to folder" title="Move to folder…" [attr.aria-expanded]="movingPlaylist()" (click)="movingPlaylist.set(!movingPlaylist())"><app-icon name="folder" [size]="18" /></button>
               }
               @if (!isPeer()) {
               <button type="button" class="icon-btn outlined" [attr.aria-label]="isCloud() ? 'Delete from the cloud' : 'Delete'" [title]="isCloud() ? 'Delete from the cloud' : 'Delete'" (click)="deletePlaylist(playlist)"><app-icon name="trash" [size]="18" /></button>
@@ -139,6 +143,9 @@ const COVER_PX = 768;
             </div>
           </div>
         </header>
+        @if (movingPlaylist() && !remote()) {
+          <app-folder-move [item]="shelfPlaylist(playlist.id)" (done)="movingPlaylist.set(false)" />
+        }
         @if (!isPeer() && offline.offered() && (isCloud() || !hub.onPhone())) {
           <label class="keep switch">
             <input type="checkbox" [checked]="offline.kept().has(playlist.id)" (change)="offline.keep(playlist.id, $any($event.target).checked)" />
@@ -249,21 +256,10 @@ const COVER_PX = 768;
           <h1 class="page-title">Library</h1>
         </div>
         @if (cloud.linked()) { <h2 class="section-title">On this phone</h2> }
-        <div class="grid">
-          @for (playlist of library.playlists(); track playlist.id) {
-            <a class="tile" [routerLink]="['/library', playlist.id]" [attr.data-drop-playlist]="playlist.id">
-              <app-cover class="tile-art" [key]="playlist.id" [src]="hub.coverUrl(playlist)" />
-              <span class="tile-name">{{ playlist.name }}</span>
-              @if (playlist.album; as album) {
-                <span class="tile-sub" [class.amber]="busy(album.stage) && !interrupted(album)">{{ album.artist || 'Album' }}{{ interrupted(album) ? ' · interrupted' : busy(album.stage) ? ' · ' + stageWords(album.stage) : '' }}</span>
-                @if (busy(album.stage) && !interrupted(album)) {
-                  <div class="bar tile-bar album-bar" [class.indeterminate]="albumProgress(album).waiting"><span [style.width.%]="albumProgress(album).waiting ? null : albumProgress(album).share * 100"></span></div>
-                }
-              } @else {
-                <span class="tile-sub">{{ playlist.songs.length }} {{ playlist.songs.length === 1 ? 'song' : 'songs' }}</span>
-              }
-            </a>
-          } @empty {
+        <!-- Folders first, then what is at the top. Dropped in the open space here, an album or folder leaves its folder. -->
+        <div class="shelf" [attr.data-drop]="folders.mark(top)" (dragover)="folders.over($event, top)" (drop)="dropOn($event, top)">
+          <ng-container *ngTemplateOutlet="shelf; context: { $implicit: null }" />
+          @if (library.playlists().length === 0 && library.folders().length === 0) {
             <p class="hint">{{ cloud.linked() ? 'Nothing kept only on this phone.' : 'No playlists yet. Save a song from the playing list, or make one here.' }}</p>
           }
         </div>
@@ -317,11 +313,93 @@ const COVER_PX = 768;
           <input type="text" maxlength="120" placeholder="New playlist" aria-label="New playlist name" [value]="newName()" (input)="newName.set($any($event.target).value)" />
           <button type="submit" class="ghost" [disabled]="newName().trim() === ''">Make</button>
         </form>
+        <form class="new" (submit)="$event.preventDefault(); createFolder(null)">
+          <input type="text" maxlength="120" placeholder="New folder" aria-label="New folder name" [value]="newFolder()" (input)="newFolder.set($any($event.target).value)" />
+          <button type="submit" class="ghost" [disabled]="newFolder().trim() === ''"><app-icon name="folder" [size]="16" />Make</button>
+        </form>
       }
       @if (refusal(); as refused) {
         <app-refusal [refusal]="refused" />
       }
     </div>
+
+    <!-- One level of the shelf: its folders (each holding the next level), then its albums and playlists. -->
+    <ng-template #shelf let-parent>
+      @for (folder of library.foldersIn(parent); track folder.id) {
+        <section class="folder" [class.open]="folders.isOpen(folder.id)">
+          <div class="folder-head" [attr.draggable]="hub.onPhone() || renamingFolder() === folder.id ? null : 'true'" [attr.data-drop]="folders.mark(edge(folder.id))"
+               (dragstart)="folders.dragStart($event, shelfFolder(folder.id))" (dragend)="folders.dragEnd()"
+               (dragover)="folders.over($event, edge(folder.id))" (drop)="dropOn($event, edge(folder.id))">
+            @if (renamingFolder() === folder.id) {
+              <input type="text" class="rename" maxlength="120" aria-label="Folder name" [value]="folder.name"
+                     (keydown.enter)="renameFolder(folder, $any($event.target).value)"
+                     (keydown.escape)="renamingFolder.set(null)"
+                     (blur)="renameFolder(folder, $any($event.target).value)" />
+            } @else {
+              <button type="button" class="folder-toggle" [attr.aria-expanded]="folders.isOpen(folder.id)" [title]="folders.isOpen(folder.id) ? 'Close the folder' : 'Open the folder'" (click)="folders.toggle(folder.id)">
+                <app-icon name="chevron" [size]="16" class="chev" />
+                <app-icon name="folder" [size]="18" class="folder-icon" />
+                <span class="folder-name">{{ folder.name }}</span>
+                <span class="folder-count">{{ countText(folder.id) }}</span>
+              </button>
+            }
+            <span class="folder-acts">
+              <button type="button" class="icon-btn" aria-label="Play folder" title="Play folder: every album and playlist in it, in order" [disabled]="!hasSongs(folder.id)" (click)="player.playFolder(folder.id)"><app-icon name="play" [size]="18" /></button>
+              <button type="button" class="icon-btn" aria-label="Shuffle folder" title="Shuffle folder: every song in it, in a random order" [disabled]="!hasSongs(folder.id)" (click)="player.shuffleFolder(folder.id)"><app-icon name="shuffle" [size]="18" /></button>
+              <button type="button" class="icon-btn" aria-label="More for this folder" title="Rename, move or delete" [attr.aria-expanded]="folderMenu() === folder.id" (click)="folderMenu.set(folderMenu() === folder.id ? null : folder.id)"><app-icon name="more" [size]="18" /></button>
+            </span>
+          </div>
+          @if (folderMenu() === folder.id) {
+            <div class="folder-menu">
+              <button type="button" class="ghost small" (click)="renamingFolder.set(folder.id); folderMenu.set(null)"><app-icon name="edit" [size]="15" />Rename</button>
+              <button type="button" class="ghost small" (click)="movingFolder.set(folder.id); folderMenu.set(null)"><app-icon name="folder" [size]="15" />Move to folder…</button>
+              @if (folders.roomInside(folder.id)) {
+                <button type="button" class="ghost small" (click)="newFolderIn.set(folder.id); folderMenu.set(null)"><app-icon name="plus" [size]="15" />New folder in it</button>
+              }
+              <button type="button" class="ghost small" (click)="deleteFolder(folder)"><app-icon name="trash" [size]="15" />Delete folder</button>
+            </div>
+          }
+          @if (newFolderIn() === folder.id) {
+            <form class="new folder-new" (submit)="$event.preventDefault(); createFolder(folder.id)">
+              <input type="text" maxlength="120" [placeholder]="'New folder in ' + folder.name" aria-label="New folder name" [value]="newFolder()" (input)="newFolder.set($any($event.target).value)" />
+              <button type="submit" class="ghost small" [disabled]="newFolder().trim() === ''">Make</button>
+              <button type="button" class="ghost small" (click)="newFolderIn.set(null)">Cancel</button>
+            </form>
+          }
+          @if (movingFolder() === folder.id) {
+            <app-folder-move [item]="shelfFolder(folder.id)" (done)="movingFolder.set(null)" />
+          }
+          @if (folders.isOpen(folder.id)) {
+            <div class="folder-body" [attr.data-drop]="folders.mark(inside(folder.id))" (dragover)="folders.over($event, inside(folder.id))" (drop)="dropOn($event, inside(folder.id))">
+              <ng-container *ngTemplateOutlet="shelf; context: { $implicit: folder.id }" />
+              @if (library.foldersIn(folder.id).length === 0 && library.playlistsIn(folder.id).length === 0) {
+                <p class="hint">Nothing in it yet. {{ hub.onPhone() ? 'Open an album or playlist and use Move to folder… to put it here.' : 'Drag albums and playlists here, or use Move to folder… on their pages.' }}</p>
+              }
+            </div>
+          }
+        </section>
+      }
+      @if (library.playlistsIn(parent).length > 0) {
+        <div class="grid">
+          @for (playlist of library.playlistsIn(parent); track playlist.id) {
+            <a class="tile drop-x" [routerLink]="['/library', playlist.id]" [attr.data-drop-playlist]="playlist.id" [attr.data-drop]="folders.mark(onPlaylist(playlist.id))"
+               (dragstart)="folders.dragStart($event, shelfPlaylist(playlist.id))" (dragend)="folders.dragEnd()"
+               (dragover)="folders.over($event, onPlaylist(playlist.id), 'x')" (drop)="dropOn($event, onPlaylist(playlist.id), 'x')">
+              <app-cover class="tile-art" [key]="playlist.id" [src]="hub.coverUrl(playlist)" />
+              <span class="tile-name">{{ playlist.name }}</span>
+              @if (playlist.album; as album) {
+                <span class="tile-sub" [class.amber]="busy(album.stage) && !interrupted(album)">{{ album.artist || 'Album' }}{{ interrupted(album) ? ' · interrupted' : busy(album.stage) ? ' · ' + stageWords(album.stage) : '' }}</span>
+                @if (busy(album.stage) && !interrupted(album)) {
+                  <div class="bar tile-bar album-bar" [class.indeterminate]="albumProgress(album).waiting"><span [style.width.%]="albumProgress(album).waiting ? null : albumProgress(album).share * 100"></span></div>
+                }
+              } @else {
+                <span class="tile-sub">{{ playlist.songs.length }} {{ playlist.songs.length === 1 ? 'song' : 'songs' }}</span>
+              }
+            </a>
+          }
+        </div>
+      }
+    </ng-template>
   `,
   styles: [`
     .add-library { display: inline-flex; align-self: flex-start; margin-top: 4px; text-decoration: none; }
@@ -388,8 +466,33 @@ const COVER_PX = 768;
     .mark { display: inline-flex; align-items: center; gap: 5px; }
     .mark.down { color: var(--accent); }
     .new input { flex: 1; min-width: 0; }
+    /* Folders (Victoria, 2026-10-11): a section per folder, its contents indented beneath its header. */
+    .shelf { display: flex; flex-direction: column; gap: 14px; min-height: 40px; }
+    .folder { display: flex; flex-direction: column; gap: 10px; }
+    .folder-head { display: flex; align-items: center; gap: 4px; min-width: 0; border-radius: var(--radius-md); }
+    .folder-head[draggable='true'] { cursor: grab; }
+    .folder-head .rename { flex: 1; min-width: 0; }
+    .folder-toggle {
+      flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 8px;
+      border: none; border-radius: var(--radius-md); background: transparent; color: var(--text-primary); text-align: left; cursor: pointer;
+    }
+    .folder-toggle:hover { background: var(--bg-hover); }
+    .chev { color: var(--text-tertiary); transition: transform .15s ease; }
+    .folder.open > .folder-head .chev { transform: rotate(90deg); }
+    .folder-icon { color: var(--accent); }
+    .folder-name { font-family: var(--font-display); font-weight: 800; font-size: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .folder-count { font-size: 12px; color: var(--text-tertiary); white-space: nowrap; }
+    .folder-acts { display: flex; flex: none; }
+    .folder-acts .icon-btn { width: 40px; height: 40px; color: var(--text-secondary); }
+    .folder-acts .icon-btn:hover:not(:disabled) { color: var(--accent); }
+    .folder-menu { display: flex; flex-wrap: wrap; gap: 6px; padding-left: 8px; }
+    .folder-new { padding-left: 8px; }
+    .folder-body { display: flex; flex-direction: column; gap: 14px; margin-left: 15px; padding: 4px 0 8px 14px; border-left: 1px solid var(--border-subtle); min-height: 32px; }
     @media (max-width: 700px) {
       .actions .icon-btn:not(:last-child) { display: none; }
+      .folder-name { font-size: 19px; }
+      .folder-count { display: none; }
+      .folder-body { margin-left: 8px; padding-left: 10px; }
       .head-art { width: 140px; }
       .head-title { font-size: 36px; }
     }
@@ -429,6 +532,104 @@ export class PlaylistsPageComponent {
   /** Which piece of the album its model is writing again (a sentence's noun), or null. */
   protected readonly rewriting = signal<string | null>(null);
   protected readonly refusal = signal<RefusalView | null>(null);
+
+  // ── folders (Victoria, 2026-10-11) ──────────────────────────────────────────
+  protected readonly folders = inject(FoldersService);
+  protected readonly newFolder = signal('');
+  /** The folder a new folder is being named in (its menu's New folder in it), or null. */
+  protected readonly newFolderIn = signal<string | null>(null);
+  protected readonly renamingFolder = signal<string | null>(null);
+  protected readonly movingFolder = signal<string | null>(null);
+  /** The folder whose menu (rename, move, delete) is open. */
+  protected readonly folderMenu = signal<string | null>(null);
+  /** This playlist's Move to folder… panel is open. */
+  protected readonly movingPlaylist = signal(false);
+  protected readonly top: DropTarget = { kind: 'folder', id: null, edge: false };
+
+  protected edge(id: string): DropTarget {
+    return { kind: 'folder', id, edge: true };
+  }
+
+  protected inside(id: string): DropTarget {
+    return { kind: 'folder', id, edge: false };
+  }
+
+  protected onPlaylist(id: string): DropTarget {
+    return { kind: 'playlist', id };
+  }
+
+  protected shelfFolder(id: string): ShelfItem {
+    return { kind: 'folder', id };
+  }
+
+  protected shelfPlaylist(id: string): ShelfItem {
+    return { kind: 'playlist', id };
+  }
+
+  protected dropOn(event: DragEvent, target: DropTarget, axis: 'x' | 'y' = 'y'): void {
+    if (this.folders.dragging() === null) return;
+    void this.folders.drop(event, target, axis).then((refusal) => this.refusal.set(refusal));
+  }
+
+  /** "3 albums, 1 playlist": what a folder holds, the folders inside it included. */
+  protected countText(id: string): string {
+    const under = this.library.playlistsUnder(id);
+    const albums = under.filter((playlist) => playlist.album != null).length;
+    const playlists = under.length - albums;
+    const parts = [
+      ...(albums > 0 ? [`${albums} ${albums === 1 ? 'album' : 'albums'}`] : []),
+      ...(playlists > 0 ? [`${playlists} ${playlists === 1 ? 'playlist' : 'playlists'}`] : []),
+    ];
+    return parts.length === 0 ? 'empty' : parts.join(', ');
+  }
+
+  protected hasSongs(id: string): boolean {
+    return this.library.playlistsUnder(id).some((playlist) => playlist.songs.length > 0);
+  }
+
+  /** " · in Greek Myths / Odyssey" for the page's kicker, when it is filed in a folder here. */
+  protected folderPath(playlist: Playlist): string {
+    if (this.remote() || playlist.folder == null) return '';
+    const row = this.library.folderRows().find((each) => each.folder.id === playlist.folder);
+    return row === undefined ? '' : ` · in ${row.path}`;
+  }
+
+  protected async createFolder(parent: string | null): Promise<void> {
+    const made = await this.library.createFolder(this.newFolder(), parent);
+    if ('code' in made) {
+      this.refusal.set(made);
+      return;
+    }
+    this.refusal.set(null);
+    this.newFolder.set('');
+    this.newFolderIn.set(null);
+    // Made inside a closed folder: open it, so the new one is seen.
+    if (parent !== null && !this.folders.isOpen(parent)) this.folders.toggle(parent);
+  }
+
+  protected async renameFolder(folder: Folder, name: string): Promise<void> {
+    if (this.renamingFolder() !== folder.id) return;
+    this.renamingFolder.set(null);
+    if (name.trim() === '' || name.trim() === folder.name) return;
+    this.refusal.set(await this.library.renameFolder(folder.id, name));
+  }
+
+  /** Delete a folder: only the folder goes; what was in it moves up a level, and says where. */
+  protected async deleteFolder(folder: Folder): Promise<void> {
+    this.folderMenu.set(null);
+    const into = folder.parent === null ? 'the top of the library' : `"${this.library.folder(folder.parent)?.name ?? 'the folder it is in'}"`;
+    const inside = this.library.foldersIn(folder.id).length + this.library.playlistsIn(folder.id).length;
+    const yes = await this.confirm.ask({
+      title: `Delete the folder "${folder.name}"?`,
+      message: inside === 0
+        ? 'It is empty, so only the folder goes.'
+        : `Only the folder goes. The albums, playlists and folders in it move up a level, to ${into}; no album, playlist or song is deleted.`,
+      confirm: 'Delete folder',
+      danger: false,
+    });
+    if (!yes) return;
+    this.refusal.set(await this.library.deleteFolder(folder.id));
+  }
 
   protected readonly selected = computed<Playlist | null>(() => {
     const id = this.chosen();

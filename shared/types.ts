@@ -409,7 +409,28 @@ export interface Playlist {
   readonly createdAt: string;
   /** Set when B-Sides made this playlist as an album (Make → Album). */
   readonly album?: AlbumMeta;
+  /** The folder it is filed in (Folder.id); absent or null: the top of the library. */
+  readonly folder?: string | null;
 }
+
+/**
+ * A named folder of albums and playlists (Victoria, 2026-10-11: "group the Greek Myth Series
+ * together in one section while retaining each individual album, almost like a directory
+ * structure"). It only groups: what is in it stays whole, and deleting it moves its contents up a
+ * level. Folders nest (at most FOLDER_DEPTH deep). Siblings keep the library's order: a folder's
+ * place among its sibling folders is its place in `LibraryView.folders`, a playlist's among the
+ * playlists beside it is its place in `playlists`; at each level the folders come first.
+ */
+export interface Folder {
+  readonly id: string;
+  readonly name: string;
+  /** The folder it is in; null: the top of the library. */
+  readonly parent: string | null;
+  readonly createdAt: string;
+}
+
+/** How deep folders nest: a folder in a folder in a folder in a folder, and no deeper. */
+export const FOLDER_DEPTH = 4;
 
 /** One track of an album's plan, as the chat model wrote it. */
 export interface AlbumTrack {
@@ -538,6 +559,8 @@ export interface LibraryView {
   readonly dir: string;
   readonly songs: readonly Song[];
   readonly playlists: readonly Playlist[];
+  /** The folders, in their order; absent from a B-Sides before folders (none). */
+  readonly folders?: readonly Folder[];
   /** Sidecars that could not be read, each with why: shown, never deleted. */
   readonly problems: readonly string[];
 }

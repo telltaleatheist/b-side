@@ -4,7 +4,7 @@ export type IconName =
   | 'listen' | 'make' | 'library' | 'settings'
   | 'play' | 'pause' | 'next' | 'prev' | 'shuffle' | 'queue'
   | 'plus' | 'more' | 'down' | 'close' | 'trash' | 'save' | 'bookmark'
-  | 'cloud' | 'download' | 'phone' | 'infinite' | 'chevron' | 'back' | 'edit' | 'repeat' | 'repeat-one' | 'grip' | 'queue-add' | 'play-next' | 'reroll';
+  | 'cloud' | 'download' | 'phone' | 'infinite' | 'chevron' | 'back' | 'edit' | 'repeat' | 'repeat-one' | 'grip' | 'queue-add' | 'play-next' | 'reroll' | 'folder';
 
 /** Night Deck's icons: stroke drawings on a 24 grid, in the text colour. Decorative unless the button names itself. */
 @Component({
@@ -39,6 +39,7 @@ export type IconName =
         @case ('close') { <path d="M6 6l12 12M18 6L6 18"/> }
         @case ('trash') { <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/> }
         @case ('save') { <path d="M12 4v11M7 10l5 5 5-5M5 20h14"/> }
+        @case ('folder') { <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/> }
         @case ('bookmark') { <path d="M6 3h12v18l-6-4-6 4z"/> }
         @case ('cloud') { <path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9z"/> }
         @case ('download') { <path d="M12 4v11M7 10l5 5 5-5M5 20h14"/> }
