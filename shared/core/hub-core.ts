@@ -217,6 +217,8 @@ const COVER_UPLOAD_MAX = 700 * 1024;
 const COVER_WAIT_MS = 15 * 60_000;
 /** The size every cover is painted at (Owen, 2026-10-11), whichever model paints it. */
 const COVER_PAINT_PX = 1024;
+/** Why the server may drop a cover from its line through no fault of the cover's: then it is asked for again. */
+const RESEND_COVER_REASONS: readonly string[] = ['session_closed', 'server_restart', 'expired'];
 /** How often a cover job's status is read while it paints. */
 const COVER_POLL_MS = 2000;
 
@@ -562,36 +564,46 @@ export class HubCore {
   }
 
   /** Paint an album's cover on the server and file it beside the album. */
-  private async paintCover(id: string, server: StoredServer, client: CrucibleClient, model: string, prompt: string): Promise<string> {
-    // Small on purpose (Owen, 2026-10-06: "250x250 or something would be fine"): a cover is shown
-    // as a tile, and 256 square is a sixteenth of the server's default 1024, so it paints that much
-    // sooner. 256 is the smallest size the server takes (a multiple of 32 on the PC).
-    // The size the model paints well at, as the server publishes it (1.0.138: an SDXL model is crunchy
-    // under 768; qwen-image is fine at 256). A server that publishes nothing gets the 256 it always had.
+  private async paintCover(id: string, server: StoredServer, _albumClient: CrucibleClient, model: string, prompt: string): Promise<string> {
+    // Under a name of its own, never the albums' (Victoria's laptop, 2026-10-11): Crucible counts a
+    // job sent under a session's client name as one of that session's items, so Heroes and Monsters'
+    // cover joined Magical Creatures' writing session and was dropped when that session closed.
+    const client = clientFor(server, `${clientName()}/cover`);
     // No model named: Crucible paints with the biggest image model the card holds (Owen, 2026-10-11:
     // "if the gpu can fit qwen image then it should use that. if not, it should use dreamshape").
     // 1024 across the board, kept as a 512 JPEG: DreamShaper paints well only near 1024, and until
     // B-Sides can learn which model Crucible will pick, one size serves both ("its simpler").
+    const submit = async (): Promise<string> => {
+      const jobId = await client.image({ prompt, width: COVER_PAINT_PX, height: COVER_PAINT_PX });
+      const now = await this.library.album(id);
+      if (now !== null) await this.library.setAlbum(id, { ...now, coverJob: jobId });
+      console.log(`[albums] painting the cover for ${id} (the server's pick; ${model} is ready there): job ${jobId}`);
+      return jobId;
+    };
     // A cover this album was already painting when B-Sides last stopped is waited for, not painted again.
     const kept = (await this.library.album(id))?.coverJob ?? null;
     const alive = kept === null ? null : await client.job(kept).then((job) => (['queued', 'running', 'done'].includes(job.status) ? kept : null), () => null);
-    const jobId = alive ?? await client.image({ prompt, width: COVER_PAINT_PX, height: COVER_PAINT_PX });
-    if (alive === null) {
-      const now = await this.library.album(id);
-      if (now !== null) await this.library.setAlbum(id, { ...now, coverJob: jobId });
-    }
-    console.log(`[albums] painting the cover for ${id} (the server's pick; ${model} is ready there): job ${jobId}`);
+    let jobId = alive ?? await submit();
     // The job's status is read every few seconds until it ends. Its event stream was followed
     // instead, and on Victoria's laptop (2026-10-11) the Iliad's cover finished on the server at
     // 16:43:21 while B-Sides waited on, never saving it: the album sat at "planning" with no cover,
     // and each restart painted it again. A cover job is short, so a few seconds' lag costs nothing.
     const until = Date.now() + COVER_WAIT_MS;
+    let resent = 0;
     for (;;) {
       const status = await client.job(jobId).catch((error: unknown) => {
         console.error(`[albums] could not read cover job ${jobId}; trying again:`, error);
         return null;
       });
       if (status?.status === 'done') break;
+      // Dropped from the line through no fault of its own (a session closing, a server restart):
+      // asked for again, as a song would be, rather than the album going without.
+      if (status?.status === 'removed' && status.removal !== null && RESEND_COVER_REASONS.includes(status.removal.reason) && resent < 2) {
+        resent += 1;
+        console.log(`[albums] cover job ${jobId} for ${id} was dropped (${status.removal.reason}); asking again`);
+        jobId = await submit();
+        continue;
+      }
       if (status !== null && status.status !== 'queued' && status.status !== 'running') {
         throw new Refusal('cover_failed', `The server could not paint the cover (${status.status}${status.error ? `: ${status.error.message}` : ''}).`);
       }
