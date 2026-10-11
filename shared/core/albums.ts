@@ -130,9 +130,15 @@ export function trackTags(core: string, turn: string, sung: boolean, exact = fal
   const tags = sung ? all : withoutVoice(all);
   const seen = new Set(tags.map((t) => t.toLowerCase()));
   const coreTempo = BPM.test(core);
+  let voiced = tags.some((t) => VOICE_TAG.test(t));
   for (const extra of turn.split(',').map((t) => t.trim()).filter((t) => t !== '')) {
     if (seen.has(extra.toLowerCase())) continue;
     if (!sung && VOICE_TAG.test(extra)) continue;
+    // One singer: a second voice from the turn would ask YuE2 for two at once.
+    if (VOICE_TAG.test(extra)) {
+      if (voiced) continue;
+      voiced = true;
+    }
     if (exact && (coreTempo || !BPM.test(extra))) continue;
     seen.add(extra.toLowerCase());
     tags.push(extra);

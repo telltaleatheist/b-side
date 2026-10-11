@@ -21,7 +21,7 @@ import type { TextModel } from './text-model';
 import { YUE2_STYLE_GUIDE } from './yue2-style';
 import { aboutOf, NO_WRITING, vocabLine, type AlbumConcept } from './album-text';
 import { clashesIn, composeTags } from './describe';
-import { withoutVoice } from '../tags';
+import { VOICE_TAG, withoutVoice } from '../tags';
 import type { AlbumAsk, DescribeResult, SongPage } from '../types';
 
 const PHRASE_MAX = 48;
@@ -52,11 +52,27 @@ async function call(
   }
 }
 
+/**
+ * A list of phrases as the writer answered it, tidied. The stock 4B sometimes puts a whole style
+ * line in one item, cut off at the schema's length (Victoria's "Crash Like Thunder, Zeus!",
+ * 2026-10-11: "English, children's pop, playful female vocal, g"). Such an item is split at its
+ * commas, the cut-off last piece of an item that ran to the limit is dropped, and so is a language
+ * (B-Sides lays that out itself). Each phrase once, ignoring case.
+ */
 function phrasesOf(value: unknown, tag: string, writer: TextModel): string[] {
   if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
     throw new Refusal('text_unreadable', `${writer.name}'s answer to ${tag} is not a list of phrases.`);
   }
-  return value.map((item: string) => item.replace(/,/g, ' ').replace(/\s+/g, ' ').trim()).filter((item) => item !== '');
+  const out: string[] = [];
+  for (const item of value as string[]) {
+    const pieces = item.split(',').map((piece) => piece.replace(/\s+/g, ' ').trim());
+    if (item.length >= PHRASE_MAX && pieces.length > 1) pieces.pop();
+    for (const piece of pieces) {
+      if (piece === '' || /^(english|chinese|mandarin|cantonese)$/i.test(piece)) continue;
+      if (!out.some((kept) => kept.toLowerCase() === piece.toLowerCase())) out.push(piece);
+    }
+  }
+  return out;
 }
 
 function textOf(value: unknown, tag: string, field: string): string {
@@ -151,6 +167,7 @@ export function turnsPrompt(sung: boolean, coreHasTempo: boolean, n: number, pag
   return [
     `You give each of ${n} tracks of a music album its own sound for YuE2, a model that makes songs. Every track keeps the`,
     `album's core sound; you write what each one ADDS to it. Reply with JSON only: {"turns": [[...], ...]}, ${n} lists in track order.`,
+    '- Each phrase is 1-4 words. Never repeat the language, the genre or anything already in the core.',
     `- Each list: 2-4 short phrases: a mood, one instrument or texture${coreHasTempo ? '' : ', and exactly one tempo written "<number> BPM"'}${sung ? ', and one singer (e.g. "warm male voice")' : ''}.`,
     '- Never repeat or contradict the core. Let the tracks differ from each other, each fitting what its song is about.',
     sung ? '' : '- The album is instrumental: nothing about voices or singing.',
@@ -179,7 +196,16 @@ export async function writeTurns(
   const got = await call(writer, '[turns]', 'track_turns', turnsPrompt(sung, coreHasTempo, n, page), turnsUser(core, tracks), schema, 120 + 60 * n, SOUND_TEMPERATURE);
   const turns = got['turns'];
   if (!Array.isArray(turns) || turns.length !== n) throw new Refusal('text_unreadable', `${writer.name} gave ${Array.isArray(turns) ? turns.length : 'no'} tracks their sound, not ${n}.`);
-  return turns.map((turn: unknown) => phrasesOf(turn, '[turns]', writer).join(', '));
+  // One singer a track: the stock 4B gave one track four, male and female (2026-10-11).
+  return turns.map((turn: unknown) => {
+    let voiced = false;
+    return phrasesOf(turn, '[turns]', writer).filter((phrase) => {
+      if (!VOICE_TAG.test(phrase)) return true;
+      if (voiced) return false;
+      voiced = true;
+      return true;
+    }).join(', ');
+  });
 }
 
 /**

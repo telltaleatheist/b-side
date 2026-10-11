@@ -64,3 +64,13 @@ test('track ideas stand alone on shuffle: no intros, outros, welcomes or goodbye
 test("an instrumental single is named by the words writer, quotes trimmed", async () => {
   expect(await nameSong(answering({ title: '"Glass Harbor"' }), 'calm piano', ['Instrumental', 'piano'])).toBe('Glass Harbor');
 });
+
+test("a whole style line in one turn item is split, its cut-off end dropped, one singer kept (Victoria, 2026-10-11)", async () => {
+  const sound = answering({ turns: [[
+    "English, children's pop, playful female vocal, g",
+    "English, children's pop, wise male vocal, piano",
+    'thunderous drums',
+  ]] });
+  const [turn] = await writeTurns(sound, true, "children's pop, kids choir", [{ title: 'Crash Like Thunder, Zeus!' }], page);
+  expect(turn).toBe("children's pop, playful female vocal, piano, thunderous drums");
+});
