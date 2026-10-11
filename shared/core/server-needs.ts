@@ -17,9 +17,9 @@
  * environment, which is installed as the `rvc` job type (`denoise` is not an
  * installable type of its own).
  *
- * B_SIDES_MODULE is written here by hand until Crucible has `modules/b-sides.toml`
- * and its generated `b-sides.module.json`, which then replaces it byte for byte.
- * Its `backends` are the generator's field (both rows exist on cuda-linux and
+ * B_SIDES_MODULE is Crucible's generated `modules/b-sides.module.json` (Crucible 2.0.4,
+ * from modules/b-sides.toml; crucible-pc-1, 2026-10-11: `rvc` is right, denoise shares
+ * its environment). Its `backends` are the generator's field (both rows exist on cuda-linux and
  * mlx-darwin only, so a Windows-native engine is asked for nothing) and are
  * stripped before posting, because the server refuses unknown keys.
  */
@@ -34,10 +34,10 @@ interface ModuleRow {
   readonly backends?: readonly string[];
 }
 
-/** What `modules/b-sides.toml` generates (see the header); version is the generator's, hand-set until then. */
+/** What `modules/b-sides.toml` generates (see the header), as Crucible 2.0.4 generated it. */
 export const B_SIDES_MODULE = {
   name: 'b-sides',
-  version: '2.0.2+b-sides-1',
+  version: '2.0.4+085acd33d0c6',
   job_types: [{ type: 'rvc', backends: ['cuda-linux', 'mlx-darwin'] }],
   needs: [],
   subjects: [{ kind: 'denoise', id: SEPARATOR_MODEL, backends: ['cuda-linux', 'mlx-darwin'] }],
