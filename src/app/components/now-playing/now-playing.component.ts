@@ -146,9 +146,9 @@ function syllables(text: string): number {
           <div class="lyrics-card" #lyricsCard (touchstart)="touchedLyrics()" (wheel)="touchedLyrics()">
             @for (line of lyricLines(item.lyrics); track $index; let at = $index) {
               @if (line.section) {
-                <span class="card-section">{{ line.text }}</span>
+                <span class="card-section" [attr.data-part]="at" [class.now]="at === activePart()">{{ line.text }}</span>
               } @else {
-                <span class="card-line" [attr.data-line]="at" [class.now]="at === activeLine()" [class.sung]="activeLine() !== null && at < activeLine()!">{{ line.text }}</span>
+                <span class="card-line" [attr.data-part]="partOf()[at]" [class.now]="partOf()[at] === activePart()" [class.sung]="activePart() !== null && partOf()[at]! < activePart()!">{{ line.text }}</span>
               }
             }
           </div>
@@ -235,7 +235,8 @@ function syllables(text: string): number {
       display: flex; flex-direction: column; gap: 10px; scroll-behavior: smooth;
       -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 60px), transparent 100%);
     }
-    .card-section { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.4); padding-top: 14px; }
+    .card-section { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.4); padding-top: 14px; transition: color 400ms ease; }
+    .card-section.now { color: var(--accent); }
     .card-section:first-child { padding-top: 0; }
     .card-line { font-family: var(--font-display); font-weight: 800; font-size: 25px; line-height: 1.22; color: rgba(255,255,255,.45); transition: color 400ms ease; }
     .card-line.sung { color: rgba(255,255,255,.72); }
@@ -386,26 +387,45 @@ export class NowPlayingComponent {
     return last;
   });
 
+  /**
+   * For each lyric line, the part it belongs to: the index of its section's heading
+   * ([verse], [chorus]), or, in lyrics without headings, its own index.
+   */
+  protected readonly partOf = computed(() => {
+    const lyrics = this.player.current()?.lyrics;
+    if (!lyrics) return [] as number[];
+    const lines = this.lyricLines(lyrics);
+    const headed = lines.some((line) => line.section);
+    let part = 0;
+    return lines.map((line, at) => {
+      if (line.section || !headed) part = at;
+      return part;
+    });
+  });
+
+  /** The part being sung: the whole section is lit, since the line itself is only an estimate. */
+  protected readonly activePart = computed(() => {
+    const line = this.activeLine();
+    return line === null ? null : (this.partOf()[line] ?? null);
+  });
+
   constructor() {
-    // The lyrics follow the song, calmly: the card scrolls only when the line being sung
-    // leaves the part of it in view, and then puts that line near the top. Never while a
-    // finger is reading.
+    // The lyrics follow the song: when a new section starts, the card moves once to put
+    // its heading at the top, and stays still while it is sung. Never while a finger is reading.
     effect(() => {
-      const line = this.activeLine();
+      const part = this.activePart();
       const card = this.lyricsCard()?.nativeElement;
-      if (line === null || card === undefined) return;
+      if (part === null || card === undefined) return;
       untracked(() => {
         if (Date.now() - this.lyricsTouchedAt < 6000) return;
         // Only while the card is on screen: scrolling an unseen list kept the sheet busy for nothing.
         const box = card.getBoundingClientRect();
         if (box.bottom < 0 || box.top > innerHeight) return;
-        const element = card.querySelector<HTMLElement>(`[data-line="${line}"]`);
+        const element = card.querySelector<HTMLElement>(`[data-part="${part}"]`);
         if (element === null) return;
-        // Where the line sits inside the card's scrolled content (offsetTop would measure from the sheet).
+        // Where the heading sits inside the card's scrolled content (offsetTop would measure from the sheet).
         const top = element.getBoundingClientRect().top - box.top;
-        const bottom = top + element.offsetHeight;
-        if (top >= card.clientHeight * 0.12 && bottom <= card.clientHeight * 0.7) return;
-        card.scrollTo({ top: Math.max(0, card.scrollTop + top - card.clientHeight * 0.22), behavior: 'smooth' });
+        card.scrollTo({ top: Math.max(0, card.scrollTop + top - 24), behavior: 'smooth' });
       });
     });
   }
