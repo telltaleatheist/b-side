@@ -90,6 +90,17 @@ function takeOf(sidecar: TakeSidecar): Take {
     batch: sidecar.batch,
     bytes: sidecar.bytes,
     savedAs: sidecar.savedAs,
+    ...stripFacts(sidecar),
+  };
+}
+
+/** A song's strip record (Owen, 2026-10-11), only the fields it has: an unstripped song's sidecar is as before. */
+export function stripFacts(facts: Pick<SongFacts, 'stripped' | 'stripJob' | 'stripFailed' | 'instrumentalOf'>): Pick<SongFacts, 'stripped' | 'stripJob' | 'stripFailed' | 'instrumentalOf'> {
+  return {
+    ...(facts.stripped === true ? { stripped: true } : {}),
+    ...(typeof facts.stripJob === 'string' ? { stripJob: facts.stripJob } : {}),
+    ...(typeof facts.stripFailed === 'string' ? { stripFailed: facts.stripFailed } : {}),
+    ...(typeof facts.instrumentalOf === 'string' ? { instrumentalOf: facts.instrumentalOf } : {}),
   };
 }
 
@@ -201,6 +212,7 @@ export class TakeStore {
         bytes: 0,
         savedAs: null,
         effective: input.effective,
+        ...stripFacts(input),
       };
       // Audio first, then the sidecar: a crash between leaves audio with no sidecar, which open() clears.
       // The audio arrives under a temporary name, so a half-fetched song never sits under its own.

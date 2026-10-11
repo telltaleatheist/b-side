@@ -217,6 +217,11 @@ export interface AlbumHooks {
   render(id: string, track: number, server: StoredServer, params: AlbumTrackParams): void;
   /** How many of this album's tracks are on the server and not ended. */
   inFlight(id: string): number;
+  /**
+   * Of those, how many are still rendering: a track made and waiting for its strip is not
+   * (Owen, 2026-10-11; jobs.ts). The room on the server counts these; absent: all in flight.
+   */
+  rendering?(id: string): number;
   /** Name the album's first songs (made before the plan had names), in order. */
   retitle(id: string, titles: readonly string[]): Promise<void>;
   /** Cancel this album's tracks still on the server. */
@@ -967,7 +972,10 @@ export class AlbumMaker {
         }
         line.push({ id, meta });
       }
-      const flying = line.reduce((sum, album) => sum + own(album.id), 0);
+      // The room is the renders on the server: tracks made and waiting for their strips (which run
+      // together once the renders end, so the separator loads once) take none of it.
+      const rendering = (id: string): number => (this.hooks.rendering === undefined ? own(id) : this.hooks.rendering(id));
+      const flying = line.reduce((sum, album) => sum + rendering(album.id), 0);
       const room = order.singles === 'next'
         ? ((this.hooks.singlesWaiting?.(server) ?? 0) > 0 ? 0 : AHEAD_SINGLES_NEXT)
         : AHEAD;

@@ -14,6 +14,7 @@ import {
   type Outcome,
   type RefusalView,
   type ServerView,
+  type StripAbility,
   type Take,
 } from '@shared/types';
 
@@ -140,6 +141,11 @@ export class HubService {
    * it. False until the first snapshot, so nothing flickers disabled on a start.
    */
   readonly needsCrucible = computed(() => this.loaded() && this.activeServer() === null);
+  /**
+   * Whether the active server can take the voice out of songs (Owen, 2026-10-11; GET /api/strip):
+   * "Make an instrumental version" is disabled, with its why, while it cannot. Null until asked.
+   */
+  readonly strip = signal<StripAbility | null>(null);
 
   private readonly takeListeners: ((take: Take) => void)[] = [];
   private readonly filedListeners: ((job: JobView) => void)[] = [];
@@ -371,6 +377,7 @@ export class HubService {
         this.takes.set([...event.snapshot.takes]);
         this.library.set(event.snapshot.library);
         this.loaded.set(true);
+        void this.refreshStrip();
         this.state.set('live');
         this.trouble.set(null);
         this.backoff = BACKOFF_FIRST_MS;
@@ -404,8 +411,15 @@ export class HubService {
         break;
       case 'servers':
         this.servers.set([...event.servers]);
+        void this.refreshStrip();
         break;
     }
+  }
+
+  /** Ask the hub again whether the active server can strip (a page opening, the server list changing). */
+  async refreshStrip(): Promise<void> {
+    const outcome = await this.call<StripAbility>('GET', '/api/strip');
+    this.strip.set(outcome.ok ? outcome.value : { can: false, why: outcome.refusal.message });
   }
 
   /** Apply a job change (from the stream, or the answer to a generate). */

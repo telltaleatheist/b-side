@@ -11,6 +11,8 @@ export function jobEnded(job: JobView): boolean {
 }
 
 export function jobTitle(job: JobView): string {
+  // An instrumental version (Owen, 2026-10-11): the song it is made from, by name.
+  if (job.strip?.of != null) return `${job.title ?? 'A song'}, instrumental`;
   const batch = job.batch > 1 ? ` (${job.index} of ${job.batch})` : '';
   const seed = job.seed === null ? '' : ` · seed ${job.seed}`;
   return `${job.params.instrumental ? 'Instrumental' : 'Song'}${batch}${seed}`;

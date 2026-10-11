@@ -36,7 +36,8 @@ import { Library, type ImportedAlbum } from './library';
 import { PairingSessions } from './pairing';
 import { Refusal } from './refusal';
 import { ServerRegistry, type StoredServer, type Vault } from './servers';
-import { TakeStore, type TakeLimits } from './takes';
+import { StripGate } from './strip';
+import { stripFacts, TakeStore, type TakeLimits } from './takes';
 import { defaultTitle } from './titles';
 import {
   ALBUM_MINUTES,
@@ -45,6 +46,7 @@ import {
   albumBytes,
   DESCRIPTION_MAX,
   ENDED_PHASES,
+  INSTRUMENTAL_SUFFIX,
   LENGTH_AIMS,
   SINGLES_NAME,
   SINGLES_ORDERS,
@@ -68,6 +70,7 @@ import {
   type Song,
   type SongForm,
   type SongPage,
+  type StripAbility,
 } from '../types';
 
 /** The device a request comes from. */
@@ -123,6 +126,19 @@ export interface HubCoreOptions {
    */
   readonly shrinkCover?: (file: string, side: number) => Promise<string | null>;
 }
+
+/**
+ * The playlist an instrumental version of `name`'s songs is filed into: "<name> (Instrumental)"
+ * (Owen, 2026-10-11), cut to a playlist name's 120 characters; a name already so is kept.
+ */
+export function instrumentalName(name: string): string {
+  const clean = name.replace(/\s+/g, ' ').trim();
+  if (clean.toLowerCase().endsWith(INSTRUMENTAL_SUFFIX.toLowerCase())) return clean;
+  return `${clean.slice(0, 120 - INSTRUMENTAL_SUFFIX.length).trimEnd()}${INSTRUMENTAL_SUFFIX}`;
+}
+
+/** How long a run of strips' queue session may sit with nothing in flight (between fetches) before the server closes it. */
+const STRIP_IDLE_S = 120;
 
 /** The pseudo-client an album's tracks are made for: their jobs and takes never show in anyone's playing list. */
 function albumClient(id: string): string {
@@ -282,6 +298,8 @@ export class HubCore {
   private preferences: HubPreferences = DEFAULT_PREFERENCES;
   private readonly presets: PresetStore;
   private readonly needs = new ServerNeeds();
+  /** Which servers can take a song's voice out (strip.ts; Owen, 2026-10-11). */
+  private readonly strips = new StripGate();
 
   constructor(private readonly options: HubCoreOptions) {
     this.sink = options.sink;
@@ -315,6 +333,36 @@ export class HubCore {
           const params = landed.job.params;
           const album = landed.job.album ?? null;
           const planned = album === null ? null : ((await this.library.album(album.id))?.plan?.tracks[album.track] ?? null);
+          // Stripped (Owen, 2026-10-11): it says so, with its denoise job; a failed strip says why.
+          const strip = landed.strip;
+          const stripped = {
+            ...(strip?.jobId !== undefined ? { stripped: true, stripJob: strip.jobId } : {}),
+            ...(strip?.failed !== undefined ? { stripFailed: strip.failed } : {}),
+          };
+          // An instrumental version: the same title and record as the song it was made from, and a link to it.
+          const original = strip?.of === undefined ? null : await this.library.song(strip.of).catch(() => null);
+          if (original !== null) {
+            const take = await this.takes.add({
+              client: landed.job.client,
+              kind: landed.job.clientKind,
+              title: original.title,
+              extension: landed.extension,
+              fill: landed.fill,
+              model: original.model,
+              params: { ...original.params, instrumental: true },
+              server: { name: landed.server.name, url: landed.server.url },
+              jobId: original.jobId,
+              durationS: original.durationS ?? landed.durationS,
+              batch: null,
+              effective: null,
+              createdAt: new Date().toISOString(),
+              ...stripped,
+              instrumentalOf: original.id,
+            });
+            const songId = landed.job.playlist == null ? null : await this.fileTake(landed.job.playlist, take.id);
+            if (songId === null) this.sink.send(take.client, { type: 'take', take });
+            return { take, songId };
+          }
           const take = await this.takes.add({
             client: landed.job.client,
             kind: landed.job.clientKind,
@@ -322,6 +370,7 @@ export class HubCore {
             extension: landed.extension,
             fill: landed.fill,
             model: SONG_MODEL,
+            ...stripped,
             params: {
               tags: params.tags ?? null,
               lyrics: params.lyrics ?? null,
@@ -365,10 +414,26 @@ export class HubCore {
         fetching: (job) => {
           if (job.album == null) this.singleLeft(job.server);
         },
+        // An album's track rendered and waiting for its strip: its render is off the server, so the album sends its next.
+        rendered: (job) => {
+          void this.albums.next(job.server).then(() => this.libraryChanged()).catch((err: unknown) => console.error(`[albums] could not carry on on ${job.server}:`, err));
+        },
       },
       options.disk,
       join(options.dataDir, 'pending.json'),
       options.fetchAudio,
+      clientFor,
+      {
+        can: (server, client) => this.strips.can(server, client),
+        refuse: (server, why) => this.strips.refuse(server, why),
+        // Its own client name, as an album's: a session counts every job sent under its name as its
+        // own, and a song made meanwhile under the hub's name must not join it (hub-core, albums).
+        session: async (server) => {
+          const session = await clientFor(server, `${clientName()}/strip`).session({ act: 'denoise', idleS: STRIP_IDLE_S });
+          return { client: session, close: () => session.close() };
+        },
+        ...(options.disk.readBytes !== undefined ? { readFile: (file: string) => (options.disk.readBytes as NonNullable<Disk['readBytes']>).call(options.disk, file) } : {}),
+      },
     );
     this.albums = new AlbumMaker({
       meta: (id) => this.library.album(id),
@@ -390,6 +455,7 @@ export class HubCore {
         this.jobs.generate(server, { id: albumClient(id), kind: 'desktop' }, { params: song, count: 1 }, this.preferences.songFormat, { id, track });
       },
       inFlight: (id) => this.jobs.list(albumClient(id)).filter((job) => !ENDED_PHASES.includes(job.phase)).length,
+      rendering: (id) => this.jobs.rendering(albumClient(id)),
       retitle: async (id, titles) => {
         const view = await this.libraryView();
         const songs = view.playlists.find((p) => p.id === id)?.songs ?? [];
@@ -426,7 +492,8 @@ export class HubCore {
         .filter((job) => !ENDED_PHASES.includes(job.phase) && job.album?.id === id)
         .map((job) => job.album?.track as number),
       cancelInFlight: async (id) => {
-        for (const job of this.jobs.list(albumClient(id)).filter((j) => !ENDED_PHASES.includes(j.phase))) {
+        // A track already made and waiting for (or in) its strip is kept: it is the album's, made.
+        for (const job of this.jobs.list(albumClient(id)).filter((j) => !ENDED_PHASES.includes(j.phase) && j.strip?.state !== 'waiting' && j.strip?.state !== 'stripping')) {
           await this.jobs.cancel(job.key).catch((err: unknown) => console.error(`[albums] could not cancel ${job.key}:`, err));
         }
       },
@@ -493,6 +560,7 @@ export class HubCore {
         audioFrom: this.takes.audioPath(takeId),
         bytes: take.bytes,
         effective: this.takes.effective(takeId),
+        ...stripFacts(take),
       });
     } catch (error) {
       if (error instanceof Refusal && error.code === 'playlist_missing') return null;
@@ -564,6 +632,7 @@ export class HubCore {
         audioFrom: this.takes.audioPath(takeId),
         bytes: take.bytes,
         effective: this.takes.effective(takeId),
+        ...stripFacts(take),
       });
     } catch (error) {
       // The album was deleted while this track was being made: nothing to file it in.
@@ -1250,6 +1319,31 @@ export class HubCore {
       const { stem: _stem, ...levels } = checked;
       return levels;
     });
+    // ── instrumental versions (Owen, 2026-10-11; strip.ts) ──────────────────────
+    // Whether the active server can make them now; the pages disable the buttons when not.
+    this.route('GET', '/api/strip', () => this.stripAbility());
+    // One song: {playlist?} the playlist it was asked from, whose " (Instrumental)" it is filed into.
+    this.route('POST', '/api/songs/:id/instrumental', async (request) => {
+      const id = request.params['id'] as string;
+      const song = await this.library.song(id);
+      const view = await this.library.list();
+      const asked = idOrNull((await request.body())['playlist'], 'playlist');
+      const from = view.playlists.find((p) => p.id === asked && p.songs.includes(id))
+        ?? view.playlists.find((p) => p.songs.includes(id) && !p.name.endsWith(INSTRUMENTAL_SUFFIX))
+        ?? null;
+      return this.makeVersions(request.client(), [song], from?.name ?? SINGLES_NAME, from?.folder ?? null);
+    });
+    // A playlist or an album: every song in it, in its order, in one run on the server.
+    this.route('POST', '/api/playlists/:id/instrumental', async (request) => {
+      const id = request.params['id'] as string;
+      const view = await this.library.list();
+      const playlist = view.playlists.find((p) => p.id === id);
+      if (playlist === undefined) throw new Refusal('playlist_missing', 'That playlist is gone.', 404);
+      const songs = new Map(view.songs.map((song) => [song.id, song]));
+      const list = playlist.songs.flatMap((songId) => songs.get(songId) ?? []);
+      if (list.length === 0) throw new Refusal('playlist_empty', 'There are no songs in it to make instrumental.', 409);
+      return this.makeVersions(request.client(), list, playlist.name, playlist.folder ?? null);
+    });
     // Who this hub is (its computer's name), for another B-Sides listing its library.
     this.route('GET', '/api/info', () => this.options.info);
     this.route('PATCH', '/api/songs/:id', async (request) => {
@@ -1333,6 +1427,7 @@ export class HubCore {
         audioFrom: this.takes.audioPath(takeId),
         bytes: take.bytes,
         effective: this.takes.effective(takeId),
+        ...stripFacts(take),
       });
       if (take.savedAs !== song.id) {
         const marked = await this.takes.markSaved(takeId, song.id);
@@ -1344,6 +1439,47 @@ export class HubCore {
       await this.library.removeFrom(request.params['id'] as string, request.params['song'] as string);
       return this.libraryChanged();
     });
+  }
+
+  /** Whether instrumental versions can be made on the active server now, and why not. */
+  private async stripAbility(): Promise<StripAbility> {
+    if (this.options.disk.readBytes === undefined) {
+      return { can: false, why: 'Instrumental versions are made on a B-Sides computer: this device cannot send a song to the server.' };
+    }
+    let server: StoredServer;
+    try {
+      server = this.registry.active();
+    } catch {
+      return { can: false, why: 'Set up a Crucible server first.' };
+    }
+    return this.strips.check(server, clientFor(server));
+  }
+
+  /**
+   * Strip each song's voice and file the versions, under their own titles and each linked to its
+   * original, into "<name> (Instrumental)": made beside `folder` when missing, reused when there
+   * (Owen, 2026-10-11). Songs already there as a version are not made again. Answers the jobs.
+   */
+  private async makeVersions(client: CoreClient, songs: readonly Song[], name: string, folder: string | null): Promise<unknown> {
+    const ability = await this.stripAbility();
+    if (!ability.can) throw new Refusal('strip_unavailable', ability.why ?? 'This server cannot take the voice out of songs.', 409);
+    const target = await this.instrumentalPlaylist(name, folder);
+    const view = await this.library.list();
+    const held = new Set((view.playlists.find((p) => p.id === target)?.songs ?? []).flatMap((songId) => view.songs.find((song) => song.id === songId)?.instrumentalOf ?? []));
+    const asks = songs.filter((song) => !held.has(song.id)).map((song) => ({ song, file: this.library.audioPath(song.file) }));
+    if (asks.length === 0) throw new Refusal('already_instrumental', `Every one of them is in ${instrumentalName(name)} already.`, 409);
+    return this.jobs.versions(this.registry.active(), client, asks, this.preferences.songFormat, target);
+  }
+
+  /** The playlist "<name> (Instrumental)": the one there (not an album), else a new one beside `folder`. */
+  private async instrumentalPlaylist(name: string, folder: string | null): Promise<string> {
+    const wanted = instrumentalName(name);
+    const found = (await this.library.list()).playlists.find((p) => p.album == null && p.name.trim().toLowerCase() === wanted.toLowerCase());
+    if (found !== undefined) return found.id;
+    const made = await this.library.createPlaylist(wanted);
+    if (folder !== null) await this.library.movePlaylist(made.id, folder, null).catch((err: unknown) => console.error(`[strip] could not file ${wanted} beside its original:`, err));
+    await this.libraryChanged();
+    return made.id;
   }
 
   /** A job is cancelled or dismissed only by the device that asked for it. */

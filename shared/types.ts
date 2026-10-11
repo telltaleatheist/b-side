@@ -357,7 +357,40 @@ export interface JobView {
   readonly title?: string | null;
   /** Once filed into `playlist`: the song it became. */
   readonly songId?: string | null;
+  /** Its voice taken out by the separator (Owen, 2026-10-11; shared/core/strip.ts); absent: not stripped. */
+  readonly strip?: StripView | null;
 }
+
+/**
+ * A song whose stray voices are taken out (Owen, 2026-10-11: YuE2 instrumentals sometimes sing
+ * though asked not to). Every instrumental rendered on a server that can strip, and every song
+ * made into an instrumental version, goes through Crucible's separator and is kept as its
+ * instrumental stem.
+ */
+export interface StripView {
+  /**
+   * rendering: the song is being made (held on the server for its strip); waiting: made, its strip
+   * waits for the server's other renders to finish (an album's, so the separator loads once);
+   * stripping: the separator runs. A version of a library song is `stripping` from the start.
+   */
+  readonly state: 'rendering' | 'waiting' | 'stripping';
+  /** The format the stem is asked in: the person's song format then. */
+  readonly format: SongFormat;
+  /** The denoise job, once sent. */
+  readonly jobId: string | null;
+  /** An instrumental version: the library song it is made from (nothing is rendered). */
+  readonly of?: string | null;
+}
+
+/** Whether instrumental versions can be made on the active server now, and why not (`GET /api/strip`). */
+export interface StripAbility {
+  readonly can: boolean;
+  /** The sentence to show beside a disabled button; null when it can. */
+  readonly why: string | null;
+}
+
+/** " (Instrumental)": the playlist an instrumental version of a song or playlist is filed into. */
+export const INSTRUMENTAL_SUFFIX = ' (Instrumental)';
 
 /** What "describe the music" answers: tags for the chips, and whether it asked for no vocals. */
 export interface DescribeResult {
@@ -419,6 +452,14 @@ export interface SongFacts {
   readonly createdAt: string;
   readonly durationS: number | null;
   readonly batch: { readonly index: number; readonly of: number } | null;
+  /** Kept as the separator's instrumental stem (Owen, 2026-10-11); absent on songs made as rendered. */
+  readonly stripped?: boolean;
+  /** The denoise job its stem came from, when stripped. */
+  readonly stripJob?: string;
+  /** Why a strip it went through failed (it was kept as rendered); absent when none failed. */
+  readonly stripFailed?: string;
+  /** An instrumental version: the library song it was made from. */
+  readonly instrumentalOf?: string;
 }
 
 /**

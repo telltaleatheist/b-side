@@ -4,7 +4,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
 
-import { SINGLES_NAME, type AlbumMeta, type AlbumStage, type Folder, type JobView, type Playlist, type RefusalView, type Song } from '@shared/types';
+import { INSTRUMENTAL_SUFFIX, SINGLES_NAME, type AlbumMeta, type AlbumStage, type Folder, type JobView, type Playlist, type RefusalView, type Song } from '@shared/types';
 
 import { CoverComponent } from '../../components/cover/cover.component';
 import { FolderMoveComponent } from '../../components/folder-move/folder-move.component';
@@ -110,6 +110,10 @@ const COVER_PX = 768;
                       (click)="queue(playlist, true)"><app-icon name="play-next" [size]="18" /></button>
               <button type="button" class="icon-btn outlined" aria-label="Add to queue" title="Add to queue: at the end" [disabled]="songs().length === 0"
                       (click)="queue(playlist, false)"><app-icon name="queue-add" [size]="18" /></button>
+              @if (!remote()) {
+                <!-- Every song with its voice taken out, into "<name> (Instrumental)" (Owen, 2026-10-11). -->
+                <button type="button" class="ghost" [disabled]="songs().length === 0 || !canStrip() || versioning() !== null" [title]="stripTitle(playlist.album ? 'album' : 'playlist', playlist)" (click)="makeInstrumental(playlist)"><app-icon name="no-voice" [size]="18" />Instrumental version</button>
+              }
               @if (!remote() && cloud.linked() && playlist.album && !busy(playlist.album.stage)) {
                 <button type="button" class="ghost" [disabled]="cloud.saving() !== null" (click)="saveToCloud(playlist)">
                   <app-icon name="cloud" [size]="18" />{{ cloud.saving()?.playlist === playlist.id ? 'Saving ' + cloud.saving()!.done + ' of ' + cloud.saving()!.of + '…' : 'Save to cloud' }}
@@ -145,6 +149,12 @@ const COVER_PX = 768;
               <button type="button" class="icon-btn outlined" [attr.aria-label]="isCloud() ? 'Delete from the cloud' : 'Delete'" [title]="isCloud() ? 'Delete from the cloud' : 'Delete'" (click)="deletePlaylist(playlist)"><app-icon name="trash" [size]="18" /></button>
               }
             </div>
+            @if (versionNote(); as note) {
+              <span class="hint version-note">{{ note.text }} <a [routerLink]="['/library', note.id]">Open {{ note.name }}</a></span>
+            }
+            @if (versionRefusal(); as refused) {
+              <app-refusal [refusal]="refused" />
+            }
           </div>
         </header>
         @if (playlist.album && !remote()) {
@@ -214,6 +224,7 @@ const COVER_PX = 768;
                 <button type="button" class="icon-btn" aria-label="Move up" title="Move up" [disabled]="at === 0" (click)="move(playlist, at, -1)"><app-icon name="down" [size]="18" class="flip-v" /></button>
                 <button type="button" class="icon-btn" aria-label="Move down" title="Move down" [disabled]="at === songs().length - 1" (click)="move(playlist, at, 1)"><app-icon name="down" [size]="18" /></button>
                 <button type="button" class="icon-btn" aria-label="Rename" title="Rename" (click)="renaming.set(song.id)"><app-icon name="edit" [size]="16" /></button>
+                <button type="button" class="icon-btn narrow-keep" aria-label="Make an instrumental version" [title]="stripTitle('song', playlist)" [disabled]="!canStrip() || versioning() !== null" (click)="makeInstrumental(playlist, song)"><app-icon name="no-voice" [size]="17" /></button>
                 @if (canRewrite(playlist) && trackPlace(playlist, song.title) !== null) {
                   <button type="button" class="icon-btn" aria-label="A new name" title="A new name, written by the album's model" [disabled]="rewriting() !== null || hub.needsCrucible()" (click)="rewrite(playlist, 'track', trackPlace(playlist, song.title)!)"><app-icon name="reroll" [size]="16" /></button>
                 }
@@ -757,6 +768,45 @@ export class PlaylistsPageComponent {
   protected readonly jobShare = jobShare;
   protected readonly jobStatus = jobStatus;
   protected readonly jobCancellable = jobCancellable;
+
+  // ── instrumental versions (Owen, 2026-10-11; shared/core/strip.ts) ───────────
+  /** Whether the active server can take a song's voice out now. */
+  protected readonly canStrip = computed(() => !this.hub.needsCrucible() && this.hub.strip()?.can === true);
+  /** The song or playlist whose instrumental version is being asked for now. */
+  protected readonly versioning = signal<string | null>(null);
+  protected readonly versionNote = signal<{ readonly text: string; readonly id: string; readonly name: string } | null>(null);
+  protected readonly versionRefusal = signal<RefusalView | null>(null);
+
+  /** The button's hint: what it does, or why it cannot now. */
+  protected stripTitle(what: 'song' | 'album' | 'playlist', playlist: Playlist): string {
+    if (this.hub.needsCrucible()) return 'Set up a Crucible server first: the voice is taken out on it';
+    const strip = this.hub.strip();
+    if (strip === null) return 'Asking the server whether it can take the voice out…';
+    if (!strip.can) return strip.why ?? 'This server cannot take the voice out of songs';
+    const into = `"${playlist.name}${INSTRUMENTAL_SUFFIX}"`;
+    return what === 'song'
+      ? `Make an instrumental version: the voice taken out, filed in ${into}`
+      : `Make an instrumental version of every song in this ${what}: the voices taken out, filed in ${into}`;
+  }
+
+  protected async makeInstrumental(playlist: Playlist, song?: Song): Promise<void> {
+    this.versioning.set(song?.id ?? playlist.id);
+    this.versionRefusal.set(null);
+    const outcome = song === undefined
+      ? await this.hub.call<JobView[]>('POST', `/api/playlists/${encodeURIComponent(playlist.id)}/instrumental`)
+      : await this.hub.call<JobView[]>('POST', `/api/songs/${encodeURIComponent(song.id)}/instrumental`, { playlist: playlist.id });
+    this.versioning.set(null);
+    if (!outcome.ok) {
+      this.versionRefusal.set(outcome.refusal);
+      return;
+    }
+    for (const job of outcome.value) this.hub.upsertJob(job);
+    const target = outcome.value[0]?.playlist ?? null;
+    if (target === null) return;
+    const name = this.library.playlist(target)?.name ?? `${playlist.name}${INSTRUMENTAL_SUFFIX}`;
+    const count = outcome.value.length;
+    this.versionNote.set({ id: target, name, text: `${count === 1 ? 'One song is' : `${count} songs are`} being made instrumental, into ${name}.` });
+  }
 
   /** Where a song can move: every other playlist that is not an album. */
   protected moveTargets(from: Playlist): Playlist[] {

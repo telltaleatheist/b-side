@@ -29,7 +29,7 @@
  */
 import { basename, join, type Disk } from './disk';
 import { Refusal } from './refusal';
-import { AUDIO_FILE, checkId, isId, stamp } from './takes';
+import { AUDIO_FILE, checkId, isId, stamp, stripFacts } from './takes';
 import { holds } from '../planning-sets';
 import { FOLDER_DEPTH, type AlbumMeta, type Folder, type LibraryView, type Playlist, type Song, type SongFacts, type SongMade } from '../types';
 
@@ -93,6 +93,7 @@ function songOf(sidecar: Sidecar): Song {
     bytes: typeof sidecar.bytes === 'number' ? sidecar.bytes : null,
     structure: structureOf(sidecar.params, sidecar.effective),
     aim: aimOf(sidecar.params, sidecar.effective),
+    ...stripFacts(sidecar),
   };
 }
 
@@ -313,6 +314,7 @@ export class Library {
       album: null,
       bytes: song.bytes,
       effective: song.effective,
+      ...stripFacts(song),
     };
     await this.disk.writeText(this.sidecarPath(id), `${JSON.stringify(sidecar, null, 2)}\n`);
     await this.disk.copy(song.audioFrom, this.audioPath(sidecar.file));
