@@ -204,31 +204,19 @@ test('a sung song is never stripped', async () => {
   expect(server.sent.length).toBe(1);
 });
 
-test("an album's tracks wait for its renders, then are stripped together in one session", async () => {
+test("an album's track is stripped as soon as it is made, and lands before the next is rendered (Owen, 2026-10-11)", async () => {
   const server = fakeServer();
   const landed: Landed[] = [];
-  const rendered: JobView[] = [];
-  const jobs = runner(server, landed, [], [], rendered);
+  const jobs = runner(server, landed);
   jobs.generate(pc, { id: 'album-a', kind: 'desktop' }, { params: { tags: 'lo-fi', instrumental: true, seed: 1 }, count: 1 }, 'flac', { id: 'a', track: 0 });
-  jobs.generate(pc, { id: 'album-a', kind: 'desktop' }, { params: { tags: 'lo-fi', instrumental: true, seed: 2 }, count: 1 }, 'flac', { id: 'a', track: 1 });
-  await until(() => server.sent.length === 2);
-  expect(jobs.rendering('album-a')).toBe(2);
+  await until(() => server.sent.length === 1);
   server.finish('audio-1');
-  await until(() => rendered.length === 1);
-  // Made, but the other track still renders: no separator yet, and the album may send another.
-  await new Promise((rest) => setTimeout(rest, 30));
-  expect(server.sent.filter((request) => request.type === 'denoise')).toEqual([]);
-  expect(landed).toEqual([]);
-  expect(jobs.rendering('album-a')).toBe(1);
-  expect(jobs.list('album-a').find((job) => job.album?.track === 0)?.strip?.state).toBe('waiting');
-  server.finish('audio-2');
-  await until(() => landed.length === 2);
-  expect(server.sent.filter((request) => request.type === 'denoise').length).toBe(2);
-  expect(server.sessions).toEqual(['open', 'close']);
-  // Asked in the album's song format (FLAC here), each from its own held render.
-  expect(server.sent.filter((request) => request.type === 'denoise').map((request) => [request.params['format'], request.inputs['song.flac']]))
-    .toEqual([['flac', { artifact: { jobId: 'audio-1', name: 'audio.flac' } }], ['flac', { artifact: { jobId: 'audio-2', name: 'audio.flac' } }]]);
-  expect(landed.every((song) => song.strip?.jobId !== undefined)).toBe(true);
+  // Its strip goes at once, from its own held render, in the album's song format.
+  await until(() => landed.length === 1);
+  const strips = server.sent.filter((request) => request.type === 'denoise');
+  expect(strips.map((request) => [request.params['format'], request.inputs['song.flac']]))
+    .toEqual([['flac', { artifact: { jobId: 'audio-1', name: 'audio.flac' } }]]);
+  expect(landed[0]?.strip?.jobId).toBeDefined();
 });
 
 test('an instrumental version uploads the library file and lands linked to its original', async () => {

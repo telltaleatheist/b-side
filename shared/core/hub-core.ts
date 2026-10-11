@@ -471,6 +471,13 @@ export class HubCore {
       },
       inFlight: (id) => this.jobs.list(albumClient(id)).filter((job) => !ENDED_PHASES.includes(job.phase)).length,
       rendering: (id) => this.jobs.rendering(albumClient(id)),
+      strips: (server) => {
+        try {
+          return this.strips.ability(this.registry.get(server))?.can === true;
+        } catch {
+          return false;
+        }
+      },
       retitle: async (id, titles) => {
         const view = await this.libraryView();
         const songs = view.playlists.find((p) => p.id === id)?.songs ?? [];

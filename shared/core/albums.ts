@@ -222,6 +222,11 @@ export interface AlbumHooks {
    * (Owen, 2026-10-11; jobs.ts). The room on the server counts these; absent: all in flight.
    */
   rendering?(id: string): number;
+  /**
+   * Whether `server` strips instrumentals' stray voices: then an album keeps ONE track on it, so
+   * each strip runs before the next render and the track is heard at once (Owen, 2026-10-11).
+   */
+  strips?(server: string): boolean;
   /** Name the album's first songs (made before the plan had names), in order. */
   retitle(id: string, titles: readonly string[]): Promise<void>;
   /** Cancel this album's tracks still on the server. */
@@ -974,11 +979,14 @@ export class AlbumMaker {
       }
       // The room is the renders on the server: tracks made and waiting for their strips (which run
       // together once the renders end, so the separator loads once) take none of it.
-      const rendering = (id: string): number => (this.hooks.rendering === undefined ? own(id) : this.hooks.rendering(id));
+      // A server that strips: one track at a time, its strip included, so the strip is not queued
+      // behind the next render and each track is heard as soon as it is made (Owen, 2026-10-11).
+      const stripping = this.hooks.strips?.(server) === true;
+      const rendering = (id: string): number => (stripping || this.hooks.rendering === undefined ? own(id) : this.hooks.rendering(id));
       const flying = line.reduce((sum, album) => sum + rendering(album.id), 0);
       const room = order.singles === 'next'
         ? ((this.hooks.singlesWaiting?.(server) ?? 0) > 0 ? 0 : AHEAD_SINGLES_NEXT)
-        : AHEAD;
+        : stripping ? 1 : AHEAD;
       if (flying >= room) return;
       const may = order.albums === 'turns' ? line : line.slice(0, 1);
       const turn = may.find((album) => this.wants(album.meta, own(album.id)) !== null);

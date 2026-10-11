@@ -850,19 +850,9 @@ export class JobRunner {
       return;
     }
     job.rendered = rendered;
-    if (job.view.album != null) {
-      // An album's track waits for the album's other renders, then is stripped with them (one load of
-      // the separator); until then it is still being made, and the album sends its next.
-      job.view.strip = { ...strip, state: 'waiting' };
-      job.view.phase = 'running';
-      job.view.fraction = null;
-      job.view.message = 'Made; its stray voices are taken out once the album\'s songs on the server are made';
-      this.publish(job);
-      this.hooks.rendered?.({ ...job.view });
-      this.flushStrips(job.view.server);
-      return;
-    }
-    // A song on its own is stripped at once: one reload of the separator, and of YuE2 after it.
+    // Every song, an album's track too, is stripped at once and delivered, so it can be heard as soon
+    // as it is made (Owen, 2026-10-11: "the goal is to get the user listening asap"); the album sends
+    // its next track once this one is in. The cost is a reload of YuE2 after each strip.
     await this.stripRendered(job, this.clientOf(job));
   }
 
