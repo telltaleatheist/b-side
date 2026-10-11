@@ -246,6 +246,9 @@ export class HubCore {
 
   constructor(private readonly options: HubCoreOptions) {
     this.sink = options.sink;
+    // A computer with Claude Code writes everything through it until B-Sides' model is ready (Owen,
+    // 2026-10-11: "just keep every call as claude -p"); the phone, without it, keeps B-Sides' model.
+    if (options.claude !== undefined) this.preferences = { ...DEFAULT_PREFERENCES, writer: 'claude', lyricist: 'claude' };
     this.registry = new ServerRegistry(options.vault);
     setClientName(options.clientName);
     this.pairing = new PairingSessions(options.clientName, async (pairing) => {
@@ -694,7 +697,7 @@ export class HubCore {
       const stored = JSON.parse(text) as Partial<HubPreferences>;
       const writer = WRITERS.includes((stored.writer ?? (stored as { lyricsWriter?: unknown }).lyricsWriter) as never)
         ? ((stored.writer ?? (stored as { lyricsWriter?: unknown }).lyricsWriter) as Writer)
-        : DEFAULT_PREFERENCES.writer;
+        : this.preferences.writer;
       this.preferences = {
         songFormat: SONG_FORMATS.includes(stored.songFormat as never) ? (stored.songFormat as HubPreferences['songFormat']) : DEFAULT_PREFERENCES.songFormat,
         albumSpaceGb: ALBUM_SPACE_GB.includes(stored.albumSpaceGb as never) ? (stored.albumSpaceGb as number) : DEFAULT_PREFERENCES.albumSpaceGb,
