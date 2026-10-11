@@ -205,6 +205,11 @@ function making(playlists: readonly Playlist[], server: string, order: AlbumOrde
 const COVER_TYPES: Readonly<Record<string, string>> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 const COVER_UPLOAD_MAX = 700 * 1024;
 
+/** How long a cover may take before the album goes on without it (the standard cover stands in). */
+const COVER_WAIT_MS = 15 * 60_000;
+/** How often a cover job's status is read while it paints. */
+const COVER_POLL_MS = 2000;
+
 /** A painted cover larger than this is shrunk to it for keeping (a tile never shows more). */
 const COVER_KEPT_PX = 512;
 
@@ -552,33 +557,40 @@ export class HubCore {
     // under 768; qwen-image is fine at 256). A server that publishes nothing gets the 256 it always had.
     const side = await coverSide(server, model);
     const jobId = await client.image({ model, prompt, width: side, height: side });
+    console.log(`[albums] painting the cover for ${id}: ${model} job ${jobId}`);
+    // The job's status is read every few seconds until it ends. Its event stream was followed
+    // instead, and on Victoria's laptop (2026-10-11) the Iliad's cover finished on the server at
+    // 16:43:21 while B-Sides waited on, never saving it: the album sat at "planning" with no cover,
+    // and each restart painted it again. A cover job is short, so a few seconds' lag costs nothing.
+    const until = Date.now() + COVER_WAIT_MS;
     for (;;) {
-      let ended = false;
-      for await (const event of client.events(jobId)) {
-        if (event.event === 'done') {
-          // A name of its own each time it is painted: every client's cover URL carries the file name,
-          // so a cover painted again (the regenerate button) is never one a browser has cached.
-          const file = `${id}-${Date.now().toString(36)}.cover.png`;
-          await this.options.fetchAudio(server, jobId, 'image.png', this.library.coverPath(file));
-          if (side > COVER_KEPT_PX && this.options.shrinkCover !== undefined) {
-            const small = await this.options.shrinkCover(this.library.coverPath(file), COVER_KEPT_PX).catch((err: unknown) => {
-              console.error(`[albums] could not shrink the cover for ${id}; keeping it as painted:`, err);
-              return null;
-            });
-            if (small !== null) {
-              await this.library.removeCover(file);
-              return small;
-            }
-          }
-          return file;
-        }
-        if (event.event === 'failed' || event.event === 'cancelled' || event.event === 'removed') {
-          ended = true;
-          break;
-        }
+      const status = await client.job(jobId).catch((error: unknown) => {
+        console.error(`[albums] could not read cover job ${jobId}; trying again:`, error);
+        return null;
+      });
+      if (status?.status === 'done') break;
+      if (status !== null && status.status !== 'queued' && status.status !== 'running') {
+        throw new Refusal('cover_failed', `The server could not paint the cover (${status.status}${status.error ? `: ${status.error.message}` : ''}).`);
       }
-      if (ended) throw new Refusal('cover_failed', 'The server could not paint the cover.');
+      if (Date.now() > until) throw new Refusal('cover_slow', `The cover did not finish within ${COVER_WAIT_MS / 60_000} minutes.`);
+      await new Promise((rest) => setTimeout(rest, COVER_POLL_MS));
     }
+    // A name of its own each time it is painted: every client's cover URL carries the file name,
+    // so a cover painted again (the regenerate button) is never one a browser has cached.
+    const file = `${id}-${Date.now().toString(36)}.cover.png`;
+    await this.options.fetchAudio(server, jobId, 'image.png', this.library.coverPath(file));
+    console.log(`[albums] the cover for ${id} is in: ${file}`);
+    if (side > COVER_KEPT_PX && this.options.shrinkCover !== undefined) {
+      const small = await this.options.shrinkCover(this.library.coverPath(file), COVER_KEPT_PX).catch((err: unknown) => {
+        console.error(`[albums] could not shrink the cover for ${id}; keeping it as painted:`, err);
+        return null;
+      });
+      if (small !== null) {
+        await this.library.removeCover(file);
+        return small;
+      }
+    }
+    return file;
   }
 
   /** Close the album writing sessions open now (the app is quitting). */
