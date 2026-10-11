@@ -43,6 +43,7 @@ import type { Disk } from './disk';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { batchSeeds } from '../batch';
+import { styleLine } from '../tags';
 import {
   ENDED_PHASES,
   SONG_MODEL,
@@ -204,8 +205,12 @@ export class JobRunner {
   ): JobView[] {
     const seeds = batchSeeds(typeof request.params.seed === 'number' ? request.params.seed : null, request.count);
     const client = this.connect(server);
+    // Every song's tags in YuE2's official form, whoever wrote them (styleLine): what is sent is what is kept.
+    const base: SongParams = request.params.tags !== undefined && typeof request.params.instrumental === 'boolean'
+      ? { ...request.params, tags: styleLine(request.params.tags, request.params.instrumental) }
+      : request.params;
     const made: Job[] = seeds.map((seed, at) => {
-      const params: Mutable<SongParams> = { ...request.params };
+      const params: Mutable<SongParams> = { ...base };
       delete params.seed;
       if (seed !== null) params.seed = seed;
       this.numbered += 1;

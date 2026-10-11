@@ -108,6 +108,18 @@ const TITLED_SCHEMA = {
 
 const TITLE_RULE = '- title: a creative song title, 1-5 words, that fits what the song is about (and its words, when sung); never its first line, never generic.';
 
+/**
+ * YuE2's official style form (the yue2-music skill; Owen via crucible-pc-1, 2026-10-10), told to a
+ * writer not held to the trained contract (Claude). B-Sides lays the line out in this order itself
+ * (styleLine); this asks for fewer, sharper phrases, as the official examples are.
+ */
+const STYLE_RULE = [
+  "- YuE2's own examples are short: about 6-10 phrases in all, each concise, none contradicting another, e.g.",
+  '  "English, warm piano pop, expressive female voice, acoustic piano, rounded bass and light drums, lyrical memorable melody, unhurried phrasing, 88 BPM",',
+  '  "Instrumental, warm solo piano, lyrical and gentle, no vocals". Prefer fewer, sharper phrases: one genre, a mood, the voice with its gender',
+  '  and timbre when sung, the lead instrument and its accompaniment, one phrasing or melody quality, one tempo.',
+].join('\n');
+
 /** Read and check the model's answer. A malformed one is a refusal that says so, never a guess. */
 export function readFields(content: string, model: string): TagFields {
   let parsed: unknown;
@@ -200,9 +212,7 @@ export async function describe(
   const answer = await writer.ask({
     tag: '[describe]',
     name: 'song_tags',
-    system: titled ? `${tagPrompt(page, wantsInstrumental)}
-
-${TITLE_RULE}` : tagPrompt(page, wantsInstrumental),
+    system: titled ? `${tagPrompt(page, wantsInstrumental)}\n\n${STYLE_RULE}\n${TITLE_RULE}` : tagPrompt(page, wantsInstrumental),
     // What the words should be about (Owen, 2026-10-09), said after the music, as a person would.
     user: brief === '' ? text : `${text}\nThe lyrics: ${brief}`,
     schema: titled ? TITLED_SCHEMA : SCHEMA,

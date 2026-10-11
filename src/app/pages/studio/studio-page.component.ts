@@ -4,6 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 
 import { MAX_BATCH } from '@shared/batch';
 import { ALBUM_MINUTES, albumBytes, ENDED_PHASES, LENGTH_AIMS, SINGLES_NAME, type HubPreferences, type Playlist, type RefusalView } from '@shared/types';
+import { styleLine } from '@shared/tags';
 
 import { CrucibleSetupComponent } from '../../components/crucible-setup/crucible-setup.component';
 import { PresetBarComponent } from '../../components/preset-bar/preset-bar.component';
@@ -102,7 +103,13 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
             <span class="fold-sum">{{ studio.tags().length ? studio.tags().join(' · ') : 'none picked yet' }}</span>
             <app-icon name="down" [size]="18" class="chev" />
           </summary>
-          <div class="fold-body"><app-tag-input /></div>
+          <div class="fold-body">
+            <app-tag-input />
+            @if (sentAs(); as sent) {
+              <!-- Said, never done silently (crucible-pc-1, 2026-10-10): what YuE2's form changes in the person's tags. -->
+              <p class="hint">Sent in YuE2's own form{{ mode() === 'album' ? ', for every track' : '' }}: {{ sent }}</p>
+            }
+          </div>
         </details>
 
         @if (mode() === 'album') {
@@ -348,6 +355,13 @@ export class StudioPageComponent {
   protected readonly mode = signal<'songs' | 'album'>('songs');
   protected readonly albumMinutes = ALBUM_MINUTES;
   protected readonly lengthAims = LENGTH_AIMS;
+  /** The tags as they are sent (YuE2's official form), when that differs from what is picked. */
+  protected readonly sentAs = computed(() => {
+    const picked = this.studio.tagLine();
+    if (picked === '') return null;
+    const sent = styleLine(picked, this.instrumentalHere());
+    return sent === picked ? null : sent;
+  });
   protected readonly albumLength = signal(60);
   protected readonly albumSung = signal(false);
   protected readonly albumExact = signal(false);

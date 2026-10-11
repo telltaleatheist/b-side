@@ -56,6 +56,54 @@ export function withoutVoice(tags: readonly string[]): string[] {
   return tags.filter((tag) => /^(instrumental|no vocals|no singing)$/i.test(tag.trim()) || !VOICE_TAG.test(tag));
 }
 
+/** The phrases that end every instrumental style line (YuE2's own instrumental examples). */
+export const NO_VOICE_CLAUSE: readonly string[] = ['no vocals', 'no singing', 'no choir', 'no spoken words'];
+
+const LANGUAGE = /^(english|chinese|mandarin|cantonese)$/i;
+const NO_VOICE = /^(instrumental|no vocals?|no singing|no choir|no spoken words?|without vocals|vocal-free)$/i;
+const TEMPO = /\b\d{2,3}\s*BPM\b/i;
+/** A voice by its singer alone ("male", "female"): a voice phrase too, beside VOICE_TAG's. */
+const SINGER = /^(male|female|man|woman|boy|girl|child|children)\b/i;
+
+function isVoice(tag: string): boolean {
+  return VOICE_TAG.test(tag) || SINGER.test(tag);
+}
+
+/**
+ * A style line in YuE2's official form (the yue2-music skill, YuE rev 18a07bb6; Owen via
+ * crucible-pc-1, 2026-10-10), applied to whatever wrote the tags, the person included:
+ *   sung          the language first, then the voice, then the rest; exactly one "N BPM".
+ *   instrumental  "Instrumental" first; no language and no voice; exactly one "N BPM"; ending
+ *                 "no vocals, no singing, no choir, no spoken words".
+ * Each phrase once (ignoring case), in the order given otherwise; the first tempo is the one kept
+ * (the album's own before a track's). Nothing else is dropped: what the person typed stays.
+ */
+export function styleLine(tags: string, instrumental: boolean): string {
+  const seen = new Set<string>();
+  const phrases = splitTags(tags).filter((tag) => {
+    const key = tag.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  let tempo = false;
+  const rest = phrases.filter((tag) => {
+    if (NO_VOICE.test(tag)) return false;
+    if (TEMPO.test(tag)) {
+      if (tempo) return false;
+      tempo = true;
+    }
+    return true;
+  });
+  if (instrumental) {
+    return joinTags(['Instrumental', ...rest.filter((tag) => !LANGUAGE.test(tag) && !isVoice(tag)), ...NO_VOICE_CLAUSE]);
+  }
+  const language = rest.filter((tag) => LANGUAGE.test(tag)).slice(0, 1);
+  const voice = rest.filter((tag) => !LANGUAGE.test(tag) && isVoice(tag));
+  const others = rest.filter((tag) => !LANGUAGE.test(tag) && !isVoice(tag));
+  return joinTags([...language, ...voice, ...others]);
+}
+
 /** The value the request sends: one comma-separated line. */
 export function joinTags(tags: readonly string[]): string {
   return tags.join(', ');
