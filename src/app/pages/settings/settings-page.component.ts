@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
 import type { FirewallView } from '@shared/api';
@@ -24,7 +25,7 @@ import { StudioService } from '../../core/studio.service';
 @Component({
   selector: 'app-settings-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RefusalComponent, ServersCardComponent, HubPickerComponent, QrCodeComponent],
+  imports: [NgTemplateOutlet, RefusalComponent, ServersCardComponent, HubPickerComponent, QrCodeComponent],
   template: `
     <div class="page">
       <h1 class="page-title">Settings</h1>
@@ -77,6 +78,10 @@ import { StudioService } from '../../core/studio.service';
             }
           }
         </div>
+      }
+
+      @if (hub.kind === 'ios') {
+        <ng-container *ngTemplateOutlet="librariesCard" />
       }
 
       <app-servers-card />
@@ -231,9 +236,23 @@ import { StudioService } from '../../core/studio.service';
         }
       </div>
 
-      <div class="card">
+      @if (hub.kind !== 'ios') {
+        <ng-container *ngTemplateOutlet="librariesCard" />
+      }
+
+      @if (refusal(); as refused) {
+        <app-refusal [refusal]="refused" />
+      }
+    </div>
+
+    <ng-template #librariesCard>
+      <div class="card" id="libraries">
         <h2 class="card-title">Other libraries</h2>
-        <p class="detail">Another B-Sides on your network, added by its address: its songs show in your Library and play from there. Nothing is copied. When it is off or away, it is simply not listed. On that computer: Settings → Other devices → turn on sharing.</p>
+        @if (hub.kind === 'ios') {
+          <p class="detail">Add every B-Sides computer you want to hear: each one's playlists and albums show in your Library and play from there. Nothing is copied. Point the camera at the code in that computer's Settings → Other devices, or type its address or name here.</p>
+        } @else {
+          <p class="detail">Another B-Sides on your network, added by its address: its songs show in your Library and play from there. Nothing is copied. When it is off or away, it is simply not listed. On that computer: Settings → Other devices → turn on sharing.</p>
+        }
         @for (offer of peers.offered(); track offer.hostname) {
           <div class="link offer">
             <span class="peer-names">
@@ -269,11 +288,7 @@ import { StudioService } from '../../core/studio.service';
         </form>
         @if (peerNote(); as note) { <p class="hint">{{ note }}</p> }
       </div>
-
-      @if (refusal(); as refused) {
-        <app-refusal [refusal]="refused" />
-      }
-    </div>
+    </ng-template>
   `,
   styles: [`
     .peer-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted); flex: none; }

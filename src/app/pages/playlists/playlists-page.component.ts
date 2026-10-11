@@ -277,6 +277,9 @@ const COVER_PX = 768;
             }
           </div>
         }
+        @if (hub.kind === 'ios') {
+          <a class="add-library ghost small" routerLink="/settings">+ Add another B-Sides library</a>
+        }
         @if (cloud.linked()) {
           <div class="cloud-head">
             <h2 class="section-title">In the cloud</h2>
@@ -307,6 +310,7 @@ const COVER_PX = 768;
     </div>
   `,
   styles: [`
+    .add-library { display: inline-flex; align-self: flex-start; margin-top: 4px; text-decoration: none; }
     .move-menu { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: 6px; }
     .actions.shown { opacity: 1; }
     .song-making .meta { font-size: 12px; color: var(--text-tertiary); }
