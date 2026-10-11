@@ -93,6 +93,20 @@ function isVoice(tag: string): boolean {
 
 /** An instrumental's lead as YuE2's instrumental examples word it ("lyrical violin melody"). */
 const MELODY = /\b(melody|lead)\b/i;
+/** An instrument that can carry a melody; drums, bass, riffs and the like cannot. */
+const MELODIC = /\b(guitars?|piano|keys|rhodes|synths?|strings|violins?|viola|cello|fiddle|banjo|mandolin|harp|sax(ophone)?|trumpet|trombone|horns?|flute|clarinet|oboe|organ|accordion|harmonica|ukulele|sitar|koto|marimba|vibraphone|xylophone|glockenspiel|kalimba|bells|erhu|guzheng|pipa|bagpipes?)\b/i;
+const NOT_MELODIC = /\b(drums?|bass|riffs?|harmonics|808|percussion|pads?)\b/i;
+
+/**
+ * An instrumental's melody when its tags name none: its first melodic instrument as "<x> melody",
+ * else one fitting the genre. Owen, 2026-10-11: a preset's instrumental ("soul ... piano, strings")
+ * never named what carries its melody, and YuE2 sang it; only Describe had added one.
+ */
+function fallbackMelody(tags: readonly string[]): string {
+  const instrument = tags.find((tag) => MELODIC.test(tag) && !NOT_MELODIC.test(tag));
+  if (instrument !== undefined) return `${instrument} melody`;
+  return tags.some((tag) => /\b(rock|metal|punk|grunge)\b/i.test(tag)) ? 'lead guitar melody' : 'piano melody';
+}
 
 /**
  * The lead: who or what carries the melody, exactly one a song (Owen, 2026-10-11: "lead instrument
@@ -166,7 +180,7 @@ export function styleLine(tags: string, instrumental: boolean, lead?: string | n
   });
   if (instrumental) {
     const kept = rest.filter((tag) => !LANGUAGE.test(tag) && !isVoice(tag) && !SINGER_LIKE.test(tag));
-    const chosen = given ?? leadOf(kept, true);
+    const chosen = given ?? leadOf(kept, true) ?? fallbackMelody(kept);
     // "piano" beside the lead "piano melody" is the same instrument said twice.
     const bare = chosen === null ? '' : keyOf(chosen.replace(/\s+melody$/i, ''));
     const others = chosen === null ? kept : kept.filter((tag) => keyOf(tag) !== keyOf(chosen) && keyOf(tag) !== bare);
