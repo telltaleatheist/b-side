@@ -8,6 +8,8 @@ import { hearPairLinks, readPairLink } from './pairing';
 const STORED_PEERS = 'bside.peers';
 /** How often a library that is listed (or not) is looked at again. */
 const LOOK_EVERY_MS = 30_000;
+/** How often, while one of them is making an album: its progress bar moves. */
+const LOOK_WHILE_MAKING_MS = 5_000;
 /** A library that does not answer in this long is not on the network now. */
 const ANSWER_WITHIN_MS = 4_000;
 
@@ -66,8 +68,7 @@ export class PeersService {
       stored = [];
     }
     this.peers.set(stored.filter((peer) => typeof peer.url === 'string').map((peer) => this.fresh(peer)));
-    void this.lookAll();
-    setInterval(() => void this.lookAll(), LOOK_EVERY_MS);
+    void this.lookAgain();
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') void this.lookAll();
     });
@@ -198,6 +199,16 @@ export class PeersService {
     const cover = playlist.album?.cover ?? null;
     if (peer === null || cover === null) return STOCK_COVER;
     return `${peer.url}/api/albums/${encodeURIComponent(playlist.id)}/cover?key=${encodeURIComponent(peer.key)}&v=${encodeURIComponent(cover)}`;
+  }
+
+  /** Look at every library, then again soon while one is making an album, else in a while. */
+  private async lookAgain(): Promise<void> {
+    await this.lookAll();
+    const making = this.present().some((peer) => peer.library?.playlists.some((playlist) => {
+      const album = playlist.album;
+      return album != null && album.working !== false && ['planning', 'cover', 'making'].includes(album.stage);
+    }));
+    setTimeout(() => void this.lookAgain(), making ? LOOK_WHILE_MAKING_MS : LOOK_EVERY_MS);
   }
 
   /** Look at every added library again. */

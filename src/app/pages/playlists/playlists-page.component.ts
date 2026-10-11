@@ -274,7 +274,14 @@ const COVER_PX = 768;
               <a class="tile" [routerLink]="['/peer', peerId(peer), playlist.id]">
                 <app-cover class="tile-art" [key]="playlist.id" [src]="peers.coverUrl(peerId(peer), playlist)" />
                 <span class="tile-name">{{ playlist.name }}</span>
-                <span class="tile-sub">{{ playlist.album ? (playlist.album.artist || 'Album') : playlist.songs.length + (playlist.songs.length === 1 ? ' song' : ' songs') }}</span>
+                @if (playlist.album; as album) {
+                  <span class="tile-sub" [class.amber]="busy(album.stage) && !interrupted(album)">{{ album.artist || 'Album' }}{{ interrupted(album) ? ' · interrupted' : busy(album.stage) ? ' · ' + stageWords(album.stage) : '' }}</span>
+                  @if (busy(album.stage) && !interrupted(album)) {
+                    <div class="bar tile-bar album-bar" [class.indeterminate]="albumProgress(album).waiting"><span [style.width.%]="albumProgress(album).waiting ? null : albumProgress(album).share * 100"></span></div>
+                  }
+                } @else {
+                  <span class="tile-sub">{{ playlist.songs.length }} {{ playlist.songs.length === 1 ? 'song' : 'songs' }}</span>
+                }
               </a>
             } @empty {
               <p class="hint">Nothing in it yet.</p>

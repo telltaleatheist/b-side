@@ -102,6 +102,11 @@ interface Room {
                   <span class="side-names">
                     <span class="side-name">{{ playlist.name }}</span>
                     <span class="side-sub">{{ playlist.songs.length }} {{ playlist.songs.length === 1 ? 'song' : 'songs' }}</span>
+                    @if (making(playlist); as progress) {
+                      <span class="side-progress" [class.sliding]="progress.waiting" [title]="progress.label">
+                        <span [style.width.%]="progress.share * 100"></span>
+                      </span>
+                    }
                   </span>
                 </a>
               }
