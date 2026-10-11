@@ -69,7 +69,9 @@ export const YUE_SECTIONS = ['Intro', 'Verse', 'Pre-Chorus', 'Chorus', 'Bridge',
 export const PHONETIC = [
   'Pronounce phonetically: YuE2 sings each word as it reads it, and gets names and rare words wrong. Write every name and',
   'uncommon word the way it sounds, syllables joined by hyphens, the stressed one in capitals: Persephone as per-SEF-oh-nee,',
-  'Odysseus as oh-DISS-ee-us, Penelope as peh-NEL-oh-pee, Achilles as uh-KILL-eez. Everyday English words stay as they are.',
+  'Odysseus as oh-DISS-ee-us, Penelope as peh-NEL-oh-pee, Achilles as uh-KILL-eez. Everyday English words stay as they are,',
+  'except a word spelled the same but said two ways that the song cannot do without: respell it as sung (winding a key: wynd;',
+  'past-tense read: red).',
 ].join(' ');
 
 export function claudeLyricsSystem(preChorus = false): string {
@@ -92,6 +94,10 @@ export function claudeLyricsSystem(preChorus = false): string {
     '- Short lines: at most the syllables per line you are given. YuE2 sings about one bar per line, and a longer line is',
     '  crammed or loses words. Count every line\'s syllables before you answer, and split or cut any line over the budget.',
     '- Follow the shape you are given, if one is given.',
+    // Victoria, 2026-10-11: YuE2 sang "wind" (a breeze) as "wind" (a key); it reads spelling, not sense.
+    '- No word spelled the same but said two ways: YuE2 goes by spelling and picks either sound. Not wind, read, live, tear,',
+    '  bow, close, wound, dove, lead, row, minute, bass, object, present, record, desert, content: say breeze or gust, turn the',
+    '  key, looked at, a teardrop, nearby, an injury.',
     '- Verses are longer than choruses. The chorus is the hook: singable and memorable, not the title repeated with a filler phrase.',
     '- Lines of similar length within a section so they sing well. A blank line between sections.',
     '- Sing in the language the style line names: English, or Chinese when it says Chinese (the two YuE2 sings).',
