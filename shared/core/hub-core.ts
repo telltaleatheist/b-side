@@ -37,6 +37,7 @@ import {
   ALBUM_MINUTES,
   ALBUM_SPACE_GB,
   albumBytes,
+  DESCRIPTION_MAX,
   ENDED_PHASES,
   LENGTH_AIMS,
   SINGLES_NAME,
@@ -160,6 +161,15 @@ export function matchRoute<R extends { method: string; pattern: RegExp; names: r
 
 /** The longest name a song is given when it lands (a writer's title, cut to fit). */
 const SONG_TITLE_MAX = 80;
+
+/** An album's description: refused by name when too long, never cut (DESCRIPTION_MAX). */
+function albumDescription(value: unknown): string {
+  const description = text(value ?? '', 'description');
+  if (description.length > DESCRIPTION_MAX) {
+    throw new Refusal('description_too_long', `A description is at most ${DESCRIPTION_MAX} characters; this one is ${description.length}. Shorten it, or put what the lyrics should be about in its own box.`);
+  }
+  return description;
+}
 
 /** What an album download holds. */
 export interface AlbumFiles {
@@ -796,7 +806,7 @@ export class HubCore {
       const sung = body['sung'] === true;
       const lyrics = sung && typeof body['lyrics'] === 'string' ? body['lyrics'].trim().slice(0, MAX_LYRICS_BRIEF) : '';
       const ask: AlbumAsk = {
-        description: text(body['description'] ?? '', 'description').slice(0, 600), tags: tags as string[], minutes, sung, cfg,
+        description: albumDescription(body['description']), tags: tags as string[], minutes, sung, cfg,
         ...(lyrics ? { lyrics } : {}), ...(body['exactTags'] === true ? { exactTags: true } : {}),
         ...(LENGTH_AIMS.some((aim) => aim.key === body['trackLength']) ? { trackLength: body['trackLength'] as string } : {}),
       };

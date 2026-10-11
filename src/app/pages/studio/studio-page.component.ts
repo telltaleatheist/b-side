@@ -3,8 +3,8 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { Router, RouterLink } from '@angular/router';
 
 import { MAX_BATCH } from '@shared/batch';
-import { ALBUM_MINUTES, albumBytes, ENDED_PHASES, LENGTH_AIMS, SINGLES_NAME, type HubPreferences, type Playlist, type RefusalView } from '@shared/types';
-import { styleLine } from '@shared/tags';
+import { ALBUM_MINUTES, albumBytes, DESCRIPTION_MAX, ENDED_PHASES, LENGTH_AIMS, SINGLES_NAME, type HubPreferences, type Playlist, type RefusalView } from '@shared/types';
+import { styleLine, undeclaredLanguage } from '@shared/tags';
 
 import { CrucibleSetupComponent } from '../../components/crucible-setup/crucible-setup.component';
 import { PresetBarComponent } from '../../components/preset-bar/preset-bar.component';
@@ -67,9 +67,13 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
 
         <form class="field" (submit)="$event.preventDefault(); fillTags()">
           <label class="label" for="describe">Describe it</label>
-          <textarea id="describe" rows="2" maxlength="600" class="describe"
+          <textarea id="describe" rows="2" class="describe" [class.over]="studio.description().length > descriptionMax"
                     placeholder="rainy 90s trip-hop, vinyl crackle, a little late-night jazz"
                     [value]="studio.description()" (input)="studio.description.set($any($event.target).value)"></textarea>
+          @if (studio.description().length > descriptionMax * 0.8) {
+            <!-- Counted, and too long said, never cut (Victoria, 2026-10-11). -->
+            <p class="hint" [class.warn]="studio.description().length > descriptionMax">{{ studio.description().length }} / {{ descriptionMax }}{{ studio.description().length > descriptionMax ? ': too long. Shorten it before you make it; nothing is cut.' : '' }}</p>
+          }
           <div class="describe-foot">
             <button type="submit" class="ghost small" [disabled]="studio.describing() || studio.description().trim() === ''">
               {{ studio.describing() ? 'Working…' : 'Fill in the tags' }}
@@ -105,6 +109,9 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
           </summary>
           <div class="fold-body">
             <app-tag-input />
+            @if (offLanguage(); as language) {
+              <p class="hint">YuE2 is trained on English and Chinese; {{ language }} is sent as asked, but it may be sung less well.</p>
+            }
             @if (sentAs(); as sent) {
               <!-- Said, never done silently (crucible-pc-1, 2026-10-10): what YuE2's form changes in the person's tags. -->
               <p class="hint">Sent in YuE2's own form{{ mode() === 'album' ? ', for every track' : '' }}: {{ sent }}</p>
@@ -290,6 +297,8 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
   `,
   styles: [`
     .modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; background: var(--bg-elevated); border-radius: var(--radius-lg); }
+    .hint.warn, .describe.over { color: var(--warn); }
+    .describe.over { border-color: var(--warn); }
     .modes button { height: 40px; border: none; border-radius: 10px; background: transparent; color: var(--text-secondary); font-size: 14px; font-weight: 600; }
     .modes button.on { background: var(--text-primary); color: var(--bg-base); }
     .options { display: flex; flex-direction: column; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
@@ -355,6 +364,9 @@ export class StudioPageComponent {
   protected readonly mode = signal<'songs' | 'album'>('songs');
   protected readonly albumMinutes = ALBUM_MINUTES;
   protected readonly lengthAims = LENGTH_AIMS;
+  protected readonly descriptionMax = DESCRIPTION_MAX;
+  /** A sung song's language when YuE2 does not declare it (Owen, 2026-10-11: any language, said honestly). */
+  protected readonly offLanguage = computed(() => (this.instrumentalHere() ? null : undeclaredLanguage(this.studio.tagLine())));
   /** The tags as they are sent (YuE2's official form), when that differs from what is picked. */
   protected readonly sentAs = computed(() => {
     const picked = this.studio.tagLine();

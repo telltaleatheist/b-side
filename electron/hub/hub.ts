@@ -90,7 +90,7 @@ const SENT = Symbol('sent');
 const MAX_INTRODUCTIONS = 20;
 
 /** Adapters that belong to virtual machines on this computer, by the name Windows gives them. */
-const VIRTUAL_ADAPTER = /^(vEthernet|VMware|VirtualBox)/i;
+const VIRTUAL_ADAPTER = /^(vEthernet\b|VMware\b|VirtualBox\b)/i;
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 

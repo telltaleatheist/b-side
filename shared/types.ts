@@ -486,6 +486,12 @@ export interface AlbumAsk {
   readonly exactTags?: boolean;
 }
 
+/**
+ * The longest description B-Sides takes, for a song or an album. Too long is refused by name, never
+ * cut (Victoria, 2026-10-11: at 600 her album's instructions were cut mid-word, unseen).
+ */
+export const DESCRIPTION_MAX = 2000;
+
 /** The lengths an album can be (15 minutes: a few songs, Owen 2026-10-10). */
 export const ALBUM_MINUTES: readonly number[] = [15, 30, 60, 90];
 

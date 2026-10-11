@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { styleLine } from '../shared/tags';
+import { styleLine, undeclaredLanguage } from '../shared/tags';
 
 test("YuE2's official examples come through unchanged (sung) or with the full no-voice ending (instrumental)", () => {
   const sung = 'English, warm piano pop, expressive female voice, acoustic piano, rounded bass and light drums, lyrical memorable melody, unhurried phrasing, 88 BPM';
@@ -27,4 +27,18 @@ test('a sung line that names no language gets English first; one that names anot
   expect(styleLine('city pop, Japanese, female vocal, 110 BPM', false)).toBe('Japanese, city pop, female vocal, 110 BPM');
   expect(styleLine('Chinese, ballad, 70 BPM', false)).toBe('Chinese, ballad, 70 BPM');
   expect(styleLine('boom bap, Spanish, 92 BPM', true)).toBe('Instrumental, boom bap, 92 BPM, no vocals, no singing, no choir, no spoken words');
+});
+
+test('any language keeps its place first; English goes in only when none is named', () => {
+  expect(styleLine('afrobeat, Swahili, joyful, 104 BPM', false)).toBe('Swahili, afrobeat, joyful, 104 BPM');
+  expect(styleLine('tango, Spanish lyrics, 120 BPM', false)).toBe('Spanish lyrics, tango, 120 BPM');
+  expect(styleLine('bossa nova, Brazilian Portuguese, 90 BPM', false)).toBe('Brazilian Portuguese, bossa nova, 90 BPM');
+});
+
+test("a language YuE2 does not declare is named for the Studio's note; English and Chinese are not", () => {
+  expect(undeclaredLanguage('Spanish, tango, 120 BPM')).toBe('Spanish');
+  expect(undeclaredLanguage('Japanese lyrics, city pop')).toBe('Japanese lyrics');
+  expect(undeclaredLanguage('English, pop')).toBeNull();
+  expect(undeclaredLanguage('Mandarin, ballad')).toBeNull();
+  expect(undeclaredLanguage('pop, 90 BPM')).toBeNull();
 });

@@ -66,7 +66,7 @@ export function claudeLyricsSystem(): string {
     '- Follow the shape you are given, if one is given.',
     '- Verses are longer than choruses. The chorus is the hook: singable and memorable, not the title repeated with a filler phrase.',
     '- Lines of similar length within a section so they sing well. A blank line between sections.',
-    '- Sing in the language the style line names (English unless it says Chinese).',
+    '- Write the words in the language the style line names, whatever it is; English when it names none.',
     'Reply with the lyrics only, in the JSON asked for.',
   ].join('\n');
 }

@@ -24,9 +24,9 @@
 import { Refusal } from './refusal';
 import type { TextModel } from './text-model';
 import { clashesWith, clashText, indexOfTag, withoutVoice } from '../tags';
-import type { DescribeResult, SongPage } from '../types';
+import { DESCRIPTION_MAX, type DescribeResult, type SongPage } from '../types';
 
-const MAX_DESCRIPTION = 600;
+const MAX_DESCRIPTION = DESCRIPTION_MAX;
 const PHRASE_MAX = 48;
 
 /** What the model must answer: each field a short list of phrases, in YuE2's order. */
@@ -113,6 +113,8 @@ const TITLED_SCHEMA = {
   properties: {
     title: { type: 'string', maxLength: 60 },
     ...SCHEMA.properties,
+    // Any language a person asks for (Owen, 2026-10-11); B-Sides' model was trained on English or Chinese.
+    language: { type: 'string', maxLength: 40 },
     genre: phrases(1, 2),
     mood: phrases(1, 2),
     vocal: phrases(0, 1),
@@ -120,6 +122,12 @@ const TITLED_SCHEMA = {
     sound: phrases(0, 1),
   },
 } as const;
+
+/** The trained prompt's language line (English or Chinese), which a writer not held to it does without. */
+const TRAINED_LANGUAGE_RULE = '- language: English unless the description asks for Chinese.';
+
+/** Any language for a writer not held to the trained contract (Claude), in the trained line's place. */
+const LANGUAGE_RULE = '- language: whatever language the person asks the song to be sung in, any language at all (Japanese, Spanish, Swahili...); English when they do not say.';
 
 const TITLE_RULE = '- title: a creative song title, 1-5 words, that fits what the song is about (and its words, when sung); never its first line, never generic.';
 
@@ -215,7 +223,9 @@ export async function describe(
   const answer = await writer.ask({
     tag: '[describe]',
     name: 'song_tags',
-    system: titled ? `${tagPrompt(page, wantsInstrumental)}\n\n${TITLE_RULE}` : tagPrompt(page, wantsInstrumental),
+    system: titled
+      ? `${tagPrompt(page, wantsInstrumental).replace(TRAINED_LANGUAGE_RULE, LANGUAGE_RULE)}\n\n${TITLE_RULE}`
+      : tagPrompt(page, wantsInstrumental),
     // What the words should be about (Owen, 2026-10-09), said after the music, as a person would.
     user: brief === '' ? text : `${text}\nThe lyrics: ${brief}`,
     schema: titled ? TITLED_SCHEMA : SCHEMA,
