@@ -22,6 +22,19 @@ import type { CrucibleClient } from '@crucible/client';
 
 import { AlbumMaker, albumLine, trackSong } from './albums';
 import { ServerNeeds } from './server-needs';
+
+/** Turn the separator's job on (PUT /v1/settings/jobs/denoise); the pinned SDK has no call for it. */
+async function enableDenoise(server: StoredServer): Promise<void> {
+  const response = await fetch(`${server.url}/v1/settings/jobs/denoise`, {
+    method: 'PUT',
+    headers: {
+      'content-type': 'application/json', 'x-crucible-api': '1',
+      ...(server.token !== '' ? { authorization: `Bearer ${server.token}` } : {}),
+    },
+    body: JSON.stringify({ enabled: true }),
+  });
+  if (!response.ok) throw new Error(`the server would not turn the separator on (${response.status})`);
+}
 import { clientFor, clientName, probe, serverPresets, setClientName, songPage, startInstall } from './crucible';
 import { PresetStore } from './presets';
 import { describe, layLyrics, lyricsBrief } from './describe';
@@ -910,7 +923,7 @@ export class HubCore {
     } catch {
       return;
     }
-    void this.needs.ensure(server.name, clientFor(server));
+    void this.needs.ensure(server.name, clientFor(server), () => enableDenoise(server));
   }
 
   async snapshot(client: CoreClient): Promise<HubSnapshot> {

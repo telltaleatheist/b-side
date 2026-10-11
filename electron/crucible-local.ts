@@ -223,7 +223,7 @@ export async function runningCrucibleVersion(): Promise<string | null> {
   if (read.found === 'absent') return null;
   if (read.found === 'refused') throw new Refusal('install_precheck_failed', read.message);
   try {
-    const answered = await probe({ name: read.pairing.name, url: read.pairing.url, token: read.pairing.token });
+    const answered = await probe({ name: read.pairing.name, url: read.pairing.url, token: read.pairing.token ?? '' });
     return answered.version;
   } catch (err) {
     throw new Refusal(

@@ -88,11 +88,15 @@ export class ServerNeeds {
     return this.views.get(server) ?? null;
   }
 
-  /** Ask `server` once; a second call while one ran (or after it) does nothing. */
-  ensure(server: string, client: CrucibleClient): Promise<void> {
+  /**
+   * Ask `server` once; a second call while one ran (or after it) does nothing. `enable` turns
+   * the denoise job on in the server's settings (PUT /v1/settings/jobs/denoise): a module task
+   * installs the environment and the model but leaves the job off (crucible-pc-1, 2026-10-11).
+   */
+  ensure(server: string, client: CrucibleClient, enable: () => Promise<void> = async () => undefined): Promise<void> {
     if (this.views.has(server)) return Promise.resolve();
     this.set({ server, state: 'checking', sentence: `Checking whether ${server} has the vocal separator…`, task: null });
-    return this.run(server, client).catch((error: unknown) => {
+    return this.run(server, client, enable).catch((error: unknown) => {
       const said = error instanceof CrucibleRefused ? `${error.code}: ${error.serverMessage}` : error instanceof Error ? error.message : String(error);
       this.set({ server, state: 'failed', sentence: `B-Sides could not ask ${server} for the vocal separator (${said}). It asks again the next time B-Sides starts.`, task: null });
       // Asked again on the next start, not now: a server that refused once refuses a loop too.
@@ -104,7 +108,7 @@ export class ServerNeeds {
     this.changed(view);
   }
 
-  private async run(server: string, client: CrucibleClient): Promise<void> {
+  private async run(server: string, client: CrucibleClient, enable: () => Promise<void>): Promise<void> {
     const info = await client.info();
     const module = moduleForBackend(info.host.backend);
     if (module.subjects.length === 0 && module.job_types.length === 0) {
@@ -113,6 +117,7 @@ export class ServerNeeds {
     }
     const missing = missingOf(module, await client.catalog(), info.jobTypes);
     if (missing.length === 0) {
+      if (!info.jobTypes.includes('denoise')) await enable();
       this.set({ server, state: 'ready', sentence: `${server} has the vocal separator.`, task: null });
       return;
     }
@@ -133,6 +138,7 @@ export class ServerNeeds {
       const status = await client.task(task);
       if (status.state === 'running') continue;
       if (status.state === 'done') {
+        await enable();
         this.set({ server, state: 'ready', sentence: `${server} has the vocal separator.`, task });
       } else {
         const why = status.error?.message ?? status.state;

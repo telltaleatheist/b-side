@@ -48,8 +48,8 @@ function withFragment(line: string): string {
   if (raw.includes('#')) return raw.endsWith('#') ? `${raw}${NO_TOKEN}` : raw;
   return `${raw.endsWith('/') ? raw : `${raw}/`}#${NO_TOKEN}`;
 }
-function tokenOf(token: string): string {
-  return token === NO_TOKEN ? '' : token;
+function tokenOf(token: string | null): string {
+  return token === null || token === NO_TOKEN ? '' : token;
 }
 
 /** A base URL as the SDK wants it: http(s), no trailing slash, no `/v1`. */
@@ -162,10 +162,10 @@ export class ServerRegistry {
    * repair for the 401 that follows. Otherwise the server is added under the
    * name the line carries, exactly as a pasted pairing line is.
    */
-  async usePublished(published: { name: string; url: string; token: string }): Promise<{ name: string; servers: ServerView[] }> {
+  async usePublished(published: { name: string; url: string; token: string | null }): Promise<{ name: string; servers: ServerView[] }> {
     const existing = this.atAddress(published.url);
     const name = existing?.name ?? published.name;
-    await this.put({ name, url: published.url, token: published.token }, existing?.name ?? null);
+    await this.put({ name, url: published.url, token: tokenOf(published.token) }, existing?.name ?? null);
     return { name, servers: await this.setActive(name) };
   }
 
@@ -175,10 +175,10 @@ export class ServerRegistry {
    * keeps its name and takes the new token. It becomes the one in use only when
    * none is; switching is the person's choice, in Settings.
    */
-  async addPaired(pairing: { name: string; url: string; token: string }): Promise<string> {
+  async addPaired(pairing: { name: string; url: string; token: string | null }): Promise<string> {
     const existing = this.atAddress(pairing.url);
     const name = existing?.name ?? pairing.name;
-    await this.put({ name, url: pairing.url, token: pairing.token }, existing?.name ?? null);
+    await this.put({ name, url: pairing.url, token: tokenOf(pairing.token) }, existing?.name ?? null);
     return name;
   }
 
