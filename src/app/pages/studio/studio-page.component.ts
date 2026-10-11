@@ -1,5 +1,5 @@
 import { DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 
 import { MAX_BATCH } from '@shared/batch';
@@ -129,8 +129,8 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
         </details>
 
         <!-- Vocals, the lyrics block and the options look the same in both modes (Owen, 2026-10-11); each mode keeps its own signal. -->
-        @if (mode() === 'album' || studio.page()?.instrumental !== false) {
-          <div class="options">
+        <div class="options">
+          @if (mode() === 'album' || studio.page()?.instrumental !== false) {
             <div class="opt">
               <span class="opt-name">Vocals</span>
               <div class="opt-chips">
@@ -143,8 +143,25 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
                 }
               </div>
             </div>
+          }
+          <!-- Lead (Owen, 2026-10-11): one tag picked as "the" melody's, by the writer or the person. -->
+          <div class="opt lead">
+            <div class="lead-head">
+              <label class="opt-name" for="make-lead">Lead</label>
+              <input id="make-lead" type="text" maxlength="60" autocomplete="off"
+                     [placeholder]="instrumentalHere() ? 'e.g. piano' : 'e.g. gritty male voice'"
+                     [value]="studio.lead()" (input)="studio.lead.set($any($event.target).value)" />
+            </div>
+            @if (leadChoices().length > 0) {
+              <div class="opt-chips">
+                @for (choice of leadChoices(); track choice) {
+                  <button type="button" class="pill" [class.on]="isLead(choice)" (click)="pickLead(choice)">{{ choice }}</button>
+                }
+              </div>
+            }
+            <p class="hint">Lead: who or what carries the melody. {{ instrumentalHere() ? 'One instrument; "piano" is sent as "piano melody".' : 'The one singer; any other voice in the tags is left out.' }} Blank: {{ mode() === 'album' ? 'each track picks its own' : 'the writer picks' }}.</p>
           </div>
-        }
+        </div>
 
         @if (!instrumentalHere()) {
           <div class="field">
@@ -346,6 +363,15 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
     .opt-name { font-size: 15px; }
     .opt-chips { display: flex; gap: 6px; flex-wrap: wrap; }
     .opt-note { padding: 12px 14px; border-bottom: 1px solid var(--border-subtle); }
+    .opt.lead { flex-direction: column; align-items: stretch; gap: 10px; }
+    .lead-head { display: flex; align-items: center; gap: 12px; }
+    .lead-head input { flex: 1 1 auto; min-width: 0; }
+    .pill {
+      font-size: 12px; padding: 2px 9px; border-radius: 999px;
+      border: 1px solid var(--border-default); background: var(--bg-input); color: var(--text-secondary);
+    }
+    .pill:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--bg-input); }
+    .pill.on { color: var(--accent); border-color: var(--accent-strong); background: var(--accent-faint); }
     .folder-pick { max-width: min(320px, 100%); }
     .opt-chips:has(.folder-pick) { min-width: 0; max-width: 100%; }
     .folder-new { display: flex; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid var(--border-subtle); }
@@ -422,9 +448,26 @@ export class StudioPageComponent {
   protected readonly sentAs = computed(() => {
     const picked = this.studio.tagLine();
     if (picked === '') return null;
-    const sent = styleLine(picked, this.instrumentalHere());
+    const sent = styleLine(picked, this.instrumentalHere(), this.studio.lead());
     return sent === picked ? null : sent;
   });
+  /**
+   * Lead's suggestions: the song page's voices when sung, its instruments when instrumental (Owen,
+   * 2026-10-11), by the page's group names. Drums, bass and riffs carry no melody, so they are not offered.
+   */
+  protected readonly leadChoices = computed(() => {
+    const instrumental = this.instrumentalHere();
+    const group = (this.studio.page()?.suggestions ?? []).find((each) => (instrumental ? /instrument/i : /vocal|voice/i).test(each.group));
+    const tags = group?.tags ?? [];
+    return instrumental ? tags.filter((tag) => !/\b(drums?|bass|riffs?|harmonics|808|percussion)\b/i.test(tag)) : [...tags];
+  });
+  protected isLead(choice: string): boolean {
+    return this.studio.lead().trim().toLowerCase() === choice.toLowerCase();
+  }
+  /** A suggestion picked is the lead; picked again, Lead is blank again. */
+  protected pickLead(choice: string): void {
+    this.studio.lead.set(this.isLead(choice) ? '' : choice);
+  }
   protected readonly albumLength = signal(60);
   protected readonly albumSung = signal(false);
   protected readonly albumExact = signal(false);
@@ -504,6 +547,13 @@ export class StudioPageComponent {
       this.albumExact.set(remake.ask.exactTags === true);
       this.pickedServer.set(remake.server);
     }
+    // Vocals switched (or Songs and Album, which keep their own): a lead that no longer fits is cleared.
+    let wasInstrumental: boolean | null = null;
+    effect(() => {
+      const instrumental = this.instrumentalHere();
+      if (wasInstrumental !== null && wasInstrumental !== instrumental) untracked(() => this.studio.fitLead(instrumental));
+      wasInstrumental = instrumental;
+    });
     void this.hub.call<HubPreferences>('GET', '/api/preferences').then((outcome) => {
       if (outcome.ok) this.preferences.set(outcome.value);
     });
@@ -541,6 +591,7 @@ export class StudioPageComponent {
       lyrics: this.albumSung() ? this.studio.lyricsBrief().trim() : '',
       cfg: this.studio.cfg().trim() === '' ? null : Number(this.studio.cfg()),
       exactTags: this.albumExact(),
+      ...(this.studio.lead().trim() !== '' ? { lead: this.studio.lead().trim() } : {}),
       ...(this.studio.lengthAim() !== '' && this.studio.page()?.length ? { trackLength: this.studio.lengthAim() } : {}),
       server: this.albumServer() ?? '',
       folder: this.albumFolder(),

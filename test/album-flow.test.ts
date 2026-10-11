@@ -32,7 +32,7 @@ function fakeServer(failLyricsAt: number | null = null) {
     if (tag === '[core]') return { finishReason: 'stop', content: JSON.stringify({ core: ['indie folk', 'melancholic'] }) };
     if (tag === '[turns]') {
       const n = options.responseFormat.json_schema.schema.properties.turns.minItems as number;
-      return { finishReason: 'stop', content: JSON.stringify({ turns: Array.from({ length: n }, () => ['soft female voice', '80 BPM']) }) };
+      return { finishReason: 'stop', content: JSON.stringify({ turns: Array.from({ length: n }, () => ({ lead: 'soft female voice', more: ['80 BPM'] })) }) };
     }
     if (tag === '[lyrics]') {
       lyricsCalls += 1;
@@ -109,8 +109,8 @@ test('a 90-minute sung album on the server alone: the words, then the sound, the
   expect(second.user).not.toContain('16. "');
   // [turns] is told each track's title and what it is about.
   expect(server.sent[5]!.user).toContain('1. "Song 1": idea 1');
-  // [lyrics] carries the track's full tags (core + turn) and the brief.
-  expect(server.sent[9]!.user).toBe('[lyrics]\nAlbum: "Spotted" by The Elegies. Ripening.\nAbout: sad songs about bananas\nThe lyrics: a banana going brown\nSong: "Song 1" (indie folk, melancholic, soft female voice, 80 BPM)');
+  // [lyrics] carries the track's full tags (its lead first, then core + turn) and the brief.
+  expect(server.sent[9]!.user).toBe('[lyrics]\nAlbum: "Spotted" by The Elegies. Ripening.\nAbout: sad songs about bananas\nThe lyrics: a banana going brown\nSong: "Song 1" (soft female voice, indie folk, melancholic, 80 BPM)');
   const meta = album.meta();
   expect(meta.plan!.tracks.length).toBe(45);
   expect(meta.plan!.tracks[0]!.idea).toBe('idea 1');
@@ -229,7 +229,7 @@ test('with Claude writing both the words and the sound, the server is never aske
   expect(asked[2]!.album!.tracks.length).toBe(15);
   expect(asked[2]!.idea).toBe('idea 3');
   expect(asked[0]!.brief).toBe('a banana going brown');
-  expect(asked[0]!.tags).toBe('indie folk, melancholic, soft female voice, 80 BPM');
+  expect(asked[0]!.tags).toBe('soft female voice, indie folk, melancholic, 80 BPM');
   // Laid out for YuE: every section on its own line, a blank line before each after the first.
   expect(album.meta().plan!.tracks[0]!.lyrics).toBe('[Intro]\noh\n\n[Verse]\nla la\n\n[Pre-Chorus]\nhey\n\n[Chorus]\nyeah');
   expect(album.meta().writer).toBe('claude-sonnet-5-5');

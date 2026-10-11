@@ -378,6 +378,7 @@ export class HubCore {
         const sets = page?.planningSets ?? [];
         const song: SongParams = {
           tags: params.tags,
+          ...(params.lead !== undefined ? { lead: params.lead } : {}),
           instrumental: params.instrumental,
           ...(params.lyrics !== undefined ? { lyrics: params.lyrics } : {}),
           ...(params.cfg !== undefined ? { cfg: params.cfg } : {}),
@@ -1023,6 +1024,8 @@ export class HubCore {
         ...(title !== null ? { title } : {}),
         ...(sung && body['preChorus'] === true ? { preChorus: true } : {}),
         ...(lyrics ? { lyrics } : {}), ...(body['exactTags'] === true ? { exactTags: true } : {}),
+        // Make's Lead (Owen, 2026-10-11): every track's; blank, each track picks its own.
+        ...(typeof body['lead'] === 'string' && body['lead'].trim() !== '' ? { lead: body['lead'].replace(/\s+/g, ' ').trim().slice(0, 80) } : {}),
         ...(LENGTH_AIMS.some((aim) => aim.key === body['trackLength']) ? { trackLength: body['trackLength'] as string } : {}),
       };
       if (ask.description.trim() === '' && ask.tags.length === 0) {

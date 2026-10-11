@@ -149,11 +149,19 @@ export interface SongForm {
   readonly lyrics: string;
   readonly instrumental: boolean;
   readonly cfg: number | null;
+  /** Who or what carries the melody (Owen, 2026-10-11): a preset keeps it as its own param, `lead`; absent when blank. */
+  readonly lead?: string;
 }
 
 /** What one job sends as `params`: the form plus the seed, both as the server spells them. */
 export interface SongParams {
   readonly tags?: string;
+  /**
+   * The lead (Owen, 2026-10-11): the singer, or the instrument carrying an instrumental's melody.
+   * B-Sides' own: the hub puts it in the tags (styleLine) and never sends it to Crucible. Absent or
+   * blank: the tags' own lead.
+   */
+  readonly lead?: string;
   readonly lyrics?: string;
   readonly instrumental?: boolean;
   readonly cfg?: number;
@@ -324,6 +332,11 @@ export interface JobView {
 export interface DescribeResult {
   readonly tags: readonly string[];
   readonly instrumental: boolean;
+  /**
+   * Who or what carries the melody, also among `tags` (Owen, 2026-10-11): the singer, or for an
+   * instrumental its instrument as "<instrument> melody". Absent when the writer named none.
+   */
+  readonly lead?: string;
   /** The song's words, written with the tags when it is sung; null when instrumental. */
   readonly lyrics: string | null;
   /** Clashes the tags hold, by the server's conflict map, each with why: shown, never dropped. */
@@ -435,8 +448,13 @@ export const FOLDER_DEPTH = 4;
 /** One track of an album's plan, as the chat model wrote it. */
 export interface AlbumTrack {
   readonly title: string;
-  /** The album's tags with this track's own turn (tempo, mood, one instrument). */
+  /** The album's tags with this track's own turn (tempo, mood, one instrument), its lead first. */
   readonly tags: string;
+  /**
+   * Who or what carries its melody (Owen, 2026-10-11): the person's lead, else the one [turns] wrote;
+   * also in `tags`, so a remake keeps it. Absent on older plans and when none was given or written.
+   */
+  readonly lead?: string;
   /** Sung albums: the lyrics, in YuE's section tags. Null when instrumental. */
   readonly lyrics: string | null;
   /** What the song is about, in a sentence, from the lyricist (split-text.ts [ideas]); absent on older plans. */
@@ -575,6 +593,11 @@ export interface AlbumAsk {
   /** Sung: its lyrics may have a pre-chorus (Make's checkbox, Owen 2026-10-11); YuE2 often drops one. */
   readonly preChorus?: boolean;
   readonly exactTags?: boolean;
+  /**
+   * Make's Lead (Owen, 2026-10-11): every track's lead, the singer or the instrument carrying the
+   * melody. Absent: each track's own, from [turns] (none added with exactTags).
+   */
+  readonly lead?: string;
 }
 
 /**

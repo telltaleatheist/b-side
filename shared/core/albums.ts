@@ -33,7 +33,7 @@ import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { layLyrics } from './describe';
 import { writeConcept, writeCore, writeCover, writeIdeas, writeTurns } from './split-text';
-import { VOICE_TAG, withoutVoice } from '../tags';
+import { leadPhrase, VOICE_TAG, withoutVoice } from '../tags';
 import {
   LENGTH_AIMS, type AlbumAsk, type AlbumMeta, type AlbumOrder, type AlbumPlan, type AlbumRemake, type AlbumTrack, type LengthAim, type SinglesOrder, type SongPage,
 } from '../types';
@@ -123,16 +123,24 @@ export function trackAim(ask: AlbumAsk): LengthAim | null {
 /**
  * A track's tags: the core, then its turn's new tags (none repeated); instrumental unless it is sung.
  * `exact` (AlbumAsk.exactTags): the turn adds only its tempo, and only when the core sets none.
+ * `lead` (Owen, 2026-10-11: one lead a song): the track's singer, or the instrument carrying an
+ * instrumental's melody ("<instrument> melody"). Given, it goes first and is the track's only voice:
+ * a singer in the core or the turn goes. Absent (older plans): the first voice the tags hold.
  */
-export function trackTags(core: string, turn: string, sung: boolean, exact = false): string {
+export function trackTags(core: string, turn: string, sung: boolean, exact = false, lead: string | null = null): string {
   const all = core.split(',').map((t) => t.trim()).filter((t) => t !== '');
+  const first = lead === null ? null : leadPhrase(lead, !sung);
+  // "piano" beside the lead "piano melody" is the same instrument said twice.
+  const same = (t: string): boolean => first !== null
+    && (t.toLowerCase() === first.toLowerCase() || `${t} melody`.toLowerCase() === first.toLowerCase());
   // Instrumental means no voice (Owen, 2026-10-08): even a singer in the person's own tags goes.
-  const tags = sung ? all : withoutVoice(all);
+  const tags = (sung ? all : withoutVoice(all)).filter((t) => !same(t) && (first === null || !VOICE_TAG.test(t)));
+  if (first !== null) tags.unshift(first);
   const seen = new Set(tags.map((t) => t.toLowerCase()));
   const coreTempo = BPM.test(core);
-  let voiced = tags.some((t) => VOICE_TAG.test(t));
+  let voiced = first !== null || tags.some((t) => VOICE_TAG.test(t));
   for (const extra of turn.split(',').map((t) => t.trim()).filter((t) => t !== '')) {
-    if (seen.has(extra.toLowerCase())) continue;
+    if (seen.has(extra.toLowerCase()) || same(extra)) continue;
     if (!sung && VOICE_TAG.test(extra)) continue;
     // One singer: a second voice from the turn would ask YuE2 for two at once.
     if (VOICE_TAG.test(extra)) {
@@ -163,6 +171,8 @@ export function coverPrompt(description: string): string {
 /** One track as the album sends it; the hub adds what its server takes (the aim, a planning set). */
 export interface AlbumTrackParams {
   readonly tags: string;
+  /** The track's lead (AlbumTrack.lead), sent as the song's (SongParams.lead); absent: its tags' own. */
+  readonly lead?: string;
   readonly lyrics?: string;
   readonly instrumental: boolean;
   readonly cfg?: number;
@@ -784,12 +794,21 @@ export class AlbumMaker {
         if (await this.halted(id)) return meta;
         await show({ kind: 'plan', done: 2 + plans.length + at, of: steps });
         const writer = await sound();
-        const turns = await writeTurns(writer, meta.ask.sung, core, batch, page);
+        const theirs = meta.ask.lead?.trim() || null;
+        const exact = meta.ask.exactTags === true;
+        const turns = await writeTurns(writer, meta.ask.sung, core, batch, page, theirs);
         plan = {
           ...plan,
-          tracks: plan.tracks.map((track, i) => (i >= first - 1 && i < last && track.tags === ''
-            ? { ...track, tags: trackTags(core, turns[i - (first - 1)] ?? '', meta.ask.sung, meta.ask.exactTags === true) }
-            : track)),
+          tracks: plan.tracks.map((track, i) => {
+            if (i < first - 1 || i >= last || track.tags !== '') return track;
+            const turn = turns[i - (first - 1)];
+            // One lead a track (Owen, 2026-10-11): the person's, else the writer's; sticking to the
+            // person's tags, none is added but theirs.
+            const lead = theirs ?? (exact ? null : turn?.lead ?? null);
+            const tags = trackTags(core, turn?.more ?? '', meta.ask.sung, exact, lead);
+            const sent = lead === null ? null : leadPhrase(lead, !meta.ask.sung);
+            return { ...track, tags, ...(sent !== null ? { lead: sent } : {}) };
+          }),
         };
         meta = { ...(await this.hooks.meta(id) ?? meta), soundBy: writer.name, plan };
         await this.hooks.update(id, meta);
@@ -964,6 +983,9 @@ export class AlbumMaker {
     const aim = trackAim(meta.ask);
     this.hooks.render(id, at, this.hooks.server(meta.server), {
       tags: track.tags,
+      // Its lead, a remake's too (Owen, 2026-10-11). A sung album's track that lost its words is sent
+      // instrumental: a singer is no lead for it, and its tags' own melody stands.
+      ...(track.lead !== undefined && sung === meta.ask.sung ? { lead: track.lead } : {}),
       instrumental: !sung,
       ...(sung ? { lyrics: lyrics as string } : {}),
       ...(meta.ask.cfg != null ? { cfg: meta.ask.cfg } : {}),

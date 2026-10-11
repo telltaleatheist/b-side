@@ -69,8 +69,11 @@ const LANGUAGE = /^(english|chinese|mandarin|cantonese|japanese|korean|spanish|f
 const SINGER_LIKE = /\b(soaring|anthemic|operatic|epic choir)\b/i;
 const NO_VOICE = /^(instrumental|no vocals?|no singing|no choir|no spoken words?|without vocals|vocal-free)$/i;
 const TEMPO = /\b\d{2,3}\s*BPM\b/i;
-/** A voice by its singer alone ("male", "female"): a voice phrase too, beside VOICE_TAG's. */
-const SINGER = /^(male|female|man|woman|boy|girl|child|children)\b/i;
+/**
+ * A voice by its singer alone ("male", "female"): a voice phrase too, beside VOICE_TAG's. Not a
+ * possessive: "children's pop" is a genre, and a sung song's other voices are dropped beside its lead.
+ */
+const SINGER = /^(male|female|man|woman|boy|girl|child|children)\b(?!['’])/i;
 
 /**
  * The languages YuE2 sings (its model card, m-a-p/YuE2-3B: zh and en), the only two B-Sides offers
@@ -88,24 +91,66 @@ function isVoice(tag: string): boolean {
   return VOICE_TAG.test(tag) || SINGER.test(tag);
 }
 
+/** An instrumental's lead as YuE2's instrumental examples word it ("lyrical violin melody"). */
+const MELODY = /\b(melody|lead)\b/i;
+
+/**
+ * The lead: who or what carries the melody, exactly one a song (Owen, 2026-10-11: "lead instrument
+ * should be its own tag ... in songs with lyrics, thatll be 'gritty male voice' or 'female vocal'").
+ * Sung, the singer phrase; instrumental, one instrument as "<instrument> melody" ("piano" is sent as
+ * "piano melody"; one already saying melody or lead is kept as it is). An instrumental never has a
+ * voice for a lead. Blank: null, and the tags' own lead stands (leadOf).
+ */
+export function leadPhrase(lead: string, instrumental: boolean): string | null {
+  const said = lead.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+  if (said === '') return null;
+  if (!instrumental) return said;
+  if (isVoice(said)) return null;
+  return MELODY.test(said) ? said : `${said} melody`;
+}
+
+/** Whether `tag` could be a song's lead: a voice when sung, a melody or lead instrument when instrumental. */
+export function isLead(tag: string, instrumental: boolean): boolean {
+  if (LANGUAGE.test(tag.trim())) return false;
+  return instrumental ? MELODY.test(tag) && !isVoice(tag) : isVoice(tag);
+}
+
+/**
+ * Whether a lead still fits after Vocals changed: an instrumental's is no voice, a sung song's is
+ * one. Make clears one that does not (Owen, 2026-10-11).
+ */
+export function leadFits(lead: string, instrumental: boolean): boolean {
+  return instrumental ? !isVoice(lead) : isVoice(lead);
+}
+
+/** The tags' own lead, with none given: the first phrase that could be one (isLead); null when none. */
+export function leadOf(tags: readonly string[], instrumental: boolean): string | null {
+  return tags.find((tag) => isLead(tag, instrumental)) ?? null;
+}
+
 /**
  * A style line in YuE2's official form (the yue2-music skill, YuE rev 18a07bb6, read 2026-10-10;
  * Owen via crucible-pc-1), applied to whatever wrote the tags, the person included:
  *   sung          the language first (every official example), "English" when the tags name none
  *                 (Owen, 2026-10-11: English or Chinese, the two YuE2 sings; another the person typed
- *                 is kept, and the Studio says YuE2 does not support it), the rest as written; exactly one
- *                 "N BPM" ("describe them consistently in the style"). The voice's place varies
- *                 across the official examples, so it is not moved.
- *   instrumental  "Instrumental" first; no language and no voice; exactly one "N BPM"; ending
- *                 "no vocals, no singing, no choir, no spoken words".
- * Each phrase once (ignoring case), in the order given otherwise; the first tempo is the one kept
- * (the album's own before a track's). Nothing else is dropped: what the person typed stays.
+ *                 is kept, and the Studio says YuE2 does not support it), then the lead (the one
+ *                 singer), then the rest as written with no other voice; exactly one "N BPM"
+ *                 ("describe them consistently in the style").
+ *   instrumental  "Instrumental" first, then the lead ("<instrument> melody"); no language and no
+ *                 voice; exactly one "N BPM"; ending "no vocals, no singing, no choir, no spoken words".
+ * The lead (Owen, 2026-10-11: one lead a song, the person's or the writer's) is `lead` when given
+ * (leadPhrase), else the tags' own first voice (sung) or melody (instrumental): an instrumental whose
+ * style never named what carries its melody let YuE2 sing it. Each phrase once (ignoring case), in
+ * the order given otherwise; the first tempo is the one kept (the album's own before a track's).
+ * Nothing else is dropped: what the person typed stays.
  */
-export function styleLine(tags: string, instrumental: boolean): string {
+export function styleLine(tags: string, instrumental: boolean, lead?: string | null): string {
+  const given = lead == null ? null : leadPhrase(lead, instrumental);
   const seen = new Set<string>();
+  // "distorted guitar" and "distorted guitars" are one phrase (crucible-pc-1, 2026-10-11).
+  const keyOf = (tag: string): string => tag.toLowerCase().replace(/s$/, '');
   const phrases = splitTags(tags).filter((tag) => {
-    // "distorted guitar" and "distorted guitars" are one phrase (crucible-pc-1, 2026-10-11).
-    const key = tag.toLowerCase().replace(/s$/, '');
+    const key = keyOf(tag);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -120,10 +165,19 @@ export function styleLine(tags: string, instrumental: boolean): string {
     return true;
   });
   if (instrumental) {
-    return joinTags(['Instrumental', ...rest.filter((tag) => !LANGUAGE.test(tag) && !isVoice(tag) && !SINGER_LIKE.test(tag)), ...NO_VOICE_CLAUSE]);
+    const kept = rest.filter((tag) => !LANGUAGE.test(tag) && !isVoice(tag) && !SINGER_LIKE.test(tag));
+    const chosen = given ?? leadOf(kept, true);
+    // "piano" beside the lead "piano melody" is the same instrument said twice.
+    const bare = chosen === null ? '' : keyOf(chosen.replace(/\s+melody$/i, ''));
+    const others = chosen === null ? kept : kept.filter((tag) => keyOf(tag) !== keyOf(chosen) && keyOf(tag) !== bare);
+    return joinTags(['Instrumental', ...(chosen === null ? [] : [chosen]), ...others, ...NO_VOICE_CLAUSE]);
   }
   const language = rest.find((tag) => LANGUAGE.test(tag)) ?? 'English';
-  return joinTags([language, ...rest.filter((tag) => !LANGUAGE.test(tag))]);
+  const words = rest.filter((tag) => !LANGUAGE.test(tag));
+  const chosen = given ?? leadOf(words, false);
+  // One lead: any other voice would ask YuE2 for a second singer.
+  const others = chosen === null ? words : words.filter((tag) => !isVoice(tag) && keyOf(tag) !== keyOf(chosen));
+  return joinTags([language, ...(chosen === null ? [] : [chosen]), ...others]);
 }
 
 /** The value the request sends: one comma-separated line. */

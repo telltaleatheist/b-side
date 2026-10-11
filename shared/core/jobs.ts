@@ -228,9 +228,13 @@ export class JobRunner {
     const seeds = batchSeeds(typeof request.params.seed === 'number' ? request.params.seed : null, request.count);
     const client = this.connect(server);
     // Every song's tags in YuE2's official form, whoever wrote them (styleLine): what is sent is what is kept.
-    const base: SongParams = request.params.tags !== undefined && typeof request.params.instrumental === 'boolean'
-      ? { ...request.params, tags: styleLine(request.params.tags, request.params.instrumental) }
-      : request.params;
+    // The lead (Owen, 2026-10-11) goes into them, first; Crucible knows no `lead`, so it is not kept apart.
+    const { lead, ...given } = request.params;
+    const tags = given.tags ?? (lead !== undefined && lead.trim() !== '' ? '' : undefined);
+    const base: SongParams = tags !== undefined && typeof given.instrumental === 'boolean'
+      ? { ...given, tags: styleLine(tags, given.instrumental, lead) }
+      // A server whose YuE2 takes no `instrumental` (older ones): the lead is put first, as typed.
+      : lead !== undefined && lead.trim() !== '' ? { ...given, tags: [lead.trim(), tags].filter((part) => part !== '' && part !== undefined).join(', ') } : given;
     const made: Job[] = seeds.map((seed, at) => {
       const params: Mutable<SongParams> = { ...base };
       delete params.seed;

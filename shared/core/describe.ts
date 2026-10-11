@@ -23,7 +23,7 @@
  */
 import { Refusal } from './refusal';
 import type { TextModel } from './text-model';
-import { clashesWith, clashText, indexOfTag, withoutVoice } from '../tags';
+import { clashesWith, clashText, indexOfTag, leadOf, withoutVoice } from '../tags';
 import { DESCRIPTION_MAX, type DescribeResult, type SongPage } from '../types';
 
 const MAX_DESCRIPTION = DESCRIPTION_MAX;
@@ -256,9 +256,12 @@ export async function describe(
   // Asked for instrumental, it is instrumental whatever the model answered: no singer among the tags.
   const instrumental = wantsInstrumental || fields.instrumental;
   const tags = instrumental ? withoutVoice(composeTags({ ...fields, instrumental })) : composeTags(fields);
+  // Its lead (Owen, 2026-10-11), for Make's Lead: this contract has no field for one, so the tags' own.
+  const lead = leadOf(tags, instrumental);
   return {
     tags,
     instrumental,
+    ...(lead !== null ? { lead } : {}),
     lyrics: instrumental ? null : layLyrics(fields.lyrics) || null,
     clashes: clashesIn(tags, page),
     model,

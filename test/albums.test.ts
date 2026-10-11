@@ -139,6 +139,20 @@ test('more like this: 15 more minutes, planning new tracks only when too few unm
   expect(spare.rendered.length).toBeGreaterThan(0);
 });
 
+test("a track's lead goes first and is its only voice; an instrumental's is a melody (Owen, 2026-10-11)", () => {
+  // Sung: the lead first; a singer in the core (the person's own tags) or the turn goes.
+  expect(trackTags('soul, warm male vocal, Hammond organ', 'female vocal, brushed drums, 90 BPM', true, false, 'gritty male voice'))
+    .toBe('gritty male voice, soul, Hammond organ, brushed drums, 90 BPM');
+  // Instrumental: "<instrument> melody", the bare instrument not said twice, no voice.
+  expect(trackTags('ambient, piano, soft pads', 'calm, airy female voice, 70 BPM', false, false, 'piano'))
+    .toBe('piano melody, ambient, soft pads, calm, 70 BPM, instrumental');
+  // Sticking to the person's tags: their lead, and only a tempo from the turn.
+  expect(trackTags('indie rock, jangly guitars', 'raspy male vocal, 120 BPM', true, true, 'soft female vocal'))
+    .toBe('soft female vocal, indie rock, jangly guitars, 120 BPM');
+  // No lead (an older plan): as before.
+  expect(trackTags('soul, Hammond organ', 'warm male vocal', true)).toBe('soul, Hammond organ, warm male vocal');
+});
+
 test('an album aimed at longer songs plans fewer tracks', () => {
   expect(trackCount(30)).toBe(15);
   expect(trackCount(30, 180)).toBe(10);

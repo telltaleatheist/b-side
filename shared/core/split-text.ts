@@ -21,7 +21,7 @@ import type { TextModel } from './text-model';
 import { YUE2_STYLE_GUIDE } from './yue2-style';
 import { aboutOf, NO_WRITING, vocabLine, type AlbumConcept } from './album-text';
 import { clashesIn, composeTags } from './describe';
-import { VOICE_TAG, withoutVoice } from '../tags';
+import { leadOf, leadPhrase, VOICE_TAG, withoutVoice } from '../tags';
 import type { AlbumAsk, DescribeResult, SongPage } from '../types';
 
 const PHRASE_MAX = 48;
@@ -85,13 +85,14 @@ function textOf(value: unknown, tag: string, field: string): string {
 const SOUND_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['language', 'genre', 'mood', 'vocal', 'instruments', 'sound', 'bpm', 'instrumental'],
+  required: ['language', 'genre', 'mood', 'lead', 'instruments', 'sound', 'bpm', 'instrumental'],
   properties: {
     language: { type: 'string', enum: ['English', 'Chinese'] },
     // As short as YuE2's own examples (Owen, 2026-10-11: at most 11 phrases in all).
     genre: list(1, 2),
     mood: list(1, 2),
-    vocal: list(0, 1),
+    // The one lead (Owen, 2026-10-11): the singer, or the instrument carrying an instrumental's melody.
+    lead: { type: 'string', maxLength: PHRASE_MAX },
     instruments: list(1, 3),
     sound: list(0, 1),
     bpm: { type: 'integer', minimum: 50, maximum: 200 },
@@ -104,9 +105,11 @@ export function soundPrompt(page: SongPage, wantsInstrumental: boolean): string 
     'You write the style line for YuE2, a model that makes songs: short comma-separated phrases for its language, genre,',
     'mood, voice, instruments, production and tempo. Turn the person\'s description into those fields. Reply with JSON only.',
     '- genre, mood, instruments, sound: 1-5 word phrases a musician would use.',
-    '- vocal: the singer (e.g. "soft female voice"); empty when instrumental.',
+    '- lead: the ONE thing that carries the melody. Sung: the singer (e.g. "gritty male voice", "soft female vocal"). Instrumental:',
+    '  the instrument that plays the melody, written "<instrument> melody" ("lyrical violin melody", "searing lead guitar melody"),',
+    '  never a voice. Not repeated in instruments.',
     wantsInstrumental
-      ? '- The person wants it instrumental: instrumental is true and vocal is empty. The first instrument names the one that\n  carries the melody, as a melody ("lyrical violin melody", "searing lead guitar melody").'
+      ? '- The person wants it instrumental: instrumental is true, and lead is an instrument\'s melody.'
       : '- instrumental: true only when the description asks for no singing (a beat, a game soundtrack, background music).',
     '- language: English unless the description asks for Chinese.',
     '- bpm: the tempo that suits it.',
@@ -123,24 +126,34 @@ export async function describeSound(writer: TextModel, page: SongPage, descripti
   const user = brief === '' ? description : `${description}\nThe lyrics will be about: ${brief}`;
   const got = await call(writer, '[sound]', 'song_sound', soundPrompt(page, wantsInstrumental), user, SOUND_SCHEMA, 300, SOUND_TEMPERATURE);
   const instrumental = wantsInstrumental || got['instrumental'] === true;
-  // An instrumental names what carries its melody (YuE2's instrumental example: "lyrical violin melody").
   const instruments = phrasesOf(got['instruments'], '[sound]', writer);
-  if (instrumental && instruments.length > 0 && !instruments.some((phrase) => /\b(melody|lead)\b/i.test(phrase))) {
-    instruments[0] = `${instruments[0]} melody`;
+  // The one lead (Owen, 2026-10-11). An instrumental names what carries its melody (YuE2's instrumental
+  // example: "lyrical violin melody"): with none named, or a voice named, its own melody instrument,
+  // else its first instrument as a melody. A sung song with none named is left to its tags.
+  const said = typeof got['lead'] === 'string' ? leadPhrase(got['lead'], instrumental) : null;
+  let lead = said;
+  if (instrumental && lead === null) {
+    const melody = leadOf(instruments, true) ?? instruments[0];
+    lead = melody === undefined ? null : leadPhrase(melody, true);
   }
   const fields = {
     language: typeof got['language'] === 'string' ? got['language'] : 'English',
     genre: phrasesOf(got['genre'], '[sound]', writer),
     mood: phrasesOf(got['mood'], '[sound]', writer),
-    vocal: phrasesOf(got['vocal'], '[sound]', writer),
-    instruments,
+    vocal: !instrumental && lead !== null ? [lead] : [],
+    // The lead's instrument once: "piano" beside "piano melody" is the same one twice.
+    instruments: instrumental && lead !== null
+      ? [lead, ...instruments.filter((phrase) => phrase.toLowerCase() !== lead.toLowerCase() && `${phrase} melody`.toLowerCase() !== lead.toLowerCase())]
+      : instruments,
     sound: phrasesOf(got['sound'], '[sound]', writer),
     bpm: typeof got['bpm'] === 'number' ? got['bpm'] : 100,
     instrumental,
     lyrics: '',
   };
   const tags = instrumental ? withoutVoice(composeTags(fields)) : composeTags(fields);
-  return { tags, instrumental, lyrics: null, clashes: clashesIn(tags, page), model: writer.name, seconds: (Date.now() - started) / 1000 };
+  return {
+    tags, instrumental, ...(lead !== null ? { lead } : {}), lyrics: null, clashes: clashesIn(tags, page), model: writer.name, seconds: (Date.now() - started) / 1000,
+  };
 }
 
 export function corePrompt(sung: boolean, page: SongPage | null): string {
@@ -170,16 +183,25 @@ export async function writeCore(writer: TextModel, ask: AlbumAsk, album: Pick<Al
   return phrasesOf(got['core'], '[core]', writer).join(', ');
 }
 
-export function turnsPrompt(sung: boolean, coreHasTempo: boolean, n: number, page: SongPage | null): string {
+/**
+ * [turns]' prompt. Each track has one lead and its other additions (Owen, 2026-10-11: "lead
+ * instrument should be its own tag"); `lead`, the person's own for every track, is said so the
+ * rest fits it.
+ */
+export function turnsPrompt(sung: boolean, coreHasTempo: boolean, n: number, page: SongPage | null, lead: string | null = null): string {
   return [
     `You give each of ${n} tracks of a music album its own sound for YuE2, a model that makes songs. Every track keeps the`,
-    `album's core sound; you write what each one ADDS to it. Reply with JSON only: {"turns": [[...], ...]}, ${n} lists in track order.`,
+    `album's core sound; you write what each one ADDS to it. Reply with JSON only: {"turns": [{"lead": "...", "more": [...]}, ...]}, ${n} in track order.`,
+    sung
+      ? '- lead: the ONE singer that carries the melody (e.g. "warm male voice", "soft female vocal").'
+      : '- lead: the ONE instrument that carries the melody, written as a melody ("searing lead guitar melody", "lyrical violin\n  melody", "warm electric piano melody"): YuE2 moves the sung melody onto it, and an unnamed lead invites singing.',
+    lead !== null ? `- Every track's lead is "${lead}": write it as each lead, and let the rest suit it.` : '',
     '- Each phrase is 1-4 words. Never repeat the language, the genre or anything already in the core.',
-    `- Each list: 2-4 short phrases: a mood, one instrument or texture${coreHasTempo ? '' : ', and exactly one tempo written "<number> BPM"'}${sung ? ', and one singer (e.g. "warm male voice")' : ''}.`,
+    `- more: 1-3 short phrases: a mood, one instrument or texture${coreHasTempo ? '' : ', and exactly one tempo written "<number> BPM"'}. No voice in it: the lead is the only one.`,
     '- Never repeat or contradict the core. Let the tracks differ from each other, each fitting what its song is about.',
     sung
       ? ''
-      : '- The album is instrumental: nothing about voices or singing, and no "soaring", "anthemic" or "operatic". Each list\n  names the instrument that carries that track\'s melody, as a melody ("searing lead guitar melody", "lyrical violin\n  melody", "warm electric piano melody"): YuE2 moves the sung melody onto it, and an unnamed lead invites singing.',
+      : '- The album is instrumental: nothing about voices or singing, and no "soaring", "anthemic" or "operatic".',
     coreHasTempo ? '- The core sets the tempo: add none.' : '',
     SOUND_RULES,
     vocabLine(page),
@@ -192,28 +214,43 @@ export function turnsUser(core: string, tracks: readonly { readonly title: strin
   return [`Core: ${core}`, ...tracks.map((track, at) => `${at + 1}. "${track.title}"${track.idea ? `: ${track.idea}` : ''}`)].join('\n');
 }
 
-/** [turns]: each listed track's additions to the core, in order, comma-joined. */
+/** One track's sound from [turns]: its lead (null when none was written) and its other additions, comma-joined. */
+export interface TrackTurn {
+  readonly lead: string | null;
+  readonly more: string;
+}
+
+/**
+ * [turns]: each listed track's lead and additions to the core, in order. `lead`: the person's own,
+ * every track's (AlbumAsk.lead). An answer in the older shape (a list of phrases a track) still
+ * reads: its first voice (sung) or melody (instrumental) is the lead.
+ */
 export async function writeTurns(
   writer: TextModel, sung: boolean, core: string, tracks: readonly { readonly title: string; readonly idea?: string }[], page: SongPage | null,
-): Promise<string[]> {
+  lead: string | null = null,
+): Promise<TrackTurn[]> {
   const n = tracks.length;
+  const turn = {
+    type: 'object', additionalProperties: false, required: ['lead', 'more'],
+    properties: { lead: { type: 'string', maxLength: PHRASE_MAX }, more: list(1, 3) },
+  };
   const schema = {
     type: 'object', additionalProperties: false, required: ['turns'],
-    properties: { turns: { type: 'array', minItems: n, maxItems: n, items: list(1, 4) } },
+    properties: { turns: { type: 'array', minItems: n, maxItems: n, items: turn } },
   };
   const coreHasTempo = /\b\d{2,3}\s*BPM\b/i.test(core);
-  const got = await call(writer, '[turns]', 'track_turns', turnsPrompt(sung, coreHasTempo, n, page), turnsUser(core, tracks), schema, 120 + 60 * n, SOUND_TEMPERATURE);
+  const theirs = lead === null ? null : leadPhrase(lead, !sung);
+  const got = await call(writer, '[turns]', 'track_turns', turnsPrompt(sung, coreHasTempo, n, page, theirs), turnsUser(core, tracks), schema, 120 + 70 * n, SOUND_TEMPERATURE);
   const turns = got['turns'];
   if (!Array.isArray(turns) || turns.length !== n) throw new Refusal('text_unreadable', `${writer.name} gave ${Array.isArray(turns) ? turns.length : 'no'} tracks their sound, not ${n}.`);
-  // One singer a track: the stock 4B gave one track four, male and female (2026-10-11).
-  return turns.map((turn: unknown) => {
-    let voiced = false;
-    return phrasesOf(turn, '[turns]', writer).filter((phrase) => {
-      if (!VOICE_TAG.test(phrase)) return true;
-      if (voiced) return false;
-      voiced = true;
-      return true;
-    }).join(', ');
+  return turns.map((answer: unknown): TrackTurn => {
+    const shaped = typeof answer === 'object' && answer !== null && !Array.isArray(answer) ? answer as Record<string, unknown> : null;
+    const phrases = phrasesOf(shaped === null ? answer : shaped['more'], '[turns]', writer);
+    const written = shaped !== null && typeof shaped['lead'] === 'string' ? leadPhrase(shaped['lead'], !sung) : null;
+    const chosen = theirs ?? written ?? leadPhrase(leadOf(phrases, !sung) ?? '', !sung);
+    // One lead a track: the stock 4B gave one track four singers, male and female (2026-10-11).
+    const more = phrases.filter((phrase) => !VOICE_TAG.test(phrase) && (chosen === null || phrase.toLowerCase() !== chosen.toLowerCase()));
+    return { lead: chosen, more: more.join(', ') };
   });
 }
 

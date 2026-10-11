@@ -2,7 +2,7 @@ import { computed, effect, inject, Injectable, signal, untracked } from '@angula
 import { Router } from '@angular/router';
 
 import { batchCount } from '@shared/batch';
-import { addTags, clashesWith, joinTags, splitTags, toggleTag, withoutVoice } from '@shared/tags';
+import { addTags, clashesWith, joinTags, leadFits, splitTags, toggleTag, withoutVoice } from '@shared/tags';
 import { LENGTH_AIMS, type AlbumAsk, type DescribeResult, type Preset, type RefusalView, type SongForm, type SongPage, type SongParams } from '@shared/types';
 
 import { HubService } from './hub.service';
@@ -35,6 +35,12 @@ export class StudioService {
   readonly tags = signal<string[]>([]);
   readonly lyrics = signal('');
   readonly instrumental = signal(false);
+  /**
+   * The lead: who or what carries the melody, one a song (Owen, 2026-10-11: "the user (or the ai)
+   * can pick one of the available tags as 'the' melody instrument"). Sung, the singer; instrumental,
+   * one instrument, sent as "<instrument> melody". Kept out of the chips; '' leaves it to the writer.
+   */
+  readonly lead = signal('');
   /** What the lyrics should be about, or their mood and style (Owen, 2026-10-09): a song's, or a sung album's. */
   readonly lyricsBrief = signal('');
   /** As typed; blank sends nothing and the server's default applies. */
@@ -62,6 +68,7 @@ export class StudioService {
   remakeAlbum(ask: AlbumAsk, server: string): void {
     this.description.set(ask.description);
     this.tags.set([...ask.tags]);
+    this.lead.set(ask.lead ?? '');
     this.lyricsBrief.set(ask.lyrics ?? '');
     this.cfg.set(ask.cfg == null ? '' : String(ask.cfg));
     this.lengthAim.set(ask.trackLength ?? '');
@@ -162,7 +169,10 @@ export class StudioService {
       this.describeRefusal.set(outcome.refusal);
       return;
     }
-    this.tags.set([...outcome.value.tags]);
+    // The lead it picked fills Lead, and is not a chip as well (Owen, 2026-10-11).
+    const lead = outcome.value.lead ?? '';
+    this.lead.set(lead);
+    this.tags.set(outcome.value.tags.filter((tag) => tag.toLowerCase() !== lead.toLowerCase()));
     // An album's tracks follow its own Vocals choice: the song's switch and Lyrics box are not the album's.
     if (forAlbum) {
       this.described.set(outcome.value);
@@ -226,16 +236,27 @@ export class StudioService {
       lyrics: this.lyrics(),
       instrumental: this.instrumental(),
       cfg: cfg === '' ? null : Number(cfg),
+      ...(this.lead().trim() !== '' ? { lead: this.lead().trim() } : {}),
     };
   }
 
-  /** Fill the form from a preset: chips, lyrics, instrumental, cfg — whatever it holds. */
+  /**
+   * Fill the form from a preset: chips, lyrics, instrumental, cfg, lead — whatever it holds. The
+   * lead is its own param (Owen, 2026-10-11); a preset from before has none, and Lead is blank.
+   */
   applyPreset(preset: Preset): void {
     const params = preset.params;
     if (typeof params['tags'] === 'string') this.tags.set(splitTags(params['tags']));
     if (typeof params['lyrics'] === 'string') this.lyrics.set(params['lyrics']);
     if (typeof params['instrumental'] === 'boolean') this.instrumental.set(params['instrumental']);
     if (typeof params['cfg'] === 'number') this.cfg.set(String(params['cfg']));
+    this.lead.set(typeof params['lead'] === 'string' ? params['lead'] : '');
+  }
+
+  /** A lead that no longer fits after Vocals changed (a singer on an instrumental, an instrument on a sung song) is cleared. */
+  fitLead(instrumental: boolean): void {
+    const lead = this.lead().trim();
+    if (lead !== '' && !leadFits(lead, instrumental)) this.lead.set('');
   }
 
   async savePreset(name: string): Promise<RefusalView | null> {
@@ -269,6 +290,9 @@ export class StudioService {
     // Instrumental means no voice (Owen, 2026-10-08): a singer among the chips (a preset's) is left out.
     const tags = (this.instrumental() ? joinTags(withoutVoice(this.tags())) : this.tagLine()) || this.description().trim();
     if (tags !== '') params.tags = tags;
+    // The hub puts the lead first in the tags (styleLine) and sends Crucible no `lead`.
+    const lead = this.lead().trim();
+    if (lead !== '') params.lead = lead;
     if (!this.instrumental() && this.lyrics().trim() !== '') params.lyrics = this.lyrics();
     if (this.page()?.instrumental !== false) params.instrumental = this.instrumental();
     const cfg = this.cfg().trim();
@@ -299,10 +323,12 @@ export class StudioService {
     // Asked what the lyrics are about, with none written yet: write them first (and the tags, if none).
     if (!this.instrumental() && this.lyricsBrief().trim() !== '' && this.lyrics().trim() === '') {
       const keep = this.tags().length > 0 ? [...this.tags()] : null;
+      const keepLead = this.lead().trim();
       this.sending.set(true);
       await this.describe(false);
       this.sending.set(false);
       if (keep !== null) this.tags.set(keep);
+      if (keepLead !== '') this.lead.set(keepLead);
       if (this.describeRefusal() !== null || this.lyrics().trim() === '') return;
     }
     const params = this.params();
