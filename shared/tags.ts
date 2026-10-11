@@ -66,7 +66,9 @@ const LANGUAGE = /^(english|chinese|mandarin|cantonese|japanese|korean|spanish|f
  * (crucible-pc-1, from YuE2's instrumental guidance, 2026-10-11): with the melody moved off the
  * voice, nothing should invite YuE2 to sing it.
  */
-const SINGER_LIKE = /\b(soaring|anthemic|operatic|epic choir)\b/i;
+// "epic" in metal tends to mean a choir (crucible-pc-1, 2026-10-11).
+const SINGER_LIKE = /\b(soaring|anthemic|operatic|epic)\b/i;
+
 const NO_VOICE = /^(instrumental|no vocals?|no singing|no choir|no spoken words?|without vocals|vocal-free)$/i;
 const TEMPO = /\b\d{2,3}\s*BPM\b/i;
 /**
@@ -163,7 +165,8 @@ export function styleLine(tags: string, instrumental: boolean, lead?: string | n
   const seen = new Set<string>();
   // "distorted guitar" and "distorted guitars" are one phrase (crucible-pc-1, 2026-10-11).
   const keyOf = (tag: string): string => tag.toLowerCase().replace(/s$/, '');
-  const phrases = splitTags(tags).filter((tag) => {
+  // A line already ended with YuE2's full stop (an album's own, sent again) reads as its phrases.
+  const phrases = splitTags(tags.trim().replace(/[.,\s]+$/, '')).filter((tag) => {
     const key = keyOf(tag);
     if (seen.has(key)) return false;
     seen.add(key);
@@ -184,7 +187,10 @@ export function styleLine(tags: string, instrumental: boolean, lead?: string | n
     // "piano" beside the lead "piano melody" is the same instrument said twice.
     const bare = chosen === null ? '' : keyOf(chosen.replace(/\s+melody$/i, ''));
     const others = chosen === null ? kept : kept.filter((tag) => keyOf(tag) !== keyOf(chosen) && keyOf(tag) !== bare);
-    return joinTags(['Instrumental', ...(chosen === null ? [] : [chosen]), ...others, ...NO_VOICE_CLAUSE]);
+    // YuE2's instrumental form, which B-Sides writes itself (Owen, 2026-10-11: "b-sides should handle
+    // this"; Crucible passes tags through): it ends with a full stop (skills/yue2-music/instrumental/
+    // scripts/instrumental.py, YuE 18a07bb6). Never empty: there is always a melody (fallbackMelody).
+    return `${joinTags(['Instrumental', ...(chosen === null ? [] : [chosen]), ...others, ...NO_VOICE_CLAUSE])}.`;
   }
   const language = rest.find((tag) => LANGUAGE.test(tag)) ?? 'English';
   const words = rest.filter((tag) => !LANGUAGE.test(tag));

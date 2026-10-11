@@ -11,13 +11,13 @@ test("YuE2's official examples keep their phrases, the lead (singer) first after
   const jazz = 'English, intimate female jazz vocal, relaxed 88 BPM, piano, tenor saxophone, upright bass, brushed drums, no guitar, spacious modern harmony, natural English phrasing';
   expect(styleLine(jazz, false)).toBe(jazz);
   expect(styleLine('Instrumental, warm solo piano, lyrical and gentle, no vocals', true))
-    .toBe('Instrumental, warm solo piano melody, lyrical and gentle, no vocals, no singing, no choir, no spoken words');
+    .toBe('Instrumental, warm solo piano melody, lyrical and gentle, no vocals, no singing, no choir, no spoken words.');
 });
 
 test('an instrumental drops its language and every voice, starts with Instrumental and its lead, keeps one tempo, and ends with the no-voice clause', () => {
   // Victoria's job 91e56049cc: "English" first, two tempos, "instrumental" last.
   const merged = 'English, hip hop, boom bap, playful, gritty male vocal, drums, bass, sampled strings, 95 BPM, female, 90 BPM, chiptune lead, instrumental';
-  expect(styleLine(merged, true)).toBe('Instrumental, chiptune lead, hip hop, boom bap, playful, drums, bass, sampled strings, 95 BPM, no vocals, no singing, no choir, no spoken words');
+  expect(styleLine(merged, true)).toBe('Instrumental, chiptune lead, hip hop, boom bap, playful, drums, bass, sampled strings, 95 BPM, no vocals, no singing, no choir, no spoken words.');
 });
 
 test('a sung line puts the language first, then its singer, keeps one tempo, and loses any instrumental phrase', () => {
@@ -29,7 +29,7 @@ test('a sung line that names no language gets English first; one that names anot
   expect(styleLine('boom bap, playful, male rapper, 92 BPM', false)).toBe('English, male rapper, boom bap, playful, 92 BPM');
   expect(styleLine('city pop, Japanese, female vocal, 110 BPM', false)).toBe('Japanese, female vocal, city pop, 110 BPM');
   expect(styleLine('Chinese, ballad, 70 BPM', false)).toBe('Chinese, ballad, 70 BPM');
-  expect(styleLine('boom bap, Spanish, 92 BPM', true)).toBe('Instrumental, piano melody, boom bap, 92 BPM, no vocals, no singing, no choir, no spoken words');
+  expect(styleLine('boom bap, Spanish, 92 BPM', true)).toBe('Instrumental, piano melody, boom bap, 92 BPM, no vocals, no singing, no choir, no spoken words.');
 });
 
 test('any language keeps its place first; English goes in only when none is named', () => {
@@ -48,7 +48,7 @@ test("a language YuE2 does not declare is named for the Studio's note; English a
 
 test('an instrumental keeps out singer-like words and plural repeats (crucible-pc-1, 2026-10-11)', () => {
   expect(styleLine('heavy metal, epic, soaring, distorted guitar, distorted guitars, anthemic chorus, 140 BPM', true))
-    .toBe('Instrumental, distorted guitar melody, heavy metal, epic, 140 BPM, no vocals, no singing, no choir, no spoken words');
+    .toBe('Instrumental, distorted guitar melody, heavy metal, 140 BPM, no vocals, no singing, no choir, no spoken words.');
 });
 
 test('a sung song has exactly one lead: the one given, first after the language; every other voice goes (Owen, 2026-10-11)', () => {
@@ -67,13 +67,13 @@ test('a sung song has exactly one lead: the one given, first after the language;
 test('an instrumental has exactly one lead, an instrument as "<instrument> melody", and never a voice (Owen, 2026-10-11)', () => {
   // Owen's re-render: "searing lead guitar melody" named, no voice.
   expect(styleLine('heavy metal, dark, distorted guitar, double-kick drums, 140 BPM', true, 'searing lead guitar melody'))
-    .toBe('Instrumental, searing lead guitar melody, heavy metal, dark, distorted guitar, double-kick drums, 140 BPM, no vocals, no singing, no choir, no spoken words');
+    .toBe('Instrumental, searing lead guitar melody, heavy metal, dark, distorted guitar, double-kick drums, 140 BPM, no vocals, no singing, no choir, no spoken words.');
   // "piano" typed: sent as "piano melody", and the bare "piano" is not said twice.
   expect(styleLine('lo-fi, calm, piano, vinyl crackle, 72 BPM', true, 'piano'))
-    .toBe('Instrumental, piano melody, lo-fi, calm, vinyl crackle, 72 BPM, no vocals, no singing, no choir, no spoken words');
+    .toBe('Instrumental, piano melody, lo-fi, calm, vinyl crackle, 72 BPM, no vocals, no singing, no choir, no spoken words.');
   // A voice is never an instrumental's lead: the tags' own melody stands.
   expect(styleLine('ambient, lyrical violin melody, 70 BPM', true, 'soft female voice'))
-    .toBe('Instrumental, lyrical violin melody, ambient, 70 BPM, no vocals, no singing, no choir, no spoken words');
+    .toBe('Instrumental, lyrical violin melody, ambient, 70 BPM, no vocals, no singing, no choir, no spoken words.');
 });
 
 test('the lead as sent: "<instrument> melody" for an instrumental unless it says melody or lead; the first lead among tags', () => {
@@ -90,8 +90,15 @@ test('the lead as sent: "<instrument> melody" for an instrumental unless it says
 
 test('an instrumental that names no melody gets one, so YuE2 is never left to sing it (Owen, 2026-10-11)', () => {
   expect(styleLine('soul, soulful slow ballad, emotional, piano, strings, 70 BPM', true))
-    .toBe('Instrumental, piano melody, soul, soulful slow ballad, emotional, strings, 70 BPM, no vocals, no singing, no choir, no spoken words');
+    .toBe('Instrumental, piano melody, soul, soulful slow ballad, emotional, strings, 70 BPM, no vocals, no singing, no choir, no spoken words.');
   expect(styleLine('heavy metal, bass guitar, double-kick drums', true))
-    .toBe('Instrumental, lead guitar melody, heavy metal, bass guitar, double-kick drums, no vocals, no singing, no choir, no spoken words');
-  expect(styleLine('soul, emotional', true)).toBe('Instrumental, piano melody, soul, emotional, no vocals, no singing, no choir, no spoken words');
+    .toBe('Instrumental, lead guitar melody, heavy metal, bass guitar, double-kick drums, no vocals, no singing, no choir, no spoken words.');
+  expect(styleLine('soul, emotional', true)).toBe('Instrumental, piano melody, soul, emotional, no vocals, no singing, no choir, no spoken words.');
+});
+
+test("an instrumental ends with YuE2's full stop, and a line that has one already is read as its phrases", () => {
+  const once = styleLine('ambient, piano', true);
+  expect(once).toBe('Instrumental, piano melody, ambient, no vocals, no singing, no choir, no spoken words.');
+  expect(styleLine(once, true)).toBe(once);
+  expect(styleLine('', true)).toBe('Instrumental, piano melody, no vocals, no singing, no choir, no spoken words.');
 });
