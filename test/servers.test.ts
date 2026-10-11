@@ -40,7 +40,6 @@ test('a line that is not a pairing line is refused, and nothing is stored', asyn
     'http://10.0.0.1:7100',
     'crucible://10.0.0.1:7100/#tok',
     'crucible://pc@10.0.0.1/#tok',
-    'crucible://pc@10.0.0.1:7100',
     'crucible://pc@10.0.0.1:7100#tok',
   ];
   for (const line of bad) {
@@ -65,10 +64,17 @@ test('removing the active server hands "in use" to the next one; removing the la
   expect(() => registry.active()).toThrow('No Crucible server is chosen');
 });
 
-test('a hand-entered server needs a token and a unique name', async () => {
-  await expect(registry.add({ name: 'pc', url: 'http://pc:7100', token: '' })).rejects.toThrow('token');
-  await registry.add({ name: 'pc', url: 'http://pc:7100', token: TOKEN });
+test('a hand-entered server needs a unique name; a token only when its Crucible wants one', async () => {
+  await registry.add({ name: 'pc', url: 'http://pc:7100', token: '' });
+  expect(registry.get('pc').token).toBe('');
   await expect(registry.add({ name: 'pc', url: 'http://pc2:7100', token: TOKEN })).rejects.toThrow('already');
+});
+
+test('a pairing line with no token (a Crucible since 2.0.2 may run without one) is added with none', async () => {
+  await registry.addPairing('crucible://mac@10.0.0.9:7100/');
+  await registry.addPairing('crucible://pc@10.0.0.1:7100');
+  expect(registry.get('mac')).toEqual({ name: 'mac', url: 'http://10.0.0.9:7100', token: '' });
+  expect(registry.get('pc').token).toBe('');
 });
 
 test('addresses are normalised the way the SDK wants them', () => {

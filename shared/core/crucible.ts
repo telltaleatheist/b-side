@@ -33,7 +33,8 @@ export function clientName(): string {
 
 /** A client for this server under this install's name, or `as` for a run that must stay apart (an album's session). */
 export function clientFor(server: StoredServer, as: string = installName): CrucibleClient {
-  return new CrucibleClient({ url: server.url, token: server.token, clientName: as });
+  // No token (a Crucible running without one, 2.0.2+): the SDK still wants one; the server ignores it.
+  return new CrucibleClient({ url: server.url, token: server.token === '' ? 'none' : server.token, clientName: as });
 }
 
 /** A probe's clock (guide §5.3, §11): a sleeping or unplugged server must not hang Test or the install check. */

@@ -38,6 +38,20 @@ interface Document {
   servers: StoredServer[];
 }
 
+/**
+ * A Crucible since 2.0.2 may run with no token, and its pairing line then has no `#token`; the
+ * SDK B-Sides pins (1.0.140) still wants one, so an empty fragment stands in and is stored as ''.
+ */
+const NO_TOKEN = 'none';
+function withFragment(line: string): string {
+  const raw = line.trim();
+  if (raw.includes('#')) return raw.endsWith('#') ? `${raw}${NO_TOKEN}` : raw;
+  return `${raw.endsWith('/') ? raw : `${raw}/`}#${NO_TOKEN}`;
+}
+function tokenOf(token: string): string {
+  return token === NO_TOKEN ? '' : token;
+}
+
 /** A base URL as the SDK wants it: http(s), no trailing slash, no `/v1`. */
 export function normaliseUrl(raw: string): string {
   let url = raw.trim();
@@ -124,8 +138,8 @@ export class ServerRegistry {
 
   /** Add the server a `crucible://` line names. The same name again replaces its url and token. */
   async addPairing(line: string): Promise<ServerView[]> {
-    const pairing = parsePairing(line);
-    return this.put({ name: pairing.name, url: pairing.url, token: pairing.token }, null);
+    const pairing = parsePairing(withFragment(line));
+    return this.put({ name: pairing.name, url: pairing.url, token: tokenOf(pairing.token) }, null);
   }
 
   /**
@@ -173,10 +187,9 @@ export class ServerRegistry {
     if (this.read().servers.some((server) => server.name === name)) {
       throw new Refusal('server_name_taken', `There is already a server named ${name}; edit that one instead.`);
     }
-    if (input.token === null || input.token.trim() === '') {
-      throw new Refusal('server_token_missing', 'A server needs its token (or paste its pairing line instead).');
-    }
-    return this.put({ name, url: input.url, token: input.token.trim() }, null);
+    // A Crucible since 2.0.2 may run with no token (Owen, 2026-10-11: Ollama-style); one that needs
+    // one says so when tested.
+    return this.put({ name, url: input.url, token: input.token?.trim() ?? '' }, null);
   }
 
   async update(previous: string, input: ServerInput): Promise<ServerView[]> {
