@@ -11,6 +11,7 @@ import { CrucibleClient, CrucibleRefused, type InstallingDetails, type ModelInfo
 
 import { Refusal } from './refusal';
 import type { StoredServer } from './servers';
+import { SONG_FIELD_WORDING, SONG_TAG_CONFLICTS, SONG_TAG_GROUPS } from '../song-tags';
 import { SONG_MODEL, TAG_MODELS, type NumberField, type Preset, type ServerProbe, type SongPage } from '../types';
 
 /** The app's name; each install adds its own (`b-sides@<host>`), set by the hub that runs it. */
@@ -184,13 +185,14 @@ export async function songPage(server: StoredServer): Promise<SongPage> {
     available: page.available,
     reason: page.reason,
     downloadBytes: page.downloadBytes,
-    tagsPlaceholder: tags?.placeholder ?? null,
-    tagsHint: tags?.hint ?? null,
-    suggestions: tags?.suggestions ?? [],
-    // The server keys conflicts lower-cased already; B-Sides looks them up the same way.
-    conflicts: tags?.conflicts ?? {},
-    lyricsPlaceholder: lyrics?.placeholder ?? null,
-    lyricsHint: lyrics?.hint ?? null,
+    // The suggestions, conflicts and wording are B-Sides' own (shared/song-tags.ts, 1.0.15): the
+    // server's page is read only for the model's own fields and standing.
+    tagsPlaceholder: SONG_FIELD_WORDING.tagsPlaceholder,
+    tagsHint: SONG_FIELD_WORDING.tagsHint,
+    suggestions: SONG_TAG_GROUPS,
+    conflicts: SONG_TAG_CONFLICTS,
+    lyricsPlaceholder: SONG_FIELD_WORDING.lyricsPlaceholder,
+    lyricsHint: lyrics === undefined ? null : SONG_FIELD_WORDING.lyricsHint,
     instrumental: named('instrumental') !== undefined,
     length: named('min_duration_s') !== undefined && named('max_duration_s') !== undefined,
     planningSets: optionIds(named('planning_set')),

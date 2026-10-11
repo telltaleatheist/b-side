@@ -33,7 +33,7 @@ interface Editing {
   template: `
     <div class="card">
       <h2 class="card-title">Crucible servers</h2>
-      <p class="detail">B-Sides sends every song to the server marked "in use". Its songs, presets and tag suggestions come from that server.</p>
+      <p class="detail">B-Sides sends every song to the server marked "in use". The songs are made there; presets and tag suggestions are kept by B-Sides itself.</p>
 
       @for (server of hub.servers(); track server.name) {
         <div class="server" [class.active]="server.active">

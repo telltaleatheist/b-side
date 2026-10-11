@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { SONG_TAG_CONFLICTS } from '../shared/song-tags';
 
 import { addTags, clashesWith, clashText, joinTags, splitTags, toggleTag } from '../shared/tags';
 
@@ -60,4 +61,10 @@ test('instrumental means no voice: every tag that asks for a singer goes, the re
 
 test("a duet and sung harmonies are voices; an instrument's harmonies are not", () => {
   expect(withoutVoice(['folk', 'duet', 'three-part harmonies', 'twin guitar harmonies', 'banjo'])).toEqual(['folk', 'twin guitar harmonies', 'banjo']);
+});
+
+test("B-Sides' own conflict map matches the rules it states", () => {
+  expect(SONG_TAG_CONFLICTS['slow']?.map((c) => c.tag)).toEqual(['128 BPM', '140 BPM', 'fast', 'mid-tempo']);
+  expect(SONG_TAG_CONFLICTS['instrumental']?.some((c) => c.tag === 'duet' && c.why === 'an instrumental has no singer')).toBe(true);
+  expect(SONG_TAG_CONFLICTS['duet']?.map((c) => c.tag)).toEqual(['Instrumental', 'no singing', 'no vocals']);
 });

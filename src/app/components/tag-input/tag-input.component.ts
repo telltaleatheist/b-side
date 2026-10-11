@@ -11,7 +11,7 @@ import { StudioService } from '../../core/studio.service';
  * Typing a phrase then a comma or Enter commits it as a chip; a paste with
  * commas splits into chips (the input sees the commas); Backspace on an empty
  * box removes the last chip; leaving the box commits what was typed. Under it,
- * the server's suggestions by group: click to add, click again to remove.
+ * B-Sides' own suggestions by group (shared/song-tags.ts): click to add, click again to remove.
  *
  * Conflicts are the server's map: a picked chip that contradicts another picked
  * chip is red, a suggestion that would contradict a picked tag is outlined red,
