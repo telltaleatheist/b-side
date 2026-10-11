@@ -336,6 +336,11 @@ export interface Song extends SongFacts {
   readonly album: string | null;
   /** The audio file's size, when it was recorded (songs saved before sizes were kept say null). */
   readonly bytes: number | null;
+  /**
+   * An instrumental's structure: the planning lyrics YuE2 scored it from (Crucible's pool set id,
+   * e.g. "tidewater"), shown so a report can name it (crucible-pc-1, 2026-10-10). Absent when sung.
+   */
+  readonly structure?: string | null;
 }
 
 /** A named playlist: library song ids in play order. */

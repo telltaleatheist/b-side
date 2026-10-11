@@ -330,6 +330,12 @@ export class PlayerService {
     this.output.update(this.outputQueue());
   }
 
+  /** Play a whole list shuffled: shuffle on, from anywhere in it. */
+  shufflePlaylist(playlistId: string): void {
+    this.shuffle.set(true);
+    this.playPlaylist(playlistId);
+  }
+
   /** Shuffle on mixes what comes next; off puts it back in its order. */
   toggleShuffle(): void {
     const on = !this.shuffle();
@@ -477,7 +483,9 @@ export class PlayerService {
   playPlaylist(playlistId: string, song?: Song): void {
     const playlist = this.library.playlist(playlistId);
     if (playlist === null) return;
-    const first = song ?? this.library.songsOf(playlist)[0];
+    const songs = this.library.songsOf(playlist);
+    // Shuffled, a whole list starts anywhere in it, not always on its first track (Victoria, 2026-10-10).
+    const first = song ?? (this.shuffle() ? songs[Math.floor(Math.random() * songs.length)] : songs[0]);
     if (first !== undefined) this.play(itemOfSong(first, (playlist.album ? this.hub.coverUrl(playlist) : null)), { kind: 'playlist', id: playlistId });
   }
 

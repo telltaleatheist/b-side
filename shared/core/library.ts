@@ -76,7 +76,14 @@ function songOf(sidecar: Sidecar): Song {
     batch: sidecar.batch,
     album: sidecar.album,
     bytes: typeof sidecar.bytes === 'number' ? sidecar.bytes : null,
+    structure: structureOf(sidecar.effective),
   };
+}
+
+/** The planning set an instrumental was scored from, as the server recorded it (`planning_lyrics.id`). */
+function structureOf(effective: unknown): string | null {
+  const planning = (effective as { planning_lyrics?: { id?: unknown } } | null)?.planning_lyrics;
+  return typeof planning?.id === 'string' && planning.id !== '' ? planning.id : null;
 }
 
 function cleanName(name: string): string {

@@ -92,6 +92,9 @@ const COVER_PX = 768;
             }
             <div class="head-actions">
               <button type="button" class="primary" [disabled]="songs().length === 0" (click)="playAll(playlist)"><app-icon name="play" [size]="18" />Play</button>
+              @if (!remote()) {
+                <button type="button" class="ghost" [disabled]="songs().length < 2" title="Play it in a random order" (click)="player.shufflePlaylist(playlist.id)"><app-icon name="shuffle" [size]="18" />Shuffle</button>
+              }
               <button type="button" class="icon-btn outlined" aria-label="Play next" title="Play next: right after the song playing" [disabled]="songs().length === 0"
                       (click)="queue(playlist, true)"><app-icon name="play-next" [size]="18" /></button>
               <button type="button" class="icon-btn outlined" aria-label="Add to queue" title="Add to queue: at the end" [disabled]="songs().length === 0"
@@ -148,7 +151,7 @@ const COVER_PX = 768;
                 } @else {
                   <div class="title">{{ song.title }}</div>
                 }
-                <div class="sub">{{ song.params.tags ?? '' }}@if (alsoIn(song, playlist); as others) { · also in {{ others }} }</div>
+                <div class="sub">{{ song.params.tags ?? '' }}@if (song.structure) { · structure {{ song.structure }} }@if (alsoIn(song, playlist); as others) { · also in {{ others }} }</div>
                 @if (moving() === song.id) {
                   <div class="move-menu">
                     <span class="kicker">Move to</span>
