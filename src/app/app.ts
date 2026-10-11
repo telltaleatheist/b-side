@@ -9,8 +9,9 @@ import { IconComponent, type IconName } from './components/icon/icon.component';
 import { MiniPlayerComponent } from './components/mini-player/mini-player.component';
 import { NowPlayingComponent } from './components/now-playing/now-playing.component';
 import { PlayerBarComponent } from './components/player-bar/player-bar.component';
-import { SINGLES_NAME } from '@shared/types';
+import { SINGLES_NAME, type Playlist } from '@shared/types';
 
+import { albumProgress, type AlbumProgress } from './core/album-progress';
 import { HubService } from './core/hub.service';
 import { ImportService } from './core/import.service';
 import { SwipeDirective, type Swipe } from './core/swipe.directive';
@@ -71,6 +72,12 @@ interface Room {
                 <span class="side-names">
                   <span class="side-name">{{ playlist.name }}</span>
                   <span class="side-sub">{{ playlist.songs.length }} {{ playlist.songs.length === 1 ? 'song' : 'songs' }}</span>
+                  @if (making(playlist); as progress) {
+                    <!-- An album being made: how far along, without opening it (Victoria, 2026-10-10). -->
+                    <span class="side-progress" [class.sliding]="progress.waiting" [title]="progress.label">
+                      <span [style.width.%]="progress.share * 100"></span>
+                    </span>
+                  }
                 </span>
               </a>
             }
@@ -170,6 +177,13 @@ interface Room {
     <app-confirm-dialog />
     @if (dropInto(); as into) {
       <div class="drop-hint" role="status"><app-icon name="queue-add" [size]="20" />Drop to add to <strong>{{ into }}</strong></div>
+    }
+    @if (player.ready(); as offer) {
+      <div class="import-toast" role="status">
+        <span><strong>{{ offer.name }}</strong> is ready.</span>
+        <button type="button" class="ghost small" (click)="player.playReady()">Play it</button>
+        <button type="button" class="ghost small" (click)="player.dismissReady()">Later</button>
+      </div>
     }
     @if (importer.state(); as state) {
       <div class="import-toast" role="status">
@@ -282,6 +296,10 @@ interface Room {
       .side-names { display: flex; flex-direction: column; min-width: 0; }
       .side-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .side-sub { font-size: 11px; color: var(--text-muted); }
+      .side-progress { display: block; height: 3px; margin-top: 4px; border-radius: 2px; background: var(--bg-hover); overflow: hidden; }
+      .side-progress span { display: block; height: 100%; background: var(--accent); border-radius: 2px; transition: width .4s ease; }
+      .side-progress.sliding span { width: 30% !important; animation: side-slide 1.4s ease-in-out infinite; }
+      @keyframes side-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
       .side-foot { margin-top: auto; padding: 0 8px; }
       .side-offer { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--accent-faint); font-size: 12px; color: var(--text-primary); }
       .side-offer-acts { display: flex; gap: 6px; }
@@ -304,7 +322,14 @@ export class App {
   protected readonly peerId = peerId;
   protected readonly ui = inject(UiService);
   // Built with the shell, so a song that lands while another room is open still plays.
-  private readonly player = inject(PlayerService);
+  protected readonly player = inject(PlayerService);
+
+  /** An album being made (and not interrupted): its progress, for the sidebar's bar. */
+  protected making(playlist: Playlist): AlbumProgress | null {
+    const album = playlist.album;
+    if (album == null || album.working === false || !['planning', 'cover', 'making'].includes(album.stage)) return null;
+    return albumProgress(album);
+  }
 
   protected readonly rooms: readonly Room[] = [
     { path: '/', label: 'Listen', icon: 'listen', exact: true },

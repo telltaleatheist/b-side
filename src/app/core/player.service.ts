@@ -224,7 +224,7 @@ export class PlayerService {
         }
       });
     });
-    // An album just asked for: play it as soon as it has a song.
+    // An album just asked for: play it as soon as it has a song, unless something is playing.
     effect(() => {
       const id = this.autoplay();
       if (id === null) return;
@@ -232,7 +232,8 @@ export class PlayerService {
       if (playlist === null || playlist.songs.length === 0) return;
       untracked(() => {
         this.autoplay.set(null);
-        this.playPlaylist(id);
+        if (this.listening()) this.ready.set({ playlistId: id, songId: null, name: playlist.name });
+        else this.playPlaylist(id);
       });
     });
     this.hub.onSongFiled((job) => {
@@ -243,8 +244,11 @@ export class PlayerService {
       const song = this.library.songs().find((other) => other.id === job.songId);
       if (playlist === null || song === undefined) return;
       if (this.current() === null || this.waiting() || this.awaitedFresh) {
+        const fresh = this.awaitedFresh;
         this.awaitedFresh = false;
-        this.playPlaylist(playlist.id, song);
+        // The first of a new ask, while the person listens to something else: offered, not cut in.
+        if (fresh && this.listening()) this.ready.set({ playlistId: playlist.id, songId: song.id, name: song.title });
+        else this.playPlaylist(playlist.id, song);
       }
     });
     this.hub.onTake((take) => {
@@ -383,6 +387,32 @@ export class PlayerService {
     } else {
       await this.useOutput(wanted, false);
     }
+  }
+
+  /**
+   * Something made here that is ready while the person listens to something else: offered
+   * ("ready, play?") instead of cutting in (Victoria, 2026-10-10: autoplay "could be a problem if
+   * someone is listening to an already-created album and just wants to create songs/albums in
+   * the background"). Nothing playing, or paused: it plays at once, as before.
+   */
+  readonly ready = signal<{ readonly playlistId: string; readonly songId: string | null; readonly name: string } | null>(null);
+
+  /** Something is playing now (not paused, not waiting at the end of an album for its next track). */
+  private listening(): boolean {
+    return this.current() !== null && !this.paused() && !this.waiting();
+  }
+
+  /** Play what was offered. */
+  playReady(): void {
+    const offer = this.ready();
+    this.ready.set(null);
+    if (offer === null) return;
+    const song = offer.songId === null ? undefined : this.library.songs().find((other) => other.id === offer.songId);
+    this.playPlaylist(offer.playlistId, song);
+  }
+
+  dismissReady(): void {
+    this.ready.set(null);
   }
 
   /** Whether the next awaited song may cut in on what is playing: yes for the first of a new ask. */
