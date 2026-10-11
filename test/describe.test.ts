@@ -83,7 +83,7 @@ test('the prompt asks for lyrics only when the song is sung', () => {
 
 test('lyrics with double spaces for line breaks come out one line per line, sections apart', () => {
   expect(layLyrics('[verse]  The kitchen lights are low,  The vinyl spins.  [Chorus]  Dancing with you,  my love.'))
-    .toBe('[verse]\nThe kitchen lights are low,\nThe vinyl spins.\n\n[chorus]\nDancing with you,\nmy love.');
+    .toBe('[Verse]\nThe kitchen lights are low,\nThe vinyl spins.\n\n[Chorus]\nDancing with you,\nmy love.');
 });
 
 import { describe as describeMusic } from '../shared/core/describe';

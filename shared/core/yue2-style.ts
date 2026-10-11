@@ -34,7 +34,7 @@ export const YUE2_LYRICS_GUIDE = [
   "YuE2's own guidance for the lyrics (the yue2-music skill, by the YuE2 authors, Apache-2.0):",
   '- "Put section tags and actual words in `lyrics`. Keep implementation notes out of lyrics." No notes, directions or explanations: every line is sung.',
   '- "Check syllable count, lexical stress, consonant density on short notes, comfortable vowels on held notes and breathing spaces ... matching the total number of syllables alone is insufficient."',
-  'Its example lyrics, verbatim (short lines of about 7 syllables, rhymed in couplets; B-Sides writes the tags in lowercase):',
+  'Its example lyrics, verbatim (short lines of about 7 syllables, rhymed in couplets):',
   '[Verse]',
   'Neon fades along the lane',
   'Footsteps keep the time of rain',

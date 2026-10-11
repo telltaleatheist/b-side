@@ -108,7 +108,7 @@ test('a 90-minute sung album: [album], then [tracks] three times fifteen, then [
   const meta = album.meta();
   expect(meta.plan!.tracks.length).toBe(45);
   expect(meta.plan!.trackCount).toBe(45);
-  expect(meta.plan!.tracks.every((track) => track.lyrics === '[verse]\nla\n\n[chorus]\nla')).toBe(true);
+  expect(meta.plan!.tracks.every((track) => track.lyrics === '[Verse]\nla\n\n[Chorus]\nla')).toBe(true);
   expect(meta.writer).toBe(MODEL);
   expect(meta.stage).toBe('making');
   expect(album.names).toContain('Spotted');
@@ -209,7 +209,7 @@ test('with Claude writing, every text call is Claude\'s and the server is never 
   expect(asked[0]!.brief).toBe('a banana going brown');
   expect(asked[0]!.tags).toBe('indie folk, melancholic, soft female voice, 80 BPM');
   // Laid out for YuE: every section on its own line, a blank line before each after the first.
-  expect(album.meta().plan!.tracks[0]!.lyrics).toBe('[intro]\noh\n\n[verse]\nla la\n\n[pre-chorus]\nhey\n\n[chorus]\nyeah');
+  expect(album.meta().plan!.tracks[0]!.lyrics).toBe('[Intro]\noh\n\n[Verse]\nla la\n\n[Pre-Chorus]\nhey\n\n[Chorus]\nyeah');
   expect(album.meta().writer).toBe('claude-sonnet-5-5');
   expect(album.meta().lyricsBy).toBe('claude-sonnet-5-5');
   expect(album.meta().stage).toBe('making');

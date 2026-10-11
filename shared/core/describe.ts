@@ -168,6 +168,14 @@ export function composeTags(fields: TagFields): string[] {
  * line before every section after the first. Small models put double spaces (or
  * nothing) where the line breaks belong; YuE reads the breaks.
  */
+/**
+ * A section tag in Title Case ("[Pre-Chorus]"), as every YuE2 example writes it and as Crucible's
+ * own instrumental path does; Crucible passes sung lyrics to YuE2 verbatim (crucible-pc-1, 2026-10-11).
+ */
+export function titleTag(tag: string): string {
+  return tag.toLowerCase().replace(/(^|[\s\[-])([a-z])/g, (_, before: string, letter: string) => before + letter.toUpperCase());
+}
+
 export function layLyrics(raw: string): string {
   const lines = raw
     .replace(/\r/g, '')
@@ -180,7 +188,7 @@ export function layLyrics(raw: string): string {
   for (const line of lines) {
     if (/^\[[^\]]+\]$/.test(line)) {
       if (out.length > 0) out.push('');
-      out.push(line.toLowerCase());
+      out.push(titleTag(line));
     } else {
       out.push(line);
     }

@@ -50,7 +50,7 @@ export interface Lyricist {
 }
 
 /** The sections YuE2 composes (crucible/jobs/audio/yue2music/compile_score.py SECTIONS). */
-export const YUE_SECTIONS = ['intro', 'verse', 'pre-chorus', 'chorus', 'bridge', 'interlude', 'outro'] as const;
+export const YUE_SECTIONS = ['Intro', 'Verse', 'Pre-Chorus', 'Chorus', 'Bridge', 'Interlude', 'Outro'] as const;
 
 export function claudeLyricsSystem(): string {
   return [
@@ -61,7 +61,7 @@ export function claudeLyricsSystem(): string {
     'soul like soul). No cliches, no filler, no line that only rhymes. Every line must make sense read aloud.',
     '',
     'Form, which YuE2 needs to sing every section:',
-    `- Use only these section tags, each alone on its own line, lowercase, in square brackets: ${YUE_SECTIONS.map((s) => `[${s}]`).join(', ')}.`,
+    `- Use only these section tags, each alone on its own line, in Title Case, in square brackets: ${YUE_SECTIONS.map((s) => `[${s}]`).join(', ')}.`,
     '- Every section has at least 4 lines. YuE2 drops shorter sections, above all at the start and end of a song.',
     '- Use an [intro] or [outro] only when it has 4 or more sung lines; otherwise start on the first verse and end on the last chorus.',
     '- Verses 4-6 lines, pre-choruses 4, choruses 4-6, a bridge 4. The final chorus has its last two lines changed.',
