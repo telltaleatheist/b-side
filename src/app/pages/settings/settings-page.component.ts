@@ -157,6 +157,31 @@ import { StudioService } from '../../core/studio.service';
       </div>
 
       <div class="card">
+        <h2 class="card-title">Making order</h2>
+        <p class="detail">What a computer making music works on first. Everything takes the same total time either way; only what finishes first changes.</p>
+        <label class="toggle">
+          <input type="radio" name="albumOrder" [checked]="preferences()?.albumOrder !== 'turns'" (change)="setOrder({ albumOrder: 'one' })" />
+          <span><strong>One album at a time</strong>: each album is finished before the next begins.</span>
+        </label>
+        <label class="toggle">
+          <input type="radio" name="albumOrder" [checked]="preferences()?.albumOrder === 'turns'" (change)="setOrder({ albumOrder: 'turns' })" />
+          <span><strong>Take turns</strong>: albums on the same computer get a track each in turn, so they grow together.</span>
+        </label>
+        <h3 class="card-sub">Single songs</h3>
+        <label class="toggle">
+          <input type="radio" name="singles" [checked]="preferences()?.singles === 'next'" (change)="setOrder({ singles: 'next' })" />
+          <span><strong>Go next</strong>, ahead of album tracks still waiting.</span>
+        </label>
+        <label class="toggle">
+          <input type="radio" name="singles" [checked]="preferences()?.singles !== 'next'" (change)="setOrder({ singles: 'turn' })" />
+          <span><strong>Take their turn</strong> with album tracks.</span>
+        </label>
+        @if (orderRefusal(); as refused) {
+          <app-refusal [refusal]="refused" />
+        }
+      </div>
+
+      <div class="card">
         <h2 class="card-title">Library</h2>
         <p class="detail">Songs saved to a playlist are kept here, each as its audio file plus a .json sidecar with the tags, lyrics, seed, guidance, server and Crucible job it came from. Playlists are in playlists.json beside them.</p>
         @if (hub.onPhone()) {
@@ -438,6 +463,17 @@ export class SettingsPageComponent {
       // The radio shows what is in force, not what was refused.
       this.preferences.set({ ...(this.preferences() as HubPreferences) });
     }
+  }
+
+  protected readonly orderRefusal = signal<RefusalView | null>(null);
+
+  /** Making order (Victoria, 2026-10-11): one album at a time or taking turns, and where single songs go. */
+  protected async setOrder(change: Pick<Partial<HubPreferences>, 'albumOrder' | 'singles'>): Promise<void> {
+    const outcome = await this.hub.call<HubPreferences>('PUT', '/api/preferences', change);
+    this.orderRefusal.set(outcome.ok ? null : outcome.refusal);
+    if (outcome.ok) this.preferences.set(outcome.value);
+    // The radio shows what is in force, not what was refused.
+    else this.preferences.set({ ...(this.preferences() as HubPreferences) });
   }
 
   protected async setFormat(songFormat: SongFormat): Promise<void> {

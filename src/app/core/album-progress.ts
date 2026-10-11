@@ -52,7 +52,8 @@ export function albumProgress(album: AlbumMeta): AlbumProgress {
         return { label: `Written. Its music is made once "${album.waitingFor}" is finished.`, share: musicShare, waiting: false };
       }
       return {
-        label: `Making the music: ${Math.floor(album.madeS / 60)} of ${album.ask.minutes} min`,
+        // Taking turns (Settings, Victoria 2026-10-11): it grows a track at a time beside the others.
+        label: `Making the music${album.takingTurns ? ', taking turns with other albums' : ''}: ${Math.floor(album.madeS / 60)} of ${album.ask.minutes} min`,
         share: musicShare,
         waiting: false,
       };

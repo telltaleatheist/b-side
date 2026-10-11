@@ -208,7 +208,26 @@ export interface HubPreferences {
    * lyrics with one model (claude -p for example) and everything else with the b-sides model").
    */
   readonly lyricist: 'bside' | 'claude';
+  /**
+   * How albums on the same server share it (Victoria, 2026-10-11: "In some cases, it's nice to
+   * complete an entire album before moving on to the next. In other cases, I want to flip back and
+   * forth between albums"): `one` finishes each album before the next begins; `turns` sends a track
+   * from each in turn, so they grow together. Absent in a file from before: `one`.
+   */
+  readonly albumOrder?: AlbumOrder;
+  /**
+   * Where a song made on its own goes in the server's line (Victoria, 2026-10-11: "back and forth
+   * between generating an album and an individual song"): `turn` waits behind the album tracks
+   * already sent (at most two); `next` goes ahead of album tracks still waiting (albums keep only
+   * one track on the server, and send none while a song is waiting). Absent in a file from before: `turn`.
+   */
+  readonly singles?: SinglesOrder;
 }
+
+export type AlbumOrder = 'one' | 'turns';
+export const ALBUM_ORDERS: readonly AlbumOrder[] = ['one', 'turns'];
+export type SinglesOrder = 'next' | 'turn';
+export const SINGLES_ORDERS: readonly SinglesOrder[] = ['next', 'turn'];
 
 /**
  * The playlist every song made on its own is filed into, as an album's tracks
@@ -440,6 +459,12 @@ export interface AlbumMeta {
   readonly working?: boolean;
   /** The album ahead of it on its server, while it waits its turn to make its music. Filled in when sent, never stored. */
   readonly waitingFor?: string | null;
+  /** Taking turns with other albums on its server (Settings: Take turns). Filled in when sent, never stored. */
+  readonly takingTurns?: boolean;
+  /** When a track of it was last sent to the server: taking turns, the album sent to longest ago goes next. */
+  readonly lastSentAt?: string | null;
+  /** When the person chose Make this next: it goes ahead of the other albums on its server (Victoria, 2026-10-11). */
+  readonly nextAt?: string | null;
   /** How many tracks were sent before the plan existed (the openers); absent until they are. */
   readonly openers?: number;
   /** Seconds of music made so far. */

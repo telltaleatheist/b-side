@@ -114,6 +114,9 @@ const COVER_PX = 768;
               @if (!remote() && playlist.album && busy(playlist.album.stage) && !interrupted(playlist.album)) {
                 <button type="button" class="ghost stop" (click)="stopAlbum(playlist)"><app-icon name="close" [size]="16" />Stop making it</button>
               }
+              @if (!remote() && playlist.album && playlist.album.stage === 'making' && (playlist.album.waitingFor || playlist.album.takingTurns)) {
+                <button type="button" class="ghost" [title]="playlist.album.waitingFor ? 'Make this album before the others on its computer; the songs already started for the one ahead still finish' : 'Give this album the very next turn'" (click)="makeNext(playlist)"><app-icon name="play-next" [size]="16" />Make this next</button>
+              }
               @if (canRewrite(playlist)) {
                 <button type="button" class="ghost" [disabled]="rewriting() !== null" title="The album's model describes the cover again; the image model, when the server has one, paints it" (click)="rewrite(playlist, 'cover')"><app-icon name="reroll" [size]="16" />New cover</button>
                 <button type="button" class="ghost" [disabled]="rewriting() !== null" title="15 more minutes of this album: new songs at the end, same sound, names that are not already on it" (click)="extendAlbum(playlist)"><app-icon name="queue-add" [size]="16" />More like this</button>
@@ -535,6 +538,12 @@ export class PlaylistsPageComponent {
 
   protected async stopAlbum(playlist: Playlist): Promise<void> {
     const outcome = await this.hub.call<unknown>('POST', `/api/albums/${encodeURIComponent(playlist.id)}/stop`);
+    this.refusal.set(outcome.ok ? null : outcome.refusal);
+  }
+
+  /** Make this next (Victoria, 2026-10-11): ahead of the other albums on its server. */
+  protected async makeNext(playlist: Playlist): Promise<void> {
+    const outcome = await this.hub.call<unknown>('POST', `/api/albums/${encodeURIComponent(playlist.id)}/next`);
     this.refusal.set(outcome.ok ? null : outcome.refusal);
   }
 

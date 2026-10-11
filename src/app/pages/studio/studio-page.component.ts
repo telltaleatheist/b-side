@@ -17,6 +17,7 @@ import { bytesText } from '../../core/format';
 import { desktop, HubService } from '../../core/hub.service';
 import { JobsService } from '../../core/jobs.service';
 import { PlayerService } from '../../core/player.service';
+import { RememberHeightDirective } from '../../core/remember-height.directive';
 import { LibraryService } from '../../core/library.service';
 import { StudioService } from '../../core/studio.service';
 import { RefusalComponent } from '../../components/refusal/refusal.component';
@@ -35,7 +36,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
 @Component({
   selector: 'app-studio-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RefusalComponent, DecimalPipe, RouterLink, CrucibleSetupComponent, PresetBarComponent, TagInputComponent, IconComponent, CoverComponent],
+  imports: [RefusalComponent, DecimalPipe, RouterLink, CrucibleSetupComponent, PresetBarComponent, TagInputComponent, IconComponent, CoverComponent, RememberHeightDirective],
   template: `
     <div class="page">
       <h1 class="page-title">Make</h1>
@@ -67,7 +68,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
 
         <form class="field" (submit)="$event.preventDefault(); fillTags()">
           <label class="label" for="describe">Describe it</label>
-          <textarea id="describe" rows="2" class="describe" [class.over]="studio.description().length > descriptionMax"
+          <textarea id="describe" appRememberHeight="describe" rows="2" class="describe" [class.over]="studio.description().length > descriptionMax"
                     placeholder="rainy 90s trip-hop, vinyl crackle, a little late-night jazz"
                     [value]="studio.description()" (input)="studio.description.set($any($event.target).value)"></textarea>
           @if (studio.description().length > descriptionMax * 0.8) {
@@ -170,7 +171,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
             @if (albumSung()) {
               <div class="field">
                 <label class="label" for="album-lyrics">What the lyrics are about</label>
-                <textarea id="album-lyrics" rows="2" maxlength="400" spellcheck="true"
+                <textarea id="album-lyrics" appRememberHeight="album-about" rows="2" maxlength="400" spellcheck="true"
                           placeholder="their mood, style or story: late-night regrets, wry and tender, told by a bartender"
                           [value]="studio.lyricsBrief()" (input)="studio.lyricsBrief.set($any($event.target).value)"></textarea>
                 <p class="hint">Every track's lyrics are written to this, and the titles fit it. Blank: the album's description leads.</p>
@@ -231,14 +232,14 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
         @if (!studio.instrumental()) {
           <div class="field">
             <label class="label" for="lyrics-brief">What the lyrics are about</label>
-            <textarea id="lyrics-brief" rows="2" maxlength="400" spellcheck="true"
+            <textarea id="lyrics-brief" appRememberHeight="song-about" rows="2" maxlength="400" spellcheck="true"
                       placeholder="a banana going brown on the windowsill; bittersweet, a little funny"
                       [value]="studio.lyricsBrief()" (input)="studio.lyricsBrief.set($any($event.target).value)"></textarea>
             <p class="hint">Fill in the tags writes the lyrics to this. With the Lyrics box empty, Make writes them first.</p>
           </div>
           <div class="field">
             <label class="label" for="lyrics">Lyrics</label>
-            <textarea id="lyrics" rows="10" spellcheck="true"
+            <textarea id="lyrics" appRememberHeight="lyrics" rows="10" spellcheck="true"
                       [placeholder]="lyricsPlaceholder()"
                       [value]="studio.lyrics()"
                       (input)="studio.lyrics.set($any($event.target).value)"></textarea>

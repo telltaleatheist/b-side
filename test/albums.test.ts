@@ -45,8 +45,8 @@ test('the progress line says what the maker is doing, and the bar only goes forw
 import { AlbumMaker, type AlbumHooks } from '../shared/core/albums';
 import type { AlbumMeta } from '../shared/types';
 
-/** The albums making their music on the server, oldest first (only the first sends tracks). */
-let line: string[] = ['a'];
+/** The albums making their music on the server: this one alone (several: album-line.test.ts). */
+const line: string[] = ['a'];
 
 /** An album with four planned tracks, cover painted, as a fake hub holds it. */
 function fakeAlbum(meta: Partial<AlbumMeta>, songs: { title: string; durationS: number }[], flying: number[] = []) {
@@ -119,17 +119,6 @@ test('stick to my tags: a track adds only a tempo, and only when the album sets 
 test('a 15-minute album plans a track per two minutes, written in one batch', () => {
   expect(trackCount(15)).toBe(8);
   expect(batches(8)).toEqual([[1, 8]]);
-});
-
-test('a newer album waits for the one ahead on its server, then makes its music when that one leaves the line', async () => {
-  line = ['older', 'a'];
-  const album = fakeAlbum({ stage: 'making', sent: 1, madeS: 150 }, [{ title: 'One', durationS: 150 }]);
-  await album.maker.landed('a', 0);
-  expect(album.rendered).toEqual([]);
-  line = ['a'];
-  await album.maker.next('pc');
-  expect(album.rendered.length).toBeGreaterThan(0);
-  line = ['a'];
 });
 
 test('more like this: 15 more minutes, planning new tracks only when too few unmade ones are left', async () => {

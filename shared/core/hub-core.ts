@@ -20,7 +20,7 @@
  */
 import type { CrucibleClient } from '@crucible/client';
 
-import { AlbumMaker } from './albums';
+import { AlbumMaker, albumLine } from './albums';
 import { clientFor, clientName, deletePreset, listPresets, probe, savePreset, setClientName, songPage, startInstall } from './crucible';
 import { describe, layLyrics, MAX_LYRICS_BRIEF } from './describe';
 import type { Lyricist } from './lyricist';
@@ -35,15 +35,19 @@ import { TakeStore, type TakeLimits } from './takes';
 import { defaultTitle } from './titles';
 import {
   ALBUM_MINUTES,
+  ALBUM_ORDERS,
   ALBUM_SPACE_GB,
   albumBytes,
   DESCRIPTION_MAX,
   ENDED_PHASES,
   LENGTH_AIMS,
   SINGLES_NAME,
+  SINGLES_ORDERS,
   SONG_FORMATS,
   SONG_MODEL,
   type AlbumAsk,
+  type AlbumMeta,
+  type AlbumOrder,
   type ClientKind,
   type DescribeResult,
   type GenerateRequest,
@@ -55,6 +59,7 @@ import {
   type Playlist,
   type ServerInput,
   type ServerView,
+  type SinglesOrder,
   type Song,
   type SongForm,
   type SongPage,
@@ -121,7 +126,7 @@ function albumClient(id: string): string {
 }
 
 /** MP3 unless the person chose lossless: about an eighth the size, the same sound on a phone. */
-const DEFAULT_PREFERENCES: HubPreferences = { songFormat: 'mp3', albumSpaceGb: 2, writer: 'bside', lyricist: 'bside' };
+const DEFAULT_PREFERENCES: HubPreferences = { songFormat: 'mp3', albumSpaceGb: 2, writer: 'bside', lyricist: 'bside', albumOrder: 'one', singles: 'turn' };
 
 
 export function text(value: unknown, what: string): string {
@@ -182,11 +187,10 @@ export interface AlbumFiles {
   readonly tracks: readonly { readonly title: string; readonly file: string; readonly lyrics: string | null }[];
 }
 
-/** The albums making their music on `server`, oldest first. */
-function making(playlists: readonly Playlist[], server: string): Playlist[] {
-  return playlists
-    .filter((playlist) => playlist.album?.stage === 'making' && playlist.album.server === server)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+/** The albums making their music on `server`, in the order they send tracks (albumLine). */
+function making(playlists: readonly Playlist[], server: string, order: AlbumOrder): Playlist[] {
+  const line = playlists.filter((playlist) => playlist.album?.stage === 'making' && playlist.album.server === server);
+  return albumLine(line as (Playlist & { album: AlbumMeta })[], order);
 }
 
 /** A cover the person sets themselves: the image types kept, and the largest file (the page shrinks it first). */
@@ -310,6 +314,12 @@ export class HubCore {
         },
         ended: (job) => {
           if (job.album && job.phase !== 'cancelled') void this.albums.failed(job.album.id, job.refusal).then(() => this.libraryChanged());
+          // A single song that ended without one frees the line too (it never lands).
+          if (job.album == null) this.singleLeft(job.server);
+        },
+        // A single song being fetched is off the server: albums held back for it carry on.
+        fetching: (job) => {
+          if (job.album == null) this.singleLeft(job.server);
         },
       },
       options.disk,
@@ -375,6 +385,8 @@ export class HubCore {
         await this.libraryChanged();
       },
       makingOn: (server) => this.makingOn(server),
+      order: () => ({ albums: this.preferences.albumOrder ?? 'one', singles: this.preferences.singles ?? 'turn' }),
+      singlesWaiting: (server) => this.jobs.singlesWaiting(server),
       flyingTracks: (id) => this.jobs.list(albumClient(id))
         .filter((job) => !ENDED_PHASES.includes(job.phase) && job.album?.id === id)
         .map((job) => job.album?.track as number),
@@ -614,9 +626,25 @@ export class HubCore {
     return page;
   }
 
-  /** The albums making their music on `server`, oldest first (only the first sends tracks). */
+  /** The albums making their music on `server`, in the order they send tracks. */
   private async makingOn(server: string): Promise<string[]> {
-    return making((await this.library.list()).playlists, server).map((playlist) => playlist.id);
+    return making((await this.library.list()).playlists, server, this.preferences.albumOrder ?? 'one').map((playlist) => playlist.id);
+  }
+
+  /**
+   * A single song left `server`'s line (fetched, failed or cancelled): with single songs going
+   * next, the albums held back for it carry on.
+   */
+  private singleLeft(server: string): void {
+    if (this.preferences.singles !== 'next') return;
+    void this.albums.next(server).then(() => this.libraryChanged()).catch((err: unknown) => console.error(`[albums] could not carry on on ${server}:`, err));
+  }
+
+  /** Every server with an album making its music: a Settings change to the line takes effect now. */
+  private async refill(): Promise<void> {
+    const servers = new Set((await this.library.list()).playlists.flatMap((p) => (p.album?.stage === 'making' ? [p.album.server] : [])));
+    for (const server of servers) await this.albums.next(server).catch((err: unknown) => console.error(`[albums] could not carry on on ${server}:`, err));
+    if (servers.size > 0) await this.libraryChanged();
   }
 
   /** The library, each album being made saying whether anything is being done for it right now. */
@@ -627,13 +655,19 @@ export class HubCore {
       playlists: view.playlists.map((playlist) => {
         const album = playlist.album;
         if (album == null || !['planning', 'cover', 'making'].includes(album.stage)) return playlist;
-        // Waiting its turn behind an older album on its server: being handled, not interrupted.
-        const line = album.stage === 'making' ? making(view.playlists, album.server) : [];
-        const ahead = line[0] !== undefined && line[0].id !== playlist.id ? line[0] : null;
+        // Waiting its turn behind another album on its server: being handled, not interrupted.
+        // Taking turns, no album waits for another: each is making its music, a track at a time.
+        const turns = this.preferences.albumOrder === 'turns';
+        const line = album.stage === 'making' ? making(view.playlists, album.server, turns ? 'turns' : 'one') : [];
+        const ahead = !turns && line[0] !== undefined && line[0].id !== playlist.id ? line[0] : null;
+        const takingTurns = turns && line.length > 1;
         const working = ahead !== null
+          || takingTurns
+          // Held back while a single song goes next: also waiting its turn.
+          || (album.stage === 'making' && this.preferences.singles === 'next' && this.jobs.singlesWaiting(album.server) > 0)
           || this.albums.writing(playlist.id)
           || this.jobs.list(albumClient(playlist.id)).some((job) => !ENDED_PHASES.includes(job.phase));
-        return { ...playlist, album: { ...album, working, waitingFor: ahead?.name ?? null } };
+        return { ...playlist, album: { ...album, working, waitingFor: ahead?.name ?? null, takingTurns } };
       }),
     };
   }
@@ -706,6 +740,8 @@ export class HubCore {
         writer,
         // Before 0.1.31 the writer wrote the lyrics too; that carries over.
         lyricist: WRITERS.includes(stored.lyricist as never) ? (stored.lyricist as Writer) : writer,
+        albumOrder: ALBUM_ORDERS.includes(stored.albumOrder as never) ? (stored.albumOrder as AlbumOrder) : DEFAULT_PREFERENCES.albumOrder,
+        singles: SINGLES_ORDERS.includes(stored.singles as never) ? (stored.singles as SinglesOrder) : DEFAULT_PREFERENCES.singles,
       };
     } catch (err) {
       console.error(`[hub] ${this.preferencesFile} could not be read; using the defaults:`, err);
@@ -729,6 +765,14 @@ export class HubCore {
     if (lyricist !== undefined && !WRITERS.includes(lyricist as never)) {
       throw new Refusal('body_invalid', `lyricist is one of ${WRITERS.join(', ')}.`);
     }
+    const albumOrder = change['albumOrder'];
+    if (albumOrder !== undefined && !ALBUM_ORDERS.includes(albumOrder as never)) {
+      throw new Refusal('body_invalid', `albumOrder is one of ${ALBUM_ORDERS.join(', ')}.`);
+    }
+    const singles = change['singles'];
+    if (singles !== undefined && !SINGLES_ORDERS.includes(singles as never)) {
+      throw new Refusal('body_invalid', `singles is one of ${SINGLES_ORDERS.join(', ')}.`);
+    }
     const toClaude = (writer === 'claude' && this.preferences.writer !== 'claude') || (lyricist === 'claude' && this.preferences.lyricist !== 'claude');
     if (toClaude && this.options.claude === undefined) {
       throw new Refusal('claude_unavailable', 'Claude writes only on a B-Sides computer, through its Claude Code.');
@@ -741,10 +785,15 @@ export class HubCore {
       ...(space === undefined ? {} : { albumSpaceGb: space as number }),
       ...(writer === undefined ? {} : { writer: writer as Writer }),
       ...(lyricist === undefined ? {} : { lyricist: lyricist as Writer }),
+      ...(albumOrder === undefined ? {} : { albumOrder: albumOrder as AlbumOrder }),
+      ...(singles === undefined ? {} : { singles: singles as SinglesOrder }),
     };
     await this.options.disk.mkdir(this.options.dataDir);
     await this.options.disk.writeText(this.preferencesFile, `${JSON.stringify(next, null, 2)}\n`);
+    const reorder = next.albumOrder !== this.preferences.albumOrder || next.singles !== this.preferences.singles;
     this.preferences = next;
+    // The line's new order takes effect now: the album whose turn it is sends, the pages say so.
+    if (reorder) await this.refill();
     return next;
   }
 
@@ -898,6 +947,11 @@ export class HubCore {
     });
     this.route('POST', '/api/albums/:id/resume', async (request) => {
       await this.albums.resume(request.params['id'] as string);
+      return this.libraryChanged();
+    });
+    // Make this next (Victoria, 2026-10-11): the album goes ahead of the others on its server.
+    this.route('POST', '/api/albums/:id/next', async (request) => {
+      await this.albums.makeNext(request.params['id'] as string);
       return this.libraryChanged();
     });
     this.route('POST', '/api/albums/:id/stop', async (request) => {

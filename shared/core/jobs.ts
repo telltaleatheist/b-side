@@ -137,6 +137,8 @@ export interface JobHooks {
   publish(job: JobView): void;
   /** A job ended without a song (failed, refused, removed, cancelled): an album skips the track. */
   ended?(job: JobView): void;
+  /** A job's song is made and is being fetched: it is off the server's line (single songs going next). */
+  fetching?(job: JobView): void;
   /** Keep a finished song: as a take, and filed into its playlist when it has one (answers the song then). */
   land(landed: Landed): Promise<{ readonly take: Take; readonly songId: string | null }>;
   /** Find a server again by name (to resume a pending job after a restart). */
@@ -180,6 +182,16 @@ export class JobRunner {
     return [...this.jobs.values()]
       .filter((job) => job.view.album !== null && !ENDED_PHASES.includes(job.view.phase))
       .map((job) => ({ ...job.view }));
+  }
+
+  /**
+   * Songs made on their own (not an album's) on `server` that the server has yet to finish: being
+   * sent, waiting or rendering. One being fetched is not counted: the server is done with it.
+   * Albums hold back for these when single songs go next (Victoria, 2026-10-11).
+   */
+  singlesWaiting(server: string): number {
+    return [...this.jobs.values()].filter((job) => job.view.album == null && job.view.server === server
+      && job.view.phase !== 'fetching' && !ENDED_PHASES.includes(job.view.phase)).length;
   }
 
   list(client: string): JobView[] {
@@ -642,6 +654,7 @@ export class JobRunner {
     job.view.fraction = 1;
     job.view.message = 'Fetching the song';
     this.publish(job);
+    this.hooks.fetching?.({ ...job.view });
     try {
       const result = readAudioResult(done);
       job.view.seed = result.seed;

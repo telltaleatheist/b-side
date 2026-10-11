@@ -13,7 +13,8 @@
  *   cover    the server's image model paints the cover.
  *   tracks   only once all of the above is done (an album is made to be right,
  *            a single song to be fast; Owen, 2026-10-05), rendered in order, two at a time, until the album passes its
- *            length; each one is filed straight into the album under its name.
+ *            length; each one is filed straight into the album under its name. Several
+ *            albums on one server go one at a time or take turns (Settings, `fill`).
  *
  * The album IS a playlist (with `album` details beside it), so it plays, lists
  * and deletes like one, and it fills in while you listen. Every step's progress
@@ -32,7 +33,9 @@ import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { layLyrics } from './describe';
 import { VOICE_TAG, withoutVoice } from '../tags';
-import { LENGTH_AIMS, type AlbumAsk, type AlbumMeta, type AlbumPlan, type AlbumTrack, type LengthAim, type SongPage } from '../types';
+import {
+  LENGTH_AIMS, type AlbumAsk, type AlbumMeta, type AlbumOrder, type AlbumPlan, type AlbumTrack, type LengthAim, type SinglesOrder, type SongPage,
+} from '../types';
 
 /** A song is about this long: how many are counted as on their way. */
 const TYPICAL_TRACK_S = 150;
@@ -43,8 +46,12 @@ const MOST_TRACKS = 45;
 export const EXTEND_MINUTES = 15;
 /** A writing session closes after this long with nothing asked (the cover's paint counts as asking). */
 const SESSION_IDLE_S = 180;
-/** Songs on the server at once for one album: one rendering, one waiting. */
+/**
+ * Album tracks on a server at once, whichever album's: one rendering, one waiting. With single
+ * songs going next, one: a single sent then waits only for the track rendering.
+ */
 const AHEAD = 2;
+const AHEAD_SINGLES_NEXT = 1;
 /** This many failed tracks in a row stops the album. */
 const FAILURES_TO_STOP = 3;
 /**
@@ -172,11 +179,54 @@ export interface AlbumHooks {
   /** A made track was named again: rename its song (the first of the album's songs with the old name). */
   renameSong(id: string, from: string, to: string): Promise<void>;
   /**
-   * The albums making their music on `server`, oldest first: only the first sends tracks, so
-   * each album is finished before the next begins (Victoria, 2026-10-10: several albums at once
-   * took turns a song at a time; Owen: "several albums would be good").
+   * The albums making their music on `server`, in line (albumLine): one album at a time, only the
+   * first sends tracks, so each album is finished before the next begins (Victoria, 2026-10-10:
+   * several albums at once took turns a song at a time; Owen: "several albums would be good").
+   * Taking turns, the first is the one whose turn it is.
    */
   makingOn(server: string): Promise<readonly string[]>;
+  /** The Settings choices for the line (absent: one album at a time, single songs take their turn). */
+  order?(): { readonly albums: AlbumOrder; readonly singles: SinglesOrder };
+  /** Songs made on their own waiting on `server` or being made there (not ended, not being fetched). */
+  singlesWaiting?(server: string): number;
+}
+
+/** An album making its music, as the line orders it. */
+export interface InLine {
+  readonly id: string;
+  readonly createdAt: string;
+  readonly album: Pick<AlbumMeta, 'lastSentAt' | 'nextAt'>;
+}
+
+/**
+ * The albums making their music on one server, in the order they send tracks (Victoria, 2026-10-11).
+ *
+ *   one     Make this next first (the latest chosen first), then oldest first: the first sends
+ *           every track until it is finished, and the rest wait.
+ *   turns   an album chosen with Make this next and not sent from since goes first; then the one
+ *           sent from longest ago (never first), then the oldest. Each sends one track and goes
+ *           to the back.
+ */
+export function albumLine<T extends InLine>(albums: readonly T[], order: AlbumOrder): T[] {
+  const byAge = (a: T, b: T): number => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
+  if (order === 'one') {
+    return [...albums].sort((a, b) => (b.album.nextAt ?? '').localeCompare(a.album.nextAt ?? '') || byAge(a, b));
+  }
+  // Chosen, and not had its turn since: the very next turn is its.
+  const chosen = (x: T): string => {
+    const at = x.album.nextAt ?? '';
+    return at !== '' && at > (x.album.lastSentAt ?? '') ? at : '';
+  };
+  return [...albums].sort((a, b) => chosen(b).localeCompare(chosen(a))
+    || (a.album.lastSentAt ?? '').localeCompare(b.album.lastSentAt ?? '')
+    || byAge(a, b));
+}
+
+/** A time stamp for the line: ISO, and always later than the one before (two sends in one millisecond keep their order). */
+let lastStamp = 0;
+export function lineStamp(): string {
+  lastStamp = Math.max(Date.now(), lastStamp + 1);
+  return new Date(lastStamp).toISOString();
 }
 
 /** One piece of a planned album the person can have written again. */
@@ -215,7 +265,7 @@ export class AlbumMaker {
     await this.hooks.update(id, next);
     // The track landing is still its job's to finish (it is being filed): not one in flight. Counted,
     // the last track left the album at `making` for good, with nothing on the server (2026-10-06).
-    await this.topUp(id, next, 1);
+    await this.next(meta.server, id);
   }
 
   /** A track failed: skip it, and stop the album when several fail in a row. */
@@ -229,7 +279,8 @@ export class AlbumMaker {
       await this.next(meta.server);
       return;
     }
-    await this.topUp(id, meta);
+    // Whichever album's turn it is sends the next track (not always this one).
+    await this.next(meta.server);
   }
 
   /** Close every writing session open now (the app is quitting): the server is free at once, not after the idle time. */
@@ -392,13 +443,33 @@ export class AlbumMaker {
     if (meta !== null) await this.next(meta.server);
   }
 
-  /** An album left the line on `server` (done, stopped, failed, deleted): the next one makes its music. */
-  async next(server: string): Promise<void> {
-    const first = (await this.hooks.makingOn(server))[0];
-    if (first === undefined) return;
-    const meta = await this.hooks.meta(first);
-    if (meta !== null) await this.topUp(first, meta);
+  /**
+   * Something changed on `server` (a track landed or failed, an album left the line or joined it, a
+   * single song ended, a Settings choice): send what the line has room for, in its order. One fill
+   * per server at a time, so two never read the same `sent` and send a track twice. `landing`: the
+   * album whose track is being filed now (its job is not ended yet, but is no longer on the server).
+   */
+  next(server: string, landing: string | null = null): Promise<void> {
+    const run = (this.lines.get(server) ?? Promise.resolve()).then(() => this.fill(server, landing));
+    this.lines.set(server, run.catch(() => undefined));
+    return run;
   }
+
+  /**
+   * Make this next (Victoria, 2026-10-11): the album goes ahead of the others on its server. One
+   * at a time, the album ahead stops sending (its tracks on the server finish) and this one sends
+   * until it is finished; taking turns, it has the very next turn.
+   */
+  async makeNext(id: string): Promise<void> {
+    const meta = await this.hooks.meta(id);
+    if (meta === null) throw new Refusal('album_missing', 'That album is gone.', 404);
+    if (meta.stage !== 'making') throw new Refusal('album_not_making', 'Only an album making its music can go next.', 409);
+    await this.hooks.update(id, { ...meta, nextAt: lineStamp() });
+    await this.next(meta.server);
+  }
+
+  /** The fill under way (or last finished) on each server: the next one waits for it. */
+  private readonly lines = new Map<string, Promise<unknown>>();
 
   private async advance(id: string): Promise<void> {
     let meta = await this.hooks.meta(id);
@@ -412,7 +483,7 @@ export class AlbumMaker {
         // it, so thirteen lyrics calls in a row would load and unload the model thirteen times.
         // The session holds the server for this run; each model stays loaded while its calls last.
         meta = await this.write(id, meta, server);
-        if (meta.stage === 'making') await this.topUp(id, meta);
+        if (meta.stage === 'making') await this.next(meta.server);
         return;
       }
       // An album from before the cover moved behind the tracks may stand at `cover`: carry on making.
@@ -424,7 +495,7 @@ export class AlbumMaker {
         // Tracks that were on the server when the app closed and are gone now: made again.
         meta = await this.recover(id, meta);
         await this.hooks.update(id, meta);
-        await this.topUp(id, meta);
+        await this.next(meta.server);
       }
     } catch (error) {
       const current = await this.hooks.meta(id);
@@ -598,36 +669,82 @@ export class AlbumMaker {
     }
   }
 
-  /** Keep two tracks on the server until the album passes its length or runs out of plan. */
-  private async topUp(id: string, meta: AlbumMeta, landing = 0): Promise<void> {
-    if (meta.stage !== 'making' || meta.plan === null) return;
-    // An older album on the same server is making its music: this one waits its turn. Tracks it
-    // already has on the server finish; `next` starts it when the one ahead leaves the line.
-    if ((await this.hooks.makingOn(meta.server))[0] !== id) return;
-    const target = meta.ask.minutes * 60;
+  /**
+   * Keep the server's album tracks topped up, in the line's order, until each album passes its
+   * length or runs out of plan. Counted across the server's albums, not each album's own: an album
+   * chosen with Make this next waits for the tracks already sent for the one before it, and a
+   * single song never waits behind more than AHEAD album tracks, however many albums there are.
+   *
+   *   one     only the first album sends; it keeps AHEAD on the server.
+   *   turns   the album whose turn it is sends one track and goes to the back; the next one in
+   *           line takes the next room. One that needs nothing now (its songs on the server will
+   *           fill its length) is passed over.
+   *
+   * With single songs going next, albums keep AHEAD_SINGLES_NEXT on the server and send nothing
+   * while a single is waiting; it ending calls `next` again.
+   */
+  private async fill(server: string, landing: string | null): Promise<void> {
+    const order = this.hooks.order?.() ?? { albums: 'one', singles: 'turn' };
+    // The landing track's job is still listed while it is filed, but is off the server.
+    const own = (id: string): number => Math.max(0, this.hooks.inFlight(id) - (id === landing ? 1 : 0));
+    // Each pass sends at most one track, and there is room for at most AHEAD: the bound only guards a mistake.
+    for (let pass = 0; pass <= AHEAD; pass += 1) {
+      const line: { id: string; meta: AlbumMeta }[] = [];
+      for (const id of await this.hooks.makingOn(server)) {
+        const meta = await this.hooks.meta(id);
+        if (meta === null || meta.stage !== 'making' || meta.plan === null) continue;
+        // Nothing left to make and nothing on the server: done, and out of the line.
+        if (this.wants(meta, own(id)) === null && own(id) === 0 && (meta.redo ?? []).length === 0) {
+          await this.hooks.update(id, { ...meta, stage: 'done' });
+          continue;
+        }
+        line.push({ id, meta });
+      }
+      const flying = line.reduce((sum, album) => sum + own(album.id), 0);
+      const room = order.singles === 'next'
+        ? ((this.hooks.singlesWaiting?.(server) ?? 0) > 0 ? 0 : AHEAD_SINGLES_NEXT)
+        : AHEAD;
+      if (flying >= room) return;
+      const may = order.albums === 'turns' ? line : line.slice(0, 1);
+      const turn = may.find((album) => this.wants(album.meta, own(album.id)) !== null);
+      if (turn === undefined) return;
+      await this.send(turn.id, turn.meta, this.wants(turn.meta, own(turn.id)) as number);
+    }
+  }
+
+  /**
+   * The plan place this album would send next, or null when it needs none now: a track to make
+   * again first (it was part of the album before the length was reached), then the next new one
+   * while the songs made and on the server fall short of its length.
+   */
+  private wants(meta: AlbumMeta, flying: number): number | null {
+    const plan = meta.plan as AlbumPlan;
+    const redo = meta.redo ?? [];
+    if (redo.length > 0) return redo[0] as number;
+    if (meta.sent < plan.tracks.length && meta.madeS + flying * TYPICAL_TRACK_S < meta.ask.minutes * 60) return meta.sent;
+    return null;
+  }
+
+  /** Send one track (`at`, a plan place) and write down that it went, and when. */
+  private async send(id: string, meta: AlbumMeta, at: number): Promise<void> {
+    const plan = meta.plan as AlbumPlan;
+    const track = plan.tracks[at] as AlbumTrack;
+    const sung = meta.ask.sung && track.lyrics !== null;
     const aim = trackAim(meta.ask);
-    let sent = meta.sent;
-    const redo = [...(meta.redo ?? [])];
-    let flying = Math.max(0, this.hooks.inFlight(id) - landing);
-    const server = this.hooks.server(meta.server);
-    // A track to make again goes first; it was part of the album before the length was reached.
-    while (flying < AHEAD && (redo.length > 0 || (sent < meta.plan.tracks.length && meta.madeS + flying * TYPICAL_TRACK_S < target))) {
-      const at = redo.length > 0 ? (redo.shift() as number) : sent++;
-      const track = meta.plan.tracks[at] as AlbumTrack;
-      const sung = meta.ask.sung && track.lyrics !== null;
-      this.hooks.render(id, at, server, {
-        tags: track.tags,
-        instrumental: !sung,
-        ...(sung ? { lyrics: track.lyrics as string } : {}),
-        ...(meta.ask.cfg != null ? { cfg: meta.ask.cfg } : {}),
-        ...(aim !== null ? { aim: { min: aim.min, max: aim.max } } : {}),
-      });
-      flying += 1;
-    }
-    const finished = flying === 0 && redo.length === 0 && (meta.madeS >= target || sent >= meta.plan.tracks.length);
-    if (sent !== meta.sent || redo.length !== (meta.redo ?? []).length || finished) {
-      await this.hooks.update(id, { ...meta, sent, redo, stage: finished ? 'done' : meta.stage });
-    }
-    if (finished) await this.next(meta.server);
+    const redo = meta.redo ?? [];
+    const again = redo.length > 0;
+    this.hooks.render(id, at, this.hooks.server(meta.server), {
+      tags: track.tags,
+      instrumental: !sung,
+      ...(sung ? { lyrics: track.lyrics as string } : {}),
+      ...(meta.ask.cfg != null ? { cfg: meta.ask.cfg } : {}),
+      ...(aim !== null ? { aim: { min: aim.min, max: aim.max } } : {}),
+    });
+    await this.hooks.update(id, {
+      ...meta,
+      sent: again ? meta.sent : meta.sent + 1,
+      redo: again ? redo.slice(1) : redo,
+      lastSentAt: lineStamp(),
+    });
   }
 }
