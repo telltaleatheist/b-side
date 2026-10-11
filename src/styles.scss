@@ -289,6 +289,8 @@ select:disabled { cursor: default; background-image: none; opacity: 0.7; }
 [data-drop='after'] { box-shadow: inset 0 -2px 0 var(--accent); }
 .drop-x[data-drop='before'] { box-shadow: -4px 0 0 -1px var(--accent); }
 .drop-x[data-drop='after'] { box-shadow: 4px 0 0 -1px var(--accent); }
+/* A dragged song cannot go here (an album, or where it already is): faded (Owen, 2026-10-11). */
+[data-drop='no'] { opacity: .4; transition: opacity .12s ease; }
 
 /* A switch: a checkbox drawn as a toggle. */
 .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; }

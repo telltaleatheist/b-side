@@ -17,6 +17,7 @@ import { ConfirmService } from '../../core/confirm.service';
 import { clockText } from '../../core/format';
 import { desktop, HubService } from '../../core/hub.service';
 import { LibraryService } from '../../core/library.service';
+import { SongDragService } from '../../core/song-drag.service';
 import { StudioService } from '../../core/studio.service';
 import { OfflineService } from '../../core/offline.service';
 import { jobCancellable, jobEnded, jobShare, jobStatus, jobTitle } from '../../core/job-status';
@@ -180,7 +181,11 @@ const COVER_PX = 768;
         }
         <div class="list">
           @for (song of songs(); track song.id; let at = $index) {
-            <div class="item" [class.current]="isCurrent(song)" (click)="play(playlist, song, $event)">
+            <!-- Dragged onto another row, a new place here; onto a playlist in the sidebar, a move there (Owen, 2026-10-11). -->
+            <div class="item" [class.current]="isCurrent(song)" [class.dragged]="songDrag.dragging()?.song === song.id" (click)="play(playlist, song, $event)"
+                 [attr.draggable]="remote() || hub.onPhone() || renaming() === song.id ? null : 'true'" [attr.data-drop]="songDrag.mark('s:' + song.id)"
+                 (dragstart)="songDrag.start($event, song.id, playlist)" (dragend)="songDrag.end()"
+                 (dragover)="songDrag.overRow($event, playlist, song.id)" (drop)="dropSong($event, playlist, song.id)">
               <span class="num mono">{{ isCurrent(song) ? '▸' : (at + 1 < 10 ? '0' : '') + (at + 1) }}</span>
               <div class="main">
                 @if (renaming() === song.id) {
@@ -489,7 +494,21 @@ const COVER_PX = 768;
     .rename.big { font-family: var(--font-display); font-size: 32px; font-weight: 800; }
     .keep { align-self: flex-start; }
     .list { display: flex; flex-direction: column; }
-    .item { display: flex; align-items: center; gap: 14px; padding: 8px 10px; border-radius: var(--radius-md); cursor: pointer; }
+    .item { display: flex; align-items: center; gap: 14px; padding: 8px 10px; border-radius: var(--radius-md); cursor: pointer; position: relative; }
+    /* A song being dragged, and the line where it would land: between the rows (Owen, 2026-10-11). */
+    .item.dragged { opacity: .4; }
+    .item[data-drop='before'], .item[data-drop='after'] { box-shadow: none; }
+    .item[data-drop='before']::before, .item[data-drop='after']::before {
+      content: ''; position: absolute; left: 6px; right: 4px; height: 2px; border-radius: 1px; background: var(--accent); pointer-events: none;
+      box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent);
+    }
+    .item[data-drop='before']::before { top: -1px; }
+    .item[data-drop='after']::before { bottom: -1px; }
+    .item[data-drop='before']::after, .item[data-drop='after']::after {
+      content: ''; position: absolute; left: 0; width: 6px; height: 6px; border-radius: 50%; border: 2px solid var(--accent); background: var(--bg-base); pointer-events: none;
+    }
+    .item[data-drop='before']::after { top: -5px; }
+    .item[data-drop='after']::after { bottom: -5px; }
     .item:hover { background: var(--bg-hover); }
     .item.current { background: var(--accent-faint); }
     .item.current .title, .item.current .num { color: var(--accent); }
@@ -553,6 +572,7 @@ export class PlaylistsPageComponent {
   private readonly confirm = inject(ConfirmService);
   protected readonly isDesktop = desktop !== null;
   protected readonly hub = inject(HubService);
+  protected readonly songDrag = inject(SongDragService);
 
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -826,8 +846,13 @@ export class PlaylistsPageComponent {
 
   protected async moveSong(from: Playlist, song: Song, to: Playlist): Promise<void> {
     this.moving.set(null);
-    const added = await this.library.addSong(to.id, song.id);
-    this.refusal.set(added ?? (await this.library.removeSong(from.id, song.id)));
+    this.refusal.set(await this.songDrag.move(song.id, from.id, to.id));
+  }
+
+  /** A song dropped on a row of this playlist: its new place, by the reorder route (Owen, 2026-10-11). */
+  protected async dropSong(event: DragEvent, playlist: Playlist, target: string): Promise<void> {
+    const order = this.songDrag.dropRow(event, playlist, target);
+    if (order !== null) this.refusal.set(await this.library.reorder(playlist.id, order));
   }
 
   protected async stopAlbum(playlist: Playlist): Promise<void> {

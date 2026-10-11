@@ -21,6 +21,7 @@ import { PeersService, peerId } from './core/peers.service';
 import { PlayerService } from './core/player.service';
 import { UiService } from './core/ui.service';
 import { FoldersService, type DropTarget, type ShelfItem } from './core/folders.service';
+import { SongDragService } from './core/song-drag.service';
 
 interface Room {
   readonly path: string;
@@ -220,9 +221,12 @@ interface Room {
         }
       }
       @for (playlist of library.playlistsIn(parent); track playlist.id) {
-        <a class="side-item" [routerLink]="['/library', playlist.id]" routerLinkActive="on" [attr.data-drop-playlist]="playlist.id" [attr.data-drop]="folders.mark(onPlaylist(playlist.id))"
+        <!-- A song dragged from a playlist's page drops here to move to this one (Owen, 2026-10-11). -->
+        <a class="side-item" [routerLink]="['/library', playlist.id]" routerLinkActive="on" [attr.data-drop-playlist]="playlist.id"
+           [attr.data-drop]="folders.mark(onPlaylist(playlist.id)) ?? songDrag.markPlaylist(playlist.id)"
            (dragstart)="folders.dragStart($event, shelfPlaylist(playlist.id))" (dragend)="folders.dragEnd()"
-           (dragover)="folders.over($event, onPlaylist(playlist.id))" (drop)="dropOn($event, onPlaylist(playlist.id))">
+           (dragover)="folders.over($event, onPlaylist(playlist.id)); songDrag.overPlaylist($event, playlist.id)"
+           (drop)="dropOn($event, onPlaylist(playlist.id)); dropSong($event, playlist.id)">
           <app-cover class="side-art" [key]="playlist.id" [src]="hub.coverUrl(playlist)" />
           <span class="side-names">
             <span class="side-name">{{ playlist.name }}</span>
@@ -420,6 +424,14 @@ export class App {
     void this.folders.drop(event, target).then((refusal) => this.folderRefusal.set(refusal?.message ?? null));
   }
 
+  // ── songs dragged onto a sidebar playlist (Owen, 2026-10-11) ────────────────
+  protected readonly songDrag = inject(SongDragService);
+
+  protected dropSong(event: DragEvent, id: string): void {
+    if (this.songDrag.dragging() === null) return;
+    void this.songDrag.dropOnPlaylist(event, id).then((refusal) => this.folderRefusal.set(refusal?.message ?? null));
+  }
+
   protected async makeFolder(name: string): Promise<void> {
     if (name.trim() === '') return;
     const made = await this.library.createFolder(name);
@@ -454,6 +466,7 @@ export class App {
   protected dragOver(event: DragEvent): void {
     // A folder drag over nowhere it can land (a target stops its own dragover): no mark is shown.
     if (this.folders.dragging() !== null && this.folders.dropAt() !== null) this.folders.dropAt.set(null);
+    this.songDrag.overNothing();
     if (!this.carriesFiles(event)) return;
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
