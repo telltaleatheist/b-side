@@ -70,9 +70,11 @@ function isVoice(tag: string): boolean {
 }
 
 /**
- * A style line in YuE2's official form (the yue2-music skill, YuE rev 18a07bb6; Owen via
- * crucible-pc-1, 2026-10-10), applied to whatever wrote the tags, the person included:
- *   sung          the language first, then the voice, then the rest; exactly one "N BPM".
+ * A style line in YuE2's official form (the yue2-music skill, YuE rev 18a07bb6, read 2026-10-10;
+ * Owen via crucible-pc-1), applied to whatever wrote the tags, the person included:
+ *   sung          the language first (every official example), the rest as written; exactly one
+ *                 "N BPM" ("describe them consistently in the style"). The voice's place varies
+ *                 across the official examples, so it is not moved.
  *   instrumental  "Instrumental" first; no language and no voice; exactly one "N BPM"; ending
  *                 "no vocals, no singing, no choir, no spoken words".
  * Each phrase once (ignoring case), in the order given otherwise; the first tempo is the one kept
@@ -99,9 +101,7 @@ export function styleLine(tags: string, instrumental: boolean): string {
     return joinTags(['Instrumental', ...rest.filter((tag) => !LANGUAGE.test(tag) && !isVoice(tag)), ...NO_VOICE_CLAUSE]);
   }
   const language = rest.filter((tag) => LANGUAGE.test(tag)).slice(0, 1);
-  const voice = rest.filter((tag) => !LANGUAGE.test(tag) && isVoice(tag));
-  const others = rest.filter((tag) => !LANGUAGE.test(tag) && !isVoice(tag));
-  return joinTags([...language, ...voice, ...others]);
+  return joinTags([...language, ...rest.filter((tag) => !LANGUAGE.test(tag))]);
 }
 
 /** The value the request sends: one comma-separated line. */
