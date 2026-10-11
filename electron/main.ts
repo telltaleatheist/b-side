@@ -14,6 +14,7 @@ import { app, BrowserWindow, dialog, Menu, nativeImage, type MenuItemConstructor
 
 import { writeAtomically } from './atomic';
 import { adoptOldFolder } from './adopt-old-folder';
+import { keepLog } from './log-file';
 import { Hub } from './hub/hub';
 import { registerIpc } from './ipc';
 import { ICONS, isDev, openWindow } from './window';
@@ -64,6 +65,7 @@ if (!single) {
   app.quit();
 } else {
   adoptOldFolders();
+  console.log(`[main] B-Sides ${app.getVersion()} starting; this log is ${keepLog(path.join(app.getPath('userData'), 'logs'))}`);
   app.on('second-instance', () => {
     const window = BrowserWindow.getAllWindows()[0];
     if (window !== undefined) {

@@ -52,6 +52,7 @@ export function crucibleText(client: CrucibleClient, model: string): TextModel {
   return {
     name: model,
     async ask(request) {
+      const started = Date.now();
       try {
         const answer = await client.chat({
           model,
@@ -66,6 +67,8 @@ export function crucibleText(client: CrucibleClient, model: string): TextModel {
             { role: 'user', content: `${request.tag}\n${request.user}` },
           ],
         });
+        // Each call said, so a failed album can be read afterwards (crucible-pc-1, 2026-10-11).
+        console.log(`[text] ${model} ${request.tag}: ${answer.usage?.promptTokens ?? '?'} tokens in, ${answer.usage?.completionTokens ?? '?'} out of ${request.maxTokens}, ${answer.finishReason}, ${Date.now() - started} ms`);
         return { content: answer.content, truncated: answer.finishReason === 'length' };
       } catch (error) {
         if (error instanceof CrucibleRefused && error.code === 'installing') {
