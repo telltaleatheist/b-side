@@ -572,7 +572,14 @@ export class HubCore {
     // "if the gpu can fit qwen image then it should use that. if not, it should use dreamshape").
     // 1024 across the board, kept as a 512 JPEG: DreamShaper paints well only near 1024, and until
     // B-Sides can learn which model Crucible will pick, one size serves both ("its simpler").
-    const jobId = await client.image({ prompt, width: COVER_PAINT_PX, height: COVER_PAINT_PX });
+    // A cover this album was already painting when B-Sides last stopped is waited for, not painted again.
+    const kept = (await this.library.album(id))?.coverJob ?? null;
+    const alive = kept === null ? null : await client.job(kept).then((job) => (['queued', 'running', 'done'].includes(job.status) ? kept : null), () => null);
+    const jobId = alive ?? await client.image({ prompt, width: COVER_PAINT_PX, height: COVER_PAINT_PX });
+    if (alive === null) {
+      const now = await this.library.album(id);
+      if (now !== null) await this.library.setAlbum(id, { ...now, coverJob: jobId });
+    }
     console.log(`[albums] painting the cover for ${id} (the server's pick; ${model} is ready there): job ${jobId}`);
     // The job's status is read every few seconds until it ends. Its event stream was followed
     // instead, and on Victoria's laptop (2026-10-11) the Iliad's cover finished on the server at

@@ -512,6 +512,11 @@ export interface AlbumMeta {
   readonly session?: string | null;
   /** The cover: being painted, or why there is none. Absent before the painting starts. */
   readonly coverState?: 'painting' | 'failed' | 'no_model' | null;
+  /**
+   * The server's job painting the cover now, kept so a restart waits for that one rather than
+   * painting again (Victoria's Odyssey, 2026-10-11: painted by one run, never saved by the next).
+   */
+  readonly coverJob?: string | null;
 }
 
 /** One step of an album before its tracks: a line to show and, when it counts, how far through. */

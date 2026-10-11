@@ -714,12 +714,12 @@ export class AlbumMaker {
       await mark({ coverState: 'painting' });
       const before = (await this.hooks.meta(id))?.cover ?? null;
       const cover = await this.hooks.paint(id, server, client, model, coverPrompt(prompt));
-      await mark({ cover, coverState: null });
+      await mark({ cover, coverState: null, coverJob: null });
       if (before !== null && before !== cover) await this.hooks.removeCover(before);
     } catch (error) {
       // A cover that will not paint leaves the drawn one; the music matters more.
       console.error(`[albums] the cover for ${id} did not paint:`, error);
-      await mark({ coverState: 'failed' });
+      await mark({ coverState: 'failed', coverJob: null });
     }
   }
 
