@@ -14,6 +14,8 @@
  * track to track (SONG_SHAPES) with no section under 4 lines, which keeps every section sung.
  */
 
+import { YUE2_LYRICS_GUIDE } from './yue2-style';
+
 /** Who writes the lyrics; a hub preference. */
 export type LyricsWriter = 'bside' | 'claude';
 export const LYRICS_WRITERS: readonly LyricsWriter[] = ['bside', 'claude'];
@@ -70,6 +72,8 @@ export function claudeLyricsSystem(): string {
     '- Lines of similar length within a section so they sing well. A blank line between sections.',
     '- Sing in the language the style line names: English, or Chinese when it says Chinese (the two YuE2 sings).',
     'Reply with the lyrics only, in the JSON asked for.',
+    '',
+    YUE2_LYRICS_GUIDE,
   ].join('\n');
 }
 
@@ -114,14 +118,15 @@ export const SONG_SHAPES: readonly string[] = [
 /**
  * The most syllables a sung line takes (Victoria, 2026-10-11: "sometimes there are too many lyrics
  * per measure for yue"). Her album's tracks that sang cleanly averaged 8 syllables a line, at most
- * 10-12; "Nobody Poked the Cyclops", which YuE2 crammed, averaged 12.5, at most 16. Slow songs
- * (lullabies, ballads, under 85 BPM) and fast ones (140 BPM and up, where a bar is short) take 8.
+ * 10-12; "Nobody Poked the Cyclops", which YuE2 crammed, averaged 12.5, at most 16. YuE2's own
+ * example lyrics run about 7. So 8, and 7 for slow songs (lullabies, ballads, under 85 BPM) and
+ * fast ones (140 BPM and up, where a bar is short).
  */
 export function syllableBudget(tags: string): number {
   const bpm = Number(/\b\d{2,3}(?=\s*bpm\b)/i.exec(tags)?.[0] ?? NaN);
-  if (bpm < 85 || bpm >= 140) return 8;
-  if (/\b(lullaby|ballad|slow|lo-?fi|ambient)\b/i.test(tags)) return 8;
-  return 10;
+  if (bpm < 85 || bpm >= 140) return 7;
+  if (/\b(lullaby|ballad|slow|lo-?fi|ambient)\b/i.test(tags)) return 7;
+  return 8;
 }
 
 /** A line's syllables, near enough to tell a crammed line (vowel groups, a silent final e dropped). */

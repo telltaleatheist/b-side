@@ -1,18 +1,25 @@
 import { expect, test } from 'bun:test';
 
-import { claudeLyricsUser, crammedLines, syllableBudget, syllables } from '../shared/core/lyricist';
+import { claudeLyricsSystem, claudeLyricsUser, crammedLines, syllableBudget, syllables } from '../shared/core/lyricist';
+import { STYLE_TASKS } from '../shared/core/yue2-style';
 
 test('a line is counted near enough to tell one YuE2 crams (Victoria, 2026-10-11)', () => {
   expect(syllables("Then he snored a snore so loud it made the sailors' hats go flap.")).toBe(15);
   expect(syllables('Hush now little one, close your eyes')).toBe(8);
 });
 
-test('slow and fast songs take 8 syllables a line, the rest 10', () => {
-  expect(syllableBudget('English, kids pop, playful, 110 BPM')).toBe(10);
-  expect(syllableBudget('English, lullaby, soft female voice, 100 BPM')).toBe(8);
-  expect(syllableBudget('English, folk, 70 BPM')).toBe(8);
-  expect(syllableBudget('English, punk, 160 BPM')).toBe(8);
-  expect(syllableBudget('English, pop')).toBe(10);
+test("slow and fast songs take 7 syllables a line, the rest 8 (YuE2's own example runs about 7)", () => {
+  expect(syllableBudget('English, kids pop, playful, 110 BPM')).toBe(8);
+  expect(syllableBudget('English, lullaby, soft female voice, 100 BPM')).toBe(7);
+  expect(syllableBudget('English, folk, 70 BPM')).toBe(7);
+  expect(syllableBudget('English, punk, 160 BPM')).toBe(7);
+  expect(syllableBudget('English, pop')).toBe(8);
+});
+
+test("Claude's lyrics call carries YuE2's lyric guidance; the name calls carry none of it", () => {
+  expect(claudeLyricsSystem()).toContain('Keep implementation notes out of lyrics.');
+  expect(claudeLyricsSystem()).toContain('Neon fades along the lane');
+  expect(STYLE_TASKS).toEqual(['[describe]', '[album]', '[tracks]']);
 });
 
 test('only sung lines well over the budget are crammed; section tags are not sung', () => {
@@ -23,7 +30,7 @@ test('only sung lines well over the budget are crammed; section tags are not sun
 test("Claude is told the song's syllable budget, and the shape stays last", () => {
   const user = claudeLyricsUser({ title: 'x', tags: 'English, lullaby, 70 BPM', about: 'sleep', brief: '' });
   const lines = user.split('\n');
-  expect(lines).toContain('Syllables: at most 8 per line.');
+  expect(lines).toContain('Syllables: at most 7 per line.');
   expect(lines.at(-1)!.startsWith('Shape: ')).toBe(true);
 });
 
