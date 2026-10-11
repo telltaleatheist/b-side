@@ -128,95 +128,135 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
           </div>
         </details>
 
-        @if (mode() === 'album') {
+        <!-- Vocals, the lyrics block and the options look the same in both modes (Owen, 2026-10-11); each mode keeps its own signal. -->
+        @if (mode() === 'album' || studio.page()?.instrumental !== false) {
           <div class="options">
             <div class="opt">
-              <span class="opt-name">Length</span>
+              <span class="opt-name">Vocals</span>
               <div class="opt-chips">
-                @for (minutes of albumMinutes; track minutes) {
-                  <button type="button" class="chip" [class.on]="albumLength() === minutes" (click)="albumLength.set(minutes)">{{ minutes }} min</button>
+                @if (mode() === 'album') {
+                  <button type="button" class="chip" [class.on]="!albumSung()" (click)="albumSung.set(false)">Instrumental</button>
+                  <button type="button" class="chip" [class.on]="albumSung()" (click)="albumSung.set(true)">Sung</button>
+                } @else {
+                  <button type="button" class="chip" [class.on]="studio.instrumental()" (click)="studio.instrumental.set(true)" title="YuE2 writes the melody, then plays it on an instrument instead of singing it">Instrumental</button>
+                  <button type="button" class="chip" [class.on]="!studio.instrumental()" (click)="studio.instrumental.set(false)">Sung</button>
                 }
               </div>
             </div>
-            @if (hub.servers().length > 1) {
+          </div>
+        }
+
+        @if (!instrumentalHere()) {
+          <div class="field">
+            @if (mode() === 'album') {
+              <label class="label" for="album-lyrics">What the lyrics are about</label>
+              <textarea id="album-lyrics" appRememberHeight="album-about" rows="2" spellcheck="true" class="brief" [class.over]="studio.lyricsBrief().length > briefMax"
+                        placeholder="their mood, style or story: late-night regrets, wry and tender, told by a bartender"
+                        [value]="studio.lyricsBrief()" (input)="studio.lyricsBrief.set($any($event.target).value)"></textarea>
+            } @else {
+              <label class="label" for="lyrics-brief">What the lyrics are about</label>
+              <textarea id="lyrics-brief" appRememberHeight="song-about" rows="2" spellcheck="true" class="brief" [class.over]="studio.lyricsBrief().length > briefMax"
+                        placeholder="a banana going brown on the windowsill; bittersweet, a little funny"
+                        [value]="studio.lyricsBrief()" (input)="studio.lyricsBrief.set($any($event.target).value)"></textarea>
+            }
+            @if (studio.lyricsBrief().length > briefMax * 0.8) {
+              <p class="hint" [class.warn]="studio.lyricsBrief().length > briefMax">{{ studio.lyricsBrief().length }} / {{ briefMax }}{{ studio.lyricsBrief().length > briefMax ? ': too long. Shorten it before you make it; nothing is cut.' : '' }}</p>
+            }
+            <label class="switch" title="A short build-up between each verse and chorus">
+              <input type="checkbox" [checked]="studio.preChorus()" (change)="setPreChorus($any($event.target).checked)" />
+              Pre-chorus
+            </label>
+            @if (studio.preChorus()) {
+              <p class="hint warn">YuE2 often leaves a pre-chorus out of the melody (in 38 of 67 of Victoria's songs it dropped at least one), and its lines are then squeezed into the verse or chorus. Unticked, the verses build into the chorus instead.</p>
+            }
+            <p class="hint">{{ mode() === 'album' ? "Every track's lyrics are written to this, and the titles fit it. Blank: the album's description leads." : 'Fill in the tags writes the lyrics to this. With the Lyrics box empty, Make writes them first.' }}</p>
+          </div>
+          @if (mode() !== 'album') {
+            <div class="field">
+              <label class="label" for="lyrics">Lyrics</label>
+              <textarea id="lyrics" appRememberHeight="lyrics" rows="10" spellcheck="true"
+                        [placeholder]="lyricsPlaceholder()"
+                        [value]="studio.lyrics()"
+                        (input)="studio.lyrics.set($any($event.target).value)"></textarea>
+              @if (studio.page()?.lyricsHint; as hint) { <p class="hint">{{ hint }}</p> }
+            </div>
+          }
+        }
+
+        @if (mode() === 'album' || studio.page()?.length) {
+          <div class="options">
+            @if (mode() === 'album') {
               <div class="opt">
-                <span class="opt-name">Made on</span>
+                <span class="opt-name">Album length</span>
                 <div class="opt-chips">
-                  @for (server of hub.servers(); track server.name) {
-                    <button type="button" class="chip" [class.on]="albumServer() === server.name" (click)="pickedServer.set(server.name)">{{ server.name }}</button>
+                  @for (minutes of albumMinutes; track minutes) {
+                    <button type="button" class="chip" [class.on]="albumLength() === minutes" (click)="albumLength.set(minutes)">{{ minutes }} min</button>
                   }
                 </div>
               </div>
             }
-            <div class="opt">
-              <span class="opt-name">Tags</span>
-              <div class="opt-chips">
-                <button type="button" class="chip" [class.on]="!albumExact()" (click)="albumExact.set(false)" title="Each track varies on the tags: its own voice, instruments, a touch of another style">General vibe</button>
-                <button type="button" class="chip" [class.on]="albumExact()" (click)="albumExact.set(true)" title="Every track keeps exactly the album's tags; none adds a voice, instrument or genre">Stick to my tags</button>
-              </div>
-            </div>
             @if (studio.page()?.length) {
               <div class="opt">
-              <span class="opt-name">Song length</span>
-              <div class="opt-chips">
-                <button type="button" class="chip" [class.on]="studio.lengthAim() === ''" (click)="studio.lengthAim.set('')">Any</button>
-                @for (aim of lengthAims; track aim.key) {
-                  <button type="button" class="chip" [class.on]="studio.lengthAim() === aim.key" (click)="studio.lengthAim.set(aim.key)">{{ aim.label }}</button>
-                }
+                <span class="opt-name">Song length</span>
+                <div class="opt-chips">
+                  <button type="button" class="chip" [class.on]="studio.lengthAim() === ''" (click)="studio.lengthAim.set('')">Any</button>
+                  @for (aim of lengthAims; track aim.key) {
+                    <button type="button" class="chip" [class.on]="studio.lengthAim() === aim.key" (click)="studio.lengthAim.set(aim.key)">{{ aim.label }}</button>
+                  }
+                </div>
               </div>
-            </div>
               @if (studio.lengthAim() !== '') {
-                <p class="opt-note hint">An aim, not a promise: instrumentals are sized toward it and most land in it; a sung track runs as long as its lyrics. Longer songs fill the album's length with fewer tracks.</p>
+                @if (mode() === 'album') {
+                  <p class="opt-note hint">An aim, not a promise: instrumentals are sized toward it and most land in it; a sung track runs as long as its lyrics. Longer songs fill the album's length with fewer tracks.</p>
+                } @else {
+                  <p class="opt-note hint">{{ studio.instrumental() ? 'An aim, not a promise: the server sizes the song toward it, and most land in it.' : 'A sung song runs as long as its lyrics; the aim is noted with it, and the lyrics are never cut to fit.' }}</p>
+                }
               }
             }
-            <!-- Add to folder (Victoria, 2026-10-11): the new album is filed there from the start. -->
-            <div class="opt">
-              <label class="opt-name" for="album-folder">Add to folder</label>
-              <div class="opt-chips">
-                <select id="album-folder" class="folder-pick" (change)="pickFolder($any($event.target))">
-                  <option value="" [selected]="albumFolder() === null">No folder</option>
-                  @for (row of library.folderRows(); track row.folder.id) {
-                    <option [value]="row.folder.id" [selected]="albumFolder() === row.folder.id">{{ row.path }}</option>
-                  }
-                  <option value="new">New folder…</option>
-                </select>
+            @if (mode() === 'album') {
+              @if (hub.servers().length > 1) {
+                <div class="opt">
+                  <span class="opt-name">Made on</span>
+                  <div class="opt-chips">
+                    @for (server of hub.servers(); track server.name) {
+                      <button type="button" class="chip" [class.on]="albumServer() === server.name" (click)="pickedServer.set(server.name)">{{ server.name }}</button>
+                    }
+                  </div>
+                </div>
+              }
+              <div class="opt">
+                <span class="opt-name">Tracks</span>
+                <div class="opt-chips">
+                  <button type="button" class="chip" [class.on]="!albumExact()" (click)="albumExact.set(false)" title="Each track varies on the tags: its own voice, instruments, a touch of another style">General vibe</button>
+                  <button type="button" class="chip" [class.on]="albumExact()" (click)="albumExact.set(true)" title="Every track keeps exactly the album's tags; none adds a voice, instrument or genre">Stick to my tags</button>
+                </div>
               </div>
-            </div>
-            @if (namingFolder()) {
-              <form class="opt-note folder-new" (submit)="$event.preventDefault(); makeFolder(folderName.value)">
-                <input #folderName type="text" maxlength="120" placeholder="New folder name" aria-label="New folder name" />
-                <button type="submit" class="ghost small">Make folder</button>
-                <button type="button" class="ghost small" (click)="namingFolder.set(false)">Cancel</button>
-              </form>
+              <!-- Add to folder (Victoria, 2026-10-11): the new album is filed there from the start. -->
+              <div class="opt">
+                <label class="opt-name" for="album-folder">Add to folder</label>
+                <div class="opt-chips">
+                  <select id="album-folder" class="folder-pick" (change)="pickFolder($any($event.target))">
+                    <option value="" [selected]="albumFolder() === null">No folder</option>
+                    @for (row of library.folderRows(); track row.folder.id) {
+                      <option [value]="row.folder.id" [selected]="albumFolder() === row.folder.id">{{ row.path }}</option>
+                    }
+                    <option value="new">New folder…</option>
+                  </select>
+                </div>
+              </div>
+              @if (namingFolder()) {
+                <form class="opt-note folder-new" (submit)="$event.preventDefault(); makeFolder(folderName.value)">
+                  <input #folderName type="text" maxlength="120" placeholder="New folder name" aria-label="New folder name" />
+                  <button type="submit" class="ghost small">Make folder</button>
+                  <button type="button" class="ghost small" (click)="namingFolder.set(false)">Cancel</button>
+                </form>
+              }
+              <p class="opt-note hint">{{ studio.page()?.lyricist ?? studio.tagModel() ?? "This server's model" }} writes the words: the name, the artist and every track{{ albumSung() ? ', then the lyrics, a song per two minutes so ' + albumLength() + ' minutes is always filled' : '' }}; {{ studio.tagModel() ?? "the server's model" }} writes the sound and the cover's description; the server's image model, when it has one, paints the cover (without one, the album gets the standard cover). All of that is done first, so the album comes out right; then the music is made, track by track, and fills in while you listen.</p>
             }
-            <div class="opt">
-              <span class="opt-name">Vocals</span>
-              <div class="opt-chips">
-                <button type="button" class="chip" [class.on]="!albumSung()" (click)="albumSung.set(false)">Instrumental</button>
-                <button type="button" class="chip" [class.on]="albumSung()" (click)="albumSung.set(true)">Sung</button>
-              </div>
-            </div>
-            @if (albumSung()) {
-              <div class="field">
-                <label class="label" for="album-lyrics">What the lyrics are about</label>
-                <textarea id="album-lyrics" appRememberHeight="album-about" rows="2" spellcheck="true" class="brief" [class.over]="studio.lyricsBrief().length > briefMax"
-                          placeholder="their mood, style or story: late-night regrets, wry and tender, told by a bartender"
-                          [value]="studio.lyricsBrief()" (input)="studio.lyricsBrief.set($any($event.target).value)"></textarea>
-                @if (studio.lyricsBrief().length > briefMax * 0.8) {
-                  <p class="hint" [class.warn]="studio.lyricsBrief().length > briefMax">{{ studio.lyricsBrief().length }} / {{ briefMax }}{{ studio.lyricsBrief().length > briefMax ? ': too long. Shorten it before you make it; nothing is cut.' : '' }}</p>
-                }
-<label class="switch" title="A short build-up between each verse and chorus">
-                  <input type="checkbox" [checked]="studio.preChorus()" (change)="setPreChorus($any($event.target).checked)" />
-                  Pre-chorus
-                </label>
-                @if (studio.preChorus()) {
-                  <p class="hint warn">YuE2 often leaves a pre-chorus out of the melody (in 38 of 67 of Victoria's songs it dropped at least one), and its lines are then squeezed into the verse or chorus. Unticked, the verses build into the chorus instead.</p>
-                }
-                <p class="hint">Every track's lyrics are written to this, and the titles fit it. Blank: the album's description leads.</p>
-              </div>
-            }
-            <p class="opt-note hint">{{ studio.page()?.lyricist ?? studio.tagModel() ?? "This server's model" }} writes the words: the name, the artist and every track{{ albumSung() ? ', then the lyrics, a song per two minutes so ' + albumLength() + ' minutes is always filled' : '' }}; {{ studio.tagModel() ?? "the server's model" }} writes the sound and the cover's description; the server's image model, when it has one, paints the cover (without one, the album gets the standard cover). All of that is done first, so the album comes out right; then the music is made, track by track, and fills in while you listen.</p>
           </div>
+        }
+
+        @if (mode() === 'album') {
           @if (spaceFull()) {
             <div class="room-card">
               <span class="kicker amber">Album space is full</span>
@@ -245,56 +285,6 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
             <app-refusal [refusal]="refused" />
           }
         } @else {
-        @if (studio.page()?.instrumental !== false) {
-          <label class="switch" title="YuE2 writes the melody, then plays it on an instrument instead of singing it">
-            <input type="checkbox" [checked]="studio.instrumental()" (change)="studio.instrumental.set($any($event.target).checked)" />
-            Instrumental (no vocals)
-          </label>
-        }
-        @if (studio.page()?.length) {
-          <div class="options">
-            <div class="opt">
-              <span class="opt-name">Song length</span>
-              <div class="opt-chips">
-                <button type="button" class="chip" [class.on]="studio.lengthAim() === ''" (click)="studio.lengthAim.set('')">Any</button>
-                @for (aim of lengthAims; track aim.key) {
-                  <button type="button" class="chip" [class.on]="studio.lengthAim() === aim.key" (click)="studio.lengthAim.set(aim.key)">{{ aim.label }}</button>
-                }
-              </div>
-            </div>
-          </div>
-          @if (studio.lengthAim() !== '') {
-            <p class="hint">{{ studio.instrumental() ? 'An aim, not a promise: the server sizes the song toward it, and most land in it.' : 'A sung song runs as long as its lyrics; the aim is noted with it, and the lyrics are never cut to fit.' }}</p>
-          }
-        }
-        @if (!studio.instrumental()) {
-          <div class="field">
-            <label class="label" for="lyrics-brief">What the lyrics are about</label>
-            <textarea id="lyrics-brief" appRememberHeight="song-about" rows="2" spellcheck="true" class="brief" [class.over]="studio.lyricsBrief().length > briefMax"
-                      placeholder="a banana going brown on the windowsill; bittersweet, a little funny"
-                      [value]="studio.lyricsBrief()" (input)="studio.lyricsBrief.set($any($event.target).value)"></textarea>
-            @if (studio.lyricsBrief().length > briefMax * 0.8) {
-              <p class="hint" [class.warn]="studio.lyricsBrief().length > briefMax">{{ studio.lyricsBrief().length }} / {{ briefMax }}{{ studio.lyricsBrief().length > briefMax ? ': too long. Shorten it before you make it; nothing is cut.' : '' }}</p>
-            }
-<label class="switch" title="A short build-up between each verse and chorus">
-            <input type="checkbox" [checked]="studio.preChorus()" (change)="setPreChorus($any($event.target).checked)" />
-            Pre-chorus
-            </label>
-            @if (studio.preChorus()) {
-            <p class="hint warn">YuE2 often leaves a pre-chorus out of the melody (in 38 of 67 of Victoria's songs it dropped at least one), and its lines are then squeezed into the verse or chorus. Unticked, the verses build into the chorus instead.</p>
-            }
-            <p class="hint">Fill in the tags writes the lyrics to this. With the Lyrics box empty, Make writes them first.</p>
-          </div>
-          <div class="field">
-            <label class="label" for="lyrics">Lyrics</label>
-            <textarea id="lyrics" appRememberHeight="lyrics" rows="10" spellcheck="true"
-                      [placeholder]="lyricsPlaceholder()"
-                      [value]="studio.lyrics()"
-                      (input)="studio.lyrics.set($any($event.target).value)"></textarea>
-            @if (studio.page()?.lyricsHint; as hint) { <p class="hint">{{ hint }}</p> }
-          </div>
-        }
-
         <details class="fold">
           <summary>
             <span class="fold-name">Advanced</span>
@@ -352,9 +342,10 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
     .modes button.on { background: var(--text-primary); color: var(--bg-base); }
     .options { display: flex; flex-direction: column; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
     .opt { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap; }
+    .options > :last-child { border-bottom: none; }
     .opt-name { font-size: 15px; }
     .opt-chips { display: flex; gap: 6px; flex-wrap: wrap; }
-    .opt-note { padding: 12px 14px; }
+    .opt-note { padding: 12px 14px; border-bottom: 1px solid var(--border-subtle); }
     .folder-pick { max-width: min(320px, 100%); }
     .opt-chips:has(.folder-pick) { min-width: 0; max-width: 100%; }
     .folder-new { display: flex; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid var(--border-subtle); }
