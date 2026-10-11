@@ -71,3 +71,21 @@ test('a busy server (409) and a failed task are said, never thrown', async () =>
   await failed.ensure('pc', fakeClient({ task: { state: 'failed', error: { code: 'x', message: 'no disk' } } }).client);
   expect(failed.of('pc')?.sentence).toContain('no disk');
 });
+
+test('a held card (server_busy) is waited out: the module is posted again until taken (Victoria, 2026-10-11)', async () => {
+  let tries = 0;
+  const client = {
+    info: async () => ({ host: { backend: 'cuda-linux' }, jobTypes: ['audio'] }),
+    catalog: async () => [row(false)],
+    submitTask: async () => {
+      tries += 1;
+      if (tries < 3) throw new CrucibleRefused(409, 'server_busy', 'this server cannot install anything right now', null);
+      return 'task-1';
+    },
+    task: async () => ({ state: 'done', error: null }),
+  } as unknown as CrucibleClient;
+  const needs = new ServerNeeds(undefined, 1, 1);
+  await needs.ensure('pc', client, async () => undefined);
+  expect(tries).toBe(3);
+  expect(needs.of('pc')?.state).toBe('ready');
+});

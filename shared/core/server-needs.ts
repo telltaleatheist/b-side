@@ -73,6 +73,8 @@ export function missingOf(module: CrucibleModule, catalog: readonly CatalogRow[]
 }
 
 const POLL_MS = 3000;
+/** How often a server whose card is held is asked again for the separator. */
+const BUSY_RETRY_MS = 2 * 60_000;
 
 /**
  * One ask per server per run of B-Sides: on connecting (a server set up or switched to) and on
@@ -82,7 +84,11 @@ const POLL_MS = 3000;
 export class ServerNeeds {
   private readonly views = new Map<string, ServerNeedsView>();
 
-  constructor(private readonly changed: (view: ServerNeedsView) => void = () => undefined, private readonly pollMs = POLL_MS) {}
+  constructor(
+    private readonly changed: (view: ServerNeedsView) => void = () => undefined,
+    private readonly pollMs = POLL_MS,
+    private readonly busyRetryMs = BUSY_RETRY_MS,
+  ) {}
 
   of(server: string): ServerNeedsView | null {
     return this.views.get(server) ?? null;
@@ -101,6 +107,24 @@ export class ServerNeeds {
       this.set({ server, state: 'failed', sentence: `B-Sides could not ask ${server} for the vocal separator (${said}). It asks again the next time B-Sides starts.`, task: null });
       // Asked again on the next start, not now: a server that refused once refuses a loop too.
     });
+  }
+
+  /**
+   * Post the module, and while the card is held (`server_busy`: an install rewrites the server's
+   * config, so Crucible refuses one while anything holds the card; Victoria's laptop, 2026-10-11,
+   * with her albums rendering) ask again every `busyRetryMs` until it is taken. Crucible is to make
+   * the task wait its own turn (crucible-pc-1); this is the stand-in until it does.
+   */
+  private async submitWhenFree(server: string, client: CrucibleClient, module: CrucibleModule, missing: readonly string[]): Promise<string> {
+    for (;;) {
+      try {
+        return await client.submitTask({ type: 'module', module });
+      } catch (error) {
+        if (!(error instanceof CrucibleRefused && error.code === 'server_busy')) throw error;
+        this.set({ server, state: 'checking', sentence: `${server} is busy making something; B-Sides asks it for the vocal separator (${missing.join(', ')}) once it is free.`, task: null });
+        await new Promise((resolve) => setTimeout(resolve, this.busyRetryMs));
+      }
+    }
   }
 
   private set(view: ServerNeedsView): void {
@@ -123,7 +147,7 @@ export class ServerNeeds {
     }
     let task: string;
     try {
-      task = await client.submitTask({ type: 'module', module });
+      task = await this.submitWhenFree(server, client, module, missing);
     } catch (error) {
       // A refusal is said as the server said it (Victoria's laptop, 2026-10-11: a 409 read as "busy
       // installing something else" while nothing was installing, and the real reason was lost).
