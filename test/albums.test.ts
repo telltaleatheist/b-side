@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
-import { trackTags } from '../shared/core/albums';
+import { trackCount, trackTags } from '../shared/core/albums';
+import { batches } from '../shared/core/album-text';
 
 const PRESET = 'lo-fi, dreamy, saxophone, jazz, soul, 70 BPM, Instrumental, no vocals';
 
@@ -45,6 +46,9 @@ import { AlbumMaker, type AlbumHooks } from '../shared/core/albums';
 import type { AlbumMeta } from '../shared/types';
 
 /** An album with four planned tracks, cover painted, as a fake hub holds it. */
+/** The albums making their music on the server, oldest first (only the first sends tracks). */
+let line: string[] = ['a'];
+
 function fakeAlbum(meta: Partial<AlbumMeta>, songs: { title: string; durationS: number }[], flying: number[] = []) {
   const tracks = ['One', 'Two', 'Three', 'Four'].map((title) => ({ title, tags: 'folk', lyrics: null }));
   let stored: AlbumMeta = {
@@ -68,6 +72,7 @@ function fakeAlbum(meta: Partial<AlbumMeta>, songs: { title: string; durationS: 
     made: async () => songs,
     flyingTracks: () => flying,
     renameSong: async () => undefined,
+    makingOn: async () => line,
     claude: () => null,
   };
   return { maker: new AlbumMaker(hooks), rendered, meta: () => stored };
@@ -102,4 +107,27 @@ test('the last track landing finishes the album: its own job is not one still in
 test("an instrumental album drops a singer even from the person's own tags", () => {
   expect(trackTags('soul, warm male vocal, Hammond organ', 'brushed drums', false)).toBe('soul, Hammond organ, brushed drums, instrumental');
   expect(trackTags('soul, warm male vocal, Hammond organ', 'brushed drums', true)).toBe('soul, warm male vocal, Hammond organ, brushed drums');
+});
+
+test('stick to my tags: a track adds only a tempo, and only when the album sets none', () => {
+  const core = 'English, hip hop, boom bap, playful, drums, bass';
+  expect(trackTags(core, 'female vocal, chiptune lead, 92 BPM', true, true)).toBe(`${core}, 92 BPM`);
+  expect(trackTags(`${core}, 95 BPM`, 'gritty male vocal, 88 BPM', true, true)).toBe(`${core}, 95 BPM`);
+  expect(trackTags(core, 'female vocal, chiptune lead, 92 BPM', true)).toBe(`${core}, female vocal, chiptune lead, 92 BPM`);
+});
+
+test('a 15-minute album plans a track per two minutes, written in one batch', () => {
+  expect(trackCount(15)).toBe(8);
+  expect(batches(8)).toEqual([[1, 8]]);
+});
+
+test('a newer album waits for the one ahead on its server, then makes its music when that one leaves the line', async () => {
+  line = ['older', 'a'];
+  const album = fakeAlbum({ stage: 'making', sent: 1, madeS: 150 }, [{ title: 'One', durationS: 150 }]);
+  await album.maker.landed('a', 0);
+  expect(album.rendered).toEqual([]);
+  line = ['a'];
+  await album.maker.next('pc');
+  expect(album.rendered.length).toBeGreaterThan(0);
+  line = ['a'];
 });

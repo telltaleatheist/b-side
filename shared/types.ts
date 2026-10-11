@@ -397,6 +397,8 @@ export interface AlbumMeta {
    * when the library is sent, never stored. False while the stage says making: it was interrupted.
    */
   readonly working?: boolean;
+  /** The album ahead of it on its server, while it waits its turn to make its music. Filled in when sent, never stored. */
+  readonly waitingFor?: string | null;
   /** How many tracks were sent before the plan existed (the openers); absent until they are. */
   readonly openers?: number;
   /** Seconds of music made so far. */
@@ -439,10 +441,17 @@ export interface AlbumAsk {
   readonly lyrics?: string;
   /** Guidance from the form (a preset's), sent with every track; null for the server's default. */
   readonly cfg?: number | null;
+  /**
+   * Every track keeps exactly the album's own tags, and no track adds a voice, an instrument
+   * or a genre of its own (only a tempo, when the tags set none). Off, or absent: each track
+   * varies on them (Victoria, 2026-10-10: "stick exactly to [the] tags" or "stick to the
+   * general vibe of the tags with variations"; Owen agreed).
+   */
+  readonly exactTags?: boolean;
 }
 
-/** The lengths an album can be. */
-export const ALBUM_MINUTES: readonly number[] = [30, 60, 90];
+/** The lengths an album can be (15 minutes: a few songs, Owen 2026-10-10). */
+export const ALBUM_MINUTES: readonly number[] = [15, 30, 60, 90];
 
 export interface LibraryView {
   readonly dir: string;

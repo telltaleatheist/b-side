@@ -58,10 +58,11 @@ function fakeAlbum(ask: AlbumAsk, server: ReturnType<typeof fakeServer>, claude:
     artist: '', blurb: '', cover: null, ask, plan: null, stage: 'planning', sent: 0, madeS: 0,
     refusal: null, server: 'pc', writer: null,
   };
+  let lastId = '';
   const names: string[] = [];
   const renamed: Array<[string, string]> = [];
   const hooks: AlbumHooks = {
-    meta: async () => stored,
+    meta: async (id) => { lastId = id; return stored; },
     update: async (_id, next, name) => { stored = next; if (name) names.push(name); },
     server: () => ({ name: 'pc', url: 'http://pc:7100', token: 't' }) as never,
     client: () => server.client as never,
@@ -75,6 +76,7 @@ function fakeAlbum(ask: AlbumAsk, server: ReturnType<typeof fakeServer>, claude:
     made: async () => [],
     flyingTracks: () => [],
     renameSong: async (_id, from, to) => { renamed.push([from, to]); },
+    makingOn: async () => [lastId],
     claude: () => claude,
   };
   return { maker: new AlbumMaker(hooks), meta: () => stored, names, renamed, set: (change: Partial<AlbumMeta>) => { stored = { ...stored, ...change }; } };

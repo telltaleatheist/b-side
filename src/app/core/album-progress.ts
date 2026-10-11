@@ -48,6 +48,9 @@ export function albumProgress(album: AlbumMeta): AlbumProgress {
     }
     case 'cover':
     case 'making':
+      if (album.waitingFor) {
+        return { label: `Written. Its music is made once "${album.waitingFor}" is finished.`, share: musicShare, waiting: false };
+      }
       return {
         label: `Making the music: ${Math.floor(album.madeS / 60)} of ${album.ask.minutes} min`,
         share: musicShare,

@@ -49,6 +49,7 @@ import {
   type HubInfo,
   type HubSnapshot,
   type LibraryView,
+  type Playlist,
   type ServerInput,
   type ServerView,
   type Song,
@@ -151,6 +152,13 @@ export function matchRoute<R extends { method: string; pattern: RegExp; names: r
 
 /** The longest name a song is given when it lands (a writer's title, cut to fit). */
 const SONG_TITLE_MAX = 80;
+
+/** The albums making their music on `server`, oldest first. */
+function making(playlists: readonly Playlist[], server: string): Playlist[] {
+  return playlists
+    .filter((playlist) => playlist.album?.stage === 'making' && playlist.album.server === server)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+}
 
 /** The painted cover's width and height, in pixels. */
 const COVER_SIZE = 256;
@@ -277,6 +285,7 @@ export class HubCore {
         await this.library.rename(songId, to);
         await this.libraryChanged();
       },
+      makingOn: (server) => this.makingOn(server),
       flyingTracks: (id) => this.jobs.list(albumClient(id))
         .filter((job) => !ENDED_PHASES.includes(job.phase) && job.album?.id === id)
         .map((job) => job.album?.track as number),
@@ -469,6 +478,11 @@ export class HubCore {
     return { title: song.title, file: this.library.audioPath(song.file) };
   }
 
+  /** The albums making their music on `server`, oldest first (only the first sends tracks). */
+  private async makingOn(server: string): Promise<string[]> {
+    return making((await this.library.list()).playlists, server).map((playlist) => playlist.id);
+  }
+
   /** The library, each album being made saying whether anything is being done for it right now. */
   async libraryView(): Promise<LibraryView> {
     const view = await this.library.list();
@@ -477,9 +491,13 @@ export class HubCore {
       playlists: view.playlists.map((playlist) => {
         const album = playlist.album;
         if (album == null || !['planning', 'cover', 'making'].includes(album.stage)) return playlist;
-        const working = this.albums.writing(playlist.id)
+        // Waiting its turn behind an older album on its server: being handled, not interrupted.
+        const line = album.stage === 'making' ? making(view.playlists, album.server) : [];
+        const ahead = line[0] !== undefined && line[0].id !== playlist.id ? line[0] : null;
+        const working = ahead !== null
+          || this.albums.writing(playlist.id)
           || this.jobs.list(albumClient(playlist.id)).some((job) => !ENDED_PHASES.includes(job.phase));
-        return { ...playlist, album: { ...album, working } };
+        return { ...playlist, album: { ...album, working, waitingFor: ahead?.name ?? null } };
       }),
     };
   }
@@ -654,7 +672,10 @@ export class HubCore {
       const cfg = typeof body['cfg'] === 'number' && Number.isFinite(body['cfg']) ? body['cfg'] : null;
       const sung = body['sung'] === true;
       const lyrics = sung && typeof body['lyrics'] === 'string' ? body['lyrics'].trim().slice(0, MAX_LYRICS_BRIEF) : '';
-      const ask: AlbumAsk = { description: text(body['description'] ?? '', 'description').slice(0, 600), tags: tags as string[], minutes, sung, cfg, ...(lyrics ? { lyrics } : {}) };
+      const ask: AlbumAsk = {
+        description: text(body['description'] ?? '', 'description').slice(0, 600), tags: tags as string[], minutes, sung, cfg,
+        ...(lyrics ? { lyrics } : {}), ...(body['exactTags'] === true ? { exactTags: true } : {}),
+      };
       if (ask.description.trim() === '' && ask.tags.length === 0) {
         throw new Refusal('album_ask_empty', 'Describe the album, or pick some tags, first.');
       }
@@ -668,7 +689,9 @@ export class HubCore {
           throw new Refusal('album_space_full', `Albums on this phone take ${(used / 1e9).toFixed(1)} of ${this.preferences.albumSpaceGb} GB. Save some to your cloud or delete one, then make the next.`);
         }
       }
-      const server = this.registry.active();
+      // Its own server when the person picked one (another computer's Crucible, so two albums are
+      // made at once, one on each; Victoria, 2026-10-10), else the active one.
+      const server = typeof body['server'] === 'string' && body['server'] !== '' ? this.registry.get(body['server']) : this.registry.active();
       const album = await this.library.createAlbum('A new album', {
         artist: '', blurb: '', cover: null, ask, plan: null, stage: 'planning', sent: 0, madeS: 0, refusal: null,
         server: server.name, writer: null,
@@ -766,6 +789,8 @@ export class HubCore {
       const album = await this.library.album(id);
       if (album !== null && (album.stage === 'planning' || album.stage === 'cover' || album.stage === 'making')) await this.albums.stop(id);
       await this.library.deletePlaylist(id);
+      // The next album in line on its server makes its music now.
+      if (album !== null) await this.albums.next(album.server);
       return this.libraryChanged();
     });
     this.route('POST', '/api/playlists/:id/songs', async (request) => {

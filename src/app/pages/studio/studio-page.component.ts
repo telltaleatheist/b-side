@@ -115,6 +115,23 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
                 }
               </div>
             </div>
+            @if (hub.servers().length > 1) {
+              <div class="opt">
+                <span class="opt-name">Made on</span>
+                <div class="opt-chips">
+                  @for (server of hub.servers(); track server.name) {
+                    <button type="button" class="chip" [class.on]="albumServer() === server.name" (click)="pickedServer.set(server.name)">{{ server.name }}</button>
+                  }
+                </div>
+              </div>
+            }
+            <div class="opt">
+              <span class="opt-name">Tags</span>
+              <div class="opt-chips">
+                <button type="button" class="chip" [class.on]="!albumExact()" (click)="albumExact.set(false)" title="Each track varies on the tags: its own voice, instruments, a touch of another style">General vibe</button>
+                <button type="button" class="chip" [class.on]="albumExact()" (click)="albumExact.set(true)" title="Every track keeps exactly the album's tags; none adds a voice, instrument or genre">Stick to my tags</button>
+              </div>
+            </div>
             <div class="opt">
               <span class="opt-name">Vocals</span>
               <div class="opt-chips">
@@ -302,6 +319,14 @@ export class StudioPageComponent {
   protected readonly albumMinutes = ALBUM_MINUTES;
   protected readonly albumLength = signal(60);
   protected readonly albumSung = signal(false);
+  protected readonly albumExact = signal(false);
+  /** The server the album is made on; the active one until another is picked. */
+  protected readonly pickedServer = signal<string | null>(null);
+  protected readonly albumServer = computed(() => {
+    const picked = this.pickedServer();
+    const servers = this.hub.servers();
+    return picked !== null && servers.some((server) => server.name === picked) ? picked : (this.hub.activeServer()?.name ?? null);
+  });
   /** Instrumental where the person is: the album's Vocals choice, or the song's switch. */
   protected readonly instrumentalHere = computed(() => (this.mode() === 'album' ? !this.albumSung() : this.studio.instrumental()));
 
@@ -365,6 +390,8 @@ export class StudioPageComponent {
       sung: this.albumSung(),
       lyrics: this.albumSung() ? this.studio.lyricsBrief().trim() : '',
       cfg: this.studio.cfg().trim() === '' ? null : Number(this.studio.cfg()),
+      exactTags: this.albumExact(),
+      server: this.albumServer() ?? '',
     });
     this.albumSending.set(false);
     this.albumRefusal.set(outcome.ok ? null : outcome.refusal);

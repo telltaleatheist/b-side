@@ -23,7 +23,7 @@
 import type { CrucibleClient, CrucibleSession } from '@crucible/client';
 
 import {
-  aboutOf, batches, newAlbumTitle, newArtist, newCoverPrompt, newTrackTitles, writeAlbum, writeSongLyrics, writeTracks, type AlbumConcept,
+  aboutOf, batches, BPM, newAlbumTitle, newArtist, newCoverPrompt, newTrackTitles, writeAlbum, writeSongLyrics, writeTracks, type AlbumConcept,
 } from './album-text';
 import { installModel, startInstall } from './crucible';
 import type { Lyricist } from './lyricist';
@@ -85,15 +85,20 @@ export function trackCount(minutes: number): number {
   return Math.min(MOST_TRACKS, Math.ceil((minutes * 60) / SHORTEST_TRACK_S));
 }
 
-/** A track's tags: the core, then its turn's new tags (none repeated); instrumental unless it is sung. */
-export function trackTags(core: string, turn: string, sung: boolean): string {
+/**
+ * A track's tags: the core, then its turn's new tags (none repeated); instrumental unless it is sung.
+ * `exact` (AlbumAsk.exactTags): the turn adds only its tempo, and only when the core sets none.
+ */
+export function trackTags(core: string, turn: string, sung: boolean, exact = false): string {
   const all = core.split(',').map((t) => t.trim()).filter((t) => t !== '');
   // Instrumental means no voice (Owen, 2026-10-08): even a singer in the person's own tags goes.
   const tags = sung ? all : withoutVoice(all);
   const seen = new Set(tags.map((t) => t.toLowerCase()));
+  const coreTempo = BPM.test(core);
   for (const extra of turn.split(',').map((t) => t.trim()).filter((t) => t !== '')) {
     if (seen.has(extra.toLowerCase())) continue;
     if (!sung && VOICE_TAG.test(extra)) continue;
+    if (exact && (coreTempo || !BPM.test(extra))) continue;
     seen.add(extra.toLowerCase());
     tags.push(extra);
   }
@@ -148,6 +153,12 @@ export interface AlbumHooks {
   claude(): { readonly text: TextModel; readonly lyricist: Lyricist } | null;
   /** A made track was named again: rename its song (the first of the album's songs with the old name). */
   renameSong(id: string, from: string, to: string): Promise<void>;
+  /**
+   * The albums making their music on `server`, oldest first: only the first sends tracks, so
+   * each album is finished before the next begins (Victoria, 2026-10-10: several albums at once
+   * took turns a song at a time; Owen: "several albums would be good").
+   */
+  makingOn(server: string): Promise<readonly string[]>;
 }
 
 /** One piece of a planned album the person can have written again. */
@@ -197,6 +208,7 @@ export class AlbumMaker {
     if (meta === null) return;
     if (count >= FAILURES_TO_STOP) {
       await this.hooks.update(id, { ...meta, stage: 'failed', refusal: refusal ?? { code: 'tracks_failed', message: `${count} tracks in a row failed.` } });
+      await this.next(meta.server);
       return;
     }
     await this.topUp(id, meta);
@@ -328,6 +340,15 @@ export class AlbumMaker {
     const meta = await this.hooks.meta(id);
     if (meta !== null && meta.stage !== 'done') await this.hooks.update(id, { ...meta, stage: 'stopped' });
     await this.hooks.cancelInFlight(id);
+    if (meta !== null) await this.next(meta.server);
+  }
+
+  /** An album left the line on `server` (done, stopped, failed, deleted): the next one makes its music. */
+  async next(server: string): Promise<void> {
+    const first = (await this.hooks.makingOn(server))[0];
+    if (first === undefined) return;
+    const meta = await this.hooks.meta(first);
+    if (meta !== null) await this.topUp(first, meta);
   }
 
   private async advance(id: string): Promise<void> {
@@ -358,7 +379,10 @@ export class AlbumMaker {
       }
     } catch (error) {
       const current = await this.hooks.meta(id);
-      if (current !== null) await this.hooks.update(id, { ...current, stage: 'failed', refusal: refusalOf(error) });
+      if (current !== null) {
+        await this.hooks.update(id, { ...current, stage: 'failed', refusal: refusalOf(error) });
+        await this.next(current.server);
+      }
     }
   }
 
@@ -432,7 +456,7 @@ export class AlbumMaker {
         await show({ kind: 'plan', done: at + 1, of: plans.length + 1 });
         const from = plan.tracks.length + 1;
         const turns = await writeTracks(writer, meta.ask, concept, from, last, count, page, plan.tracks.map((track) => track.title));
-        const written = turns.map((track): AlbumTrack => ({ title: track.title, tags: trackTags(concept.core, track.turn, meta.ask.sung), lyrics: null }));
+        const written = turns.map((track): AlbumTrack => ({ title: track.title, tags: trackTags(concept.core, track.turn, meta.ask.sung, meta.ask.exactTags === true), lyrics: null }));
         plan = { ...plan, tracks: [...plan.tracks, ...written] };
         meta = { ...(await this.hooks.meta(id) ?? meta), writer: writer.name, plan };
         await this.hooks.update(id, meta);
@@ -522,6 +546,9 @@ export class AlbumMaker {
   /** Keep two tracks on the server until the album passes its length or runs out of plan. */
   private async topUp(id: string, meta: AlbumMeta, landing = 0): Promise<void> {
     if (meta.stage !== 'making' || meta.plan === null) return;
+    // An older album on the same server is making its music: this one waits its turn. Tracks it
+    // already has on the server finish; `next` starts it when the one ahead leaves the line.
+    if ((await this.hooks.makingOn(meta.server))[0] !== id) return;
     const target = meta.ask.minutes * 60;
     let sent = meta.sent;
     const redo = [...(meta.redo ?? [])];
@@ -544,5 +571,6 @@ export class AlbumMaker {
     if (sent !== meta.sent || redo.length !== (meta.redo ?? []).length || finished) {
       await this.hooks.update(id, { ...meta, sent, redo, stage: finished ? 'done' : meta.stage });
     }
+    if (finished) await this.next(meta.server);
   }
 }
