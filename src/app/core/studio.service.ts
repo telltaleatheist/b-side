@@ -58,6 +58,11 @@ export class StudioService {
   readonly preChorus = signal(readPreChorus());
   /** "Pronounce phonetically" (Owen, 2026-10-11): as last left on this device. */
   readonly phonetic = signal(readChoice(PHONETIC_KEY));
+  /** A sung album in the person's own words (Owen, 2026-10-11): on, the words box replaces the brief. */
+  readonly ownWords = signal(false);
+  readonly ownText = signal('');
+  /** Their words given verse and chorus tags (no word changed); as last left on this device. */
+  readonly addSections = signal(readChoice(ADD_SECTIONS_KEY));
   /** The length to aim for (LENGTH_AIMS' key), or '' for the server's own; songs and albums share it. */
   readonly lengthAim = signal('');
   /**
@@ -72,6 +77,8 @@ export class StudioService {
     this.tags.set([...ask.tags]);
     this.lead.set(ask.lead ?? '');
     this.lyricsBrief.set(ask.lyrics ?? '');
+    this.ownWords.set(ask.ownWords !== undefined);
+    this.ownText.set((ask.ownWords ?? []).map((track) => (track.title !== null ? `# ${track.title}\n` : '') + track.lyrics).join('\n\n---\n\n'));
     this.cfg.set(ask.cfg == null ? '' : String(ask.cfg));
     this.lengthAim.set(ask.trackLength ?? '');
     this.described.set(null);
@@ -358,6 +365,7 @@ export class StudioService {
 
 const PRE_CHORUS_KEY = 'b-sides.preChorus';
 export const PHONETIC_KEY = 'b-sides.phonetic';
+export const ADD_SECTIONS_KEY = 'b-sides.addSections';
 
 /** A checkbox's choice last made on this device; off until one is chosen. */
 function readChoice(key: string): boolean {

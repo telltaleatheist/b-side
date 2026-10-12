@@ -688,6 +688,12 @@ export interface AlbumAsk {
    * melody. Absent: each track's own, from [turns] (none added with exactTags).
    */
   readonly lead?: string;
+  /**
+   * Sung in the person's own words (Owen, 2026-10-11, for Victoria's poems): a track for each, in
+   * order, sung exactly as given (own-words.ts). No lyricist and no fix-up; a track with no name
+   * of its own is named for its words. The album's length is these tracks, not `minutes`.
+   */
+  readonly ownWords?: readonly { readonly title: string | null; readonly lyrics: string }[];
 }
 
 /**

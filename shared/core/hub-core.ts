@@ -39,6 +39,7 @@ import { clientFor, clientName, probe, serverPresets, setClientName, songPage, s
 import { PresetStore } from './presets';
 import { describe, layLyrics, lyricsBrief } from './describe';
 import { describeSound, nameSong } from './split-text';
+import { OWN_TRACKS_MAX, OWN_WORDS_MAX, ownTracks, withSections } from '../own-words';
 import { freshLine } from './fresh-names';
 import { voiceCheck } from './voice-check';
 import type { Lyricist } from './lyricist';
@@ -1157,14 +1158,24 @@ export class HubCore {
       }
       if (!Array.isArray(tags) || !tags.every((tag) => typeof tag === 'string')) throw new Refusal('body_invalid', 'tags must be a list of text.');
       const cfg = typeof body['cfg'] === 'number' && Number.isFinite(body['cfg']) ? body['cfg'] : null;
-      const sung = body['sung'] === true;
-      const lyrics = sung ? lyricsBrief(body['lyrics']) : '';
+      // Their own words (Owen, 2026-10-11): sung exactly, with section tags only when asked.
+      const own = typeof body['ownWords'] === 'string' ? ownTracks(body['ownWords']) : null;
+      if (own !== null) {
+        if (own.length === 0) throw new Refusal('own_words_empty', 'Paste the words first: a track for each, with a line of --- between them.');
+        if (own.length > OWN_TRACKS_MAX) throw new Refusal('own_words_many', `That is ${own.length} tracks; an album takes at most ${OWN_TRACKS_MAX}. Split it into two albums.`);
+        const long = own.findIndex((track) => track.lyrics.length > OWN_WORDS_MAX);
+        if (long >= 0) throw new Refusal('own_words_long', `Track ${long + 1}'s words run ${own[long]?.lyrics.length} characters; one track takes at most ${OWN_WORDS_MAX}. Split it with a line of ---.`);
+      }
+      const ownWords = own?.map((track) => (body['addSections'] === true ? { ...track, lyrics: withSections(track.lyrics) } : track)) ?? null;
+      const sung = body['sung'] === true || ownWords !== null;
+      const lyrics = sung && ownWords === null ? lyricsBrief(body['lyrics']) : '';
       const title = givenName(body['title']);
       const ask: AlbumAsk = {
         description: albumDescription(body['description']), tags: tags as string[], minutes, sung, cfg,
         ...(title !== null ? { title } : {}),
-        ...(sung && body['preChorus'] === true ? { preChorus: true } : {}),
-        ...(sung && body['phonetic'] === true ? { phonetic: true } : {}),
+        ...(sung && ownWords === null && body['preChorus'] === true ? { preChorus: true } : {}),
+        ...(sung && ownWords === null && body['phonetic'] === true ? { phonetic: true } : {}),
+        ...(ownWords !== null ? { ownWords } : {}),
         ...(lyrics ? { lyrics } : {}), ...(body['exactTags'] === true ? { exactTags: true } : {}),
         // Make's Lead (Owen, 2026-10-11): every track's; blank, each track picks its own.
         ...(typeof body['lead'] === 'string' && body['lead'].trim() !== '' ? { lead: body['lead'].replace(/\s+/g, ' ').trim().slice(0, 80) } : {}),

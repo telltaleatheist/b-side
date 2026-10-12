@@ -32,7 +32,8 @@ import { crucibleText, type TextModel } from './text-model';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { layLyrics } from './describe';
-import { writeConcept, writeCore, writeCover, writeIdeas, writeTurns } from './split-text';
+import { nameSong, writeConcept, writeCore, writeCover, writeIdeas, writeTurns } from './split-text';
+import { ownIdea } from '../own-words';
 import { leadPhrase, VOICE_TAG, withoutVoice } from '../tags';
 import { trackSet } from '../planning-sets';
 import {
@@ -617,6 +618,9 @@ export class AlbumMaker {
     if (plan === null || plan.tracks.length < (plan.trackCount ?? 0)) {
       throw new Refusal('album_unplanned', 'This album is not planned yet; add to it once it is.', 409);
     }
+    if (meta.ask.ownWords !== undefined) {
+      throw new Refusal('album_own_words', 'This album sings your own words, and every one is on it. Make another album for more.', 409);
+    }
     const spare = plan.tracks.length - meta.sent;
     const more = Math.max(0, trackCount(EXTEND_MINUTES, trackAim(meta.ask)?.min) - spare);
     const grown: AlbumPlan = more === 0 ? plan : { ...plan, trackCount: plan.tracks.length + more };
@@ -749,8 +753,9 @@ export class AlbumMaker {
     try {
       const page = await this.hooks.page(server);
       // A plan from before v2 was written whole, in one call: its own length is its count.
+      const own = meta.ask.ownWords ?? null;
       const count = meta.plan == null
-        ? trackCount(meta.ask.minutes, trackAim(meta.ask)?.min)
+        ? (own !== null ? own.length : trackCount(meta.ask.minutes, trackAim(meta.ask)?.min))
         : (meta.plan.trackCount ?? meta.plan.tracks.length);
       const show = async (step: AlbumMeta['step']): Promise<void> => {
         meta = { ...(await this.hooks.meta(id) ?? meta), step };
@@ -793,6 +798,21 @@ export class AlbumMaker {
         await this.hooks.update(id, meta, plan.title);
       } else {
         plan = meta.plan;
+      }
+      // In the person's own words: a track for each, its words as given, named by them or for them.
+      if (own !== null && plan.tracks.length < own.length) {
+        await show({ kind: 'plan', done: 1, of: steps });
+        for (const given of own.slice(plan.tracks.length)) {
+          if (await this.halted(id)) return meta;
+          const taken = plan.tracks.map((track) => track.title);
+          const title = given.title
+            ?? await nameSong(await words(), aboutOf(meta.ask), meta.ask.tags, given.lyrics, await this.hooks.freshNames?.() ?? '').catch(() => null)
+            ?? `Track ${taken.length + 1}`;
+          const track: AlbumTrack = { title, idea: ownIdea(given.lyrics), tags: '', lyrics: given.lyrics };
+          plan = { ...plan, tracks: [...plan.tracks, track] };
+          meta = { ...(await this.hooks.meta(id) ?? meta), plan, lyricsBy: 'you' };
+          await this.hooks.update(id, meta);
+        }
       }
       // [ideas]: the track list, fifteen at a time, each a title and what it is about, each batch told every title so far.
       for (const [at, [first, last]] of plans.entries()) {

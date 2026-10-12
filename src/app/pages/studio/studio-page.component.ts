@@ -20,7 +20,8 @@ import { JobsService } from '../../core/jobs.service';
 import { PlayerService } from '../../core/player.service';
 import { RememberHeightDirective } from '../../core/remember-height.directive';
 import { LibraryService } from '../../core/library.service';
-import { PHONETIC_KEY, StudioService, keepChoice, keepPreChorus } from '../../core/studio.service';
+import { ADD_SECTIONS_KEY, PHONETIC_KEY, StudioService, keepChoice, keepPreChorus } from '../../core/studio.service';
+import { ownTracks } from '@shared/own-words';
 import { RefusalComponent } from '../../components/refusal/refusal.component';
 
 /**
@@ -171,6 +172,23 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
         @if (!instrumentalHere()) {
           <div class="field">
             @if (mode() === 'album') {
+              <label class="switch" title="Every track sung in words you give, exactly as written">
+                <input type="checkbox" [checked]="studio.ownWords()" (change)="studio.ownWords.set($any($event.target).checked)" />
+                Sing my own words
+              </label>
+            }
+            @if (mode() === 'album' && studio.ownWords()) {
+              <label class="label" for="own-words">Your words</label>
+              <textarea id="own-words" appRememberHeight="own-words" rows="12" spellcheck="true"
+                        placeholder="# The Swing&#10;How do you like to go up in a swing,&#10;Up in the air so blue?&#10;...&#10;&#10;---&#10;&#10;# Windy Nights&#10;Whenever the moon and stars are set,&#10;..."
+                        [value]="studio.ownText()" (input)="studio.ownText.set($any($event.target).value)"></textarea>
+              <p class="hint">{{ ownCount() }} {{ ownCount() === 1 ? 'track' : 'tracks' }}. A track for each poem or song, sung exactly as written: nothing is rewritten, shortened or cut, and any shape works, even a plain paragraph. Put a line of <code>---</code> between tracks. A first line "# Name" names the track; without one it is named for its words.</p>
+              <label class="switch" title="Each stanza a verse, a stanza sung twice the chorus; no word changed">
+                <input type="checkbox" [checked]="studio.addSections()" (change)="setAddSections($any($event.target).checked)" />
+                Add verse and chorus tags
+              </label>
+              <p class="hint">{{ studio.addSections() ? 'Each stanza becomes a [Verse], and a stanza that comes back becomes the [Chorus]. Words that already have tags are left as they are.' : 'Sent exactly as pasted. Tags like [Verse] and [Chorus] can help YuE2 shape the melody, but none are needed.' }}</p>
+            } @else if (mode() === 'album') {
               <label class="label" for="album-lyrics">What the lyrics are about</label>
               <textarea id="album-lyrics" appRememberHeight="album-about" rows="2" spellcheck="true" class="brief" [class.over]="studio.lyricsBrief().length > briefMax"
                         placeholder="their mood, style or story: late-night regrets, wry and tender, told by a bartender"
@@ -184,6 +202,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
             @if (studio.lyricsBrief().length > briefMax * 0.8) {
               <p class="hint" [class.warn]="studio.lyricsBrief().length > briefMax">{{ studio.lyricsBrief().length }} / {{ briefMax }}{{ studio.lyricsBrief().length > briefMax ? ': too long. Shorten it before you make it; nothing is cut.' : '' }}</p>
             }
+            @if (!(mode() === 'album' && studio.ownWords())) {
             <label class="switch" title="A short build-up between each verse and chorus">
               <input type="checkbox" [checked]="studio.preChorus()" (change)="setPreChorus($any($event.target).checked)" />
               Pre-chorus
@@ -198,7 +217,8 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
             @if (studio.preChorus()) {
               <p class="hint warn">YuE2 often leaves a pre-chorus out of the melody (in 38 of 67 of Victoria's songs it dropped at least one), and its lines are then squeezed into the verse or chorus. Unticked, the verses build into the chorus instead.</p>
             }
-            <p class="hint">{{ mode() === 'album' ? "Every track's lyrics are written to this, and the titles fit it. Blank: the album's description leads." : 'Fill in the tags writes the lyrics to this. With the Lyrics box empty, Make writes them first.' }}</p>
+            }
+            <p class="hint">{{ mode() === 'album' && studio.ownWords() ? 'The sound, the names and the cover are still written for you, from the description and tags.' : mode() === 'album' ? "Every track's lyrics are written to this, and the titles fit it. Blank: the album's description leads." : 'Fill in the tags writes the lyrics to this. With the Lyrics box empty, Make writes them first.' }}</p>
           </div>
           @if (mode() !== 'album') {
             <div class="field">
@@ -214,7 +234,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
 
         @if (mode() === 'album' || studio.page()?.length) {
           <div class="options">
-            @if (mode() === 'album') {
+            @if (mode() === 'album' && !(albumSung() && studio.ownWords())) {
               <div class="opt">
                 <span class="opt-name">Album length</span>
                 <div class="opt-chips">
@@ -457,6 +477,11 @@ export class StudioPageComponent {
     this.studio.phonetic.set(on);
     keepChoice(PHONETIC_KEY, on);
   }
+  protected setAddSections(on: boolean): void {
+    this.studio.addSections.set(on);
+    keepChoice(ADD_SECTIONS_KEY, on);
+  }
+
   /** "What the lyrics are about": counted near its limit, refused by name past it (Victoria, 2026-10-11). */
   protected readonly briefMax = 2000;
   /** A sung song's language when it is not English or Chinese, the two YuE2 sings (Owen, 2026-10-11): said, not changed. */
@@ -487,6 +512,8 @@ export class StudioPageComponent {
   }
   protected readonly albumLength = signal(60);
   protected readonly albumSung = signal(false);
+  /** The tracks the own-words box holds, counted as the hub will split them. */
+  protected readonly ownCount = computed(() => ownTracks(this.studio.ownText()).length);
   protected readonly albumExact = signal(false);
   /** The server the album is made on; the active one until another is picked. */
   protected readonly pickedServer = signal<string | null>(null);
@@ -612,6 +639,7 @@ export class StudioPageComponent {
       ...(this.studio.lengthAim() !== '' && this.studio.page()?.length ? { trackLength: this.studio.lengthAim() } : {}),
       server: this.albumServer() ?? '',
       folder: this.albumFolder(),
+      ...(this.albumSung() && this.studio.ownWords() ? { ownWords: this.studio.ownText(), addSections: this.studio.addSections() } : {}),
       preChorus: this.albumSung() && this.studio.preChorus(),
       phonetic: this.albumSung() && this.studio.phonetic(),
       ...(this.studio.name().trim() !== '' ? { title: this.studio.name().trim() } : {}),

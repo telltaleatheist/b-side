@@ -42,6 +42,7 @@ function fakeServer(failLyricsAt: number | null = null) {
     if (tag === '[album title]') return { finishReason: 'stop', content: JSON.stringify({ title: 'Brown at the Edges' }) };
     if (tag === '[artist]') return { finishReason: 'stop', content: JSON.stringify({ artist: 'The Peel' }) };
     if (tag === '[cover]') return { finishReason: 'stop', content: JSON.stringify({ coverPrompt: 'a bowl of fruit at dusk' }) };
+    if (tag === '[song name]') return { finishReason: 'stop', content: JSON.stringify({ title: 'Named For Its Words' }) };
     if (tag === '[track titles]') return { finishReason: 'stop', content: JSON.stringify({ titles: ['Counter Light'] }) };
     throw new Error(`unexpected task ${tag}`);
   };
@@ -324,4 +325,23 @@ test('a track is not made again while the album is being written', async () => {
   album.maker.start('j');
   await expect(album.maker.remake('j', 0, { fresh: false, song: 's', keep: null })).rejects.toMatchObject({ code: 'album_writing' });
   await settle(album.maker, 'j');
+});
+
+test("an album in the person's own words: sung exactly, no lyricist, named by them or for them (Owen, 2026-10-11)", async () => {
+  const server = fakeServer();
+  const poem = 'How do you like to go up in a swing,\nUp in the air so blue?   Oh, I do think it the pleasantest thing ever a child can do!';
+  const ownWords = [{ title: 'The Swing', lyrics: poem }, { title: null, lyrics: 'a plain paragraph about bananas, sung as it is.' }];
+  const lyricist: Lyricist = { name: 'claude', write: async () => { throw new Error('the lyricist is never asked'); } } as unknown as Lyricist;
+  const album = fakeAlbum({ description: 'poems for children', tags: ['folk'], minutes: 90, sung: true, ownWords }, server, { text: null, words: null, lyricist });
+  album.maker.start('a');
+  await settle(album.maker, 'a');
+  const tags = server.sent.map((call) => call.tag);
+  expect(tags).not.toContain('[ideas]');
+  expect(tags).not.toContain('[lyrics]');
+  const tracks = album.meta().plan!.tracks;
+  expect(tracks.map((track) => track.title)).toEqual(['The Swing', 'Named For Its Words']);
+  expect(tracks[0]!.lyrics).toBe(poem);
+  expect(album.meta().plan!.trackCount).toBe(2);
+  expect(album.meta().stage).toBe('making');
+  await expect(album.maker.extend('a')).rejects.toThrow('your own words');
 });
