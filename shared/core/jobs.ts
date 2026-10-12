@@ -85,6 +85,10 @@ interface Job {
   client: CrucibleClient | null;
   /** The install task this job is waiting on, while `phase` is `installing`. */
   taskId: string | null;
+  /** Called when the job ends, however it ends (finish): what the submission line waits on for a metered song. */
+  over?: () => void;
+  /** Cancelled by the person while metered: its voice check stops, and no render is sent again. */
+  stopped?: boolean;
   /** Cancelled or dismissed before the server had it: nothing more is sent for it. */
   gone: boolean;
   /** Times sent again after the server lost it through no fault of the song's (at most RESENDS). */
@@ -388,9 +392,13 @@ export class JobRunner {
       return job;
     });
     for (const job of made) {
-      // A submit that throws fails its own job and never stops the line behind it.
+      // A submit that throws fails its own job and never stops the line behind it. A metered
+      // instrumental (VOICE_TRIES) holds the line until it has landed (Owen, 2026-10-12: "get one song
+      // completely done, then the next"): otherwise its voice check and its re-renders wait in the
+      // server's queue behind the next song's whole render, and it cannot be heard until then.
       this.line = this.line
         .then(() => this.submit(job))
+        .then(() => (job.view.tries === undefined || this.ended(job) ? undefined : new Promise<void>((resolve) => { job.over = resolve; })))
         .catch((error: unknown) => this.finish(job, 'failed', refusalOf(error)));
     }
     return made.map((job) => ({ ...job.view }));
@@ -452,13 +460,23 @@ export class JobRunner {
       await this.clientOf(job).cancelTask(job.taskId);
       return null;
     }
+    if (job.view.tries !== undefined) {
+      // Metered: its render may be done and being listened to, which cancelling the render would not
+      // stop. The check sees `stopped` and ends it; a render still being made is cancelled below.
+      job.stopped = true;
+    }
     if (job.view.jobId === null) {
       // Not on the server yet: it never will be.
       job.gone = true;
       this.finish(job, 'cancelled');
       return null;
     }
-    await this.clientOf(job).cancel(job.view.jobId);
+    try {
+      await this.clientOf(job).cancel(job.view.jobId);
+    } catch (error) {
+      // A metered render already made: the server has nothing to cancel; its check stops instead.
+      if (job.stopped !== true) throw error;
+    }
     return null;
   }
 
@@ -549,6 +567,7 @@ export class JobRunner {
     job.view.install = null;
     this.publish(job);
     this.releaseTries(job);
+    job.over?.();
     // A finished job IS its take now; the playing list shows the take, so the job is done with.
     if (phase === 'done') this.jobs.delete(job.view.key);
     else this.hooks.ended?.({ ...job.view });
@@ -869,7 +888,7 @@ export class JobRunner {
       const client = this.clientOf(job);
       voiceS = await runVoiceCheck(client, voiceCheckJob(client.artifactRef(render.jobId, render.artifact), inputNameOf(render.artifact), job.view.key), this.watch(job), this.strips?.pollMs);
     } catch (error) {
-      if (job.gone) {
+      if (job.gone || job.stopped === true) {
         this.finish(job, 'cancelled');
         return;
       }
@@ -880,7 +899,7 @@ export class JobRunner {
     const all = [...tries, { ...render, voiceS }];
     job.view.tries = all;
     console.log(`[voice] ${job.view.server}: render ${n} of ${VOICE_TRIES} (${render.jobId}, seed ${render.seed}) has ${voiceS} s of voice`);
-    if (job.gone) {
+    if (job.gone || job.stopped === true) {
       this.finish(job, 'cancelled');
       return;
     }
@@ -965,7 +984,7 @@ export class JobRunner {
         if (job.view.strip != null) job.view.strip = { ...job.view.strip, jobId };
         this.publish(job);
       },
-      gone: () => job.gone,
+      gone: () => job.gone || job.stopped === true,
     };
   }
 

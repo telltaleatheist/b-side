@@ -4,6 +4,7 @@ import type { CrucibleClient, JobRequest } from '@crucible/client';
 import type { Disk } from '../shared/core/disk';
 import { JobRunner, VOICE_TRIES, type Landed, type StripOptions } from '../shared/core/jobs';
 import { VOICED_S } from '../shared/core/strip';
+import type { JobView } from '../shared/types';
 
 // Owen, 2026-10-12: "render a song, do vocal sep, and if there are vocals, throw it away and
 // re-render up to twice. if after a total of three songs (two re-rolls), if theres still voice, keep
@@ -160,4 +161,57 @@ test('a meter that fails lands the render as made', async () => {
   expect(server.renders()).toHaveLength(1);
   expect(fetched).toEqual(['audio-1/audio.mp3']);
   expect(landed[0]?.voice).toBeUndefined();
+});
+
+test('two instrumentals are made one after the other, each checked and landed before the next is sent (Owen, 2026-10-12)', async () => {
+  const server = fakeServer([40, 0, 0]);
+  const landed: Landed[] = [];
+  const jobs = new JobRunner(
+    {
+      publish: () => undefined,
+      land: async (landing) => {
+        await landing.fill('x');
+        landed.push(landing);
+        return { take: { id: `take-${landed.length}` } as never, songId: null };
+      },
+      server: () => pc,
+    },
+    disk, 'pending.json', async () => 3, () => server.client, server.strips,
+  );
+  jobs.generate(pc, { id: 'c', kind: 'desktop' }, { params: { tags: 'lo-fi', instrumental: true, seed: 4 }, count: 2 }, 'mp3', null, 'new-songs');
+  await until(() => landed.length === 2);
+  // Song 1: render, check (voice), render again, check (clean), lands; only then song 2.
+  expect(server.sent.map((r) => r.type)).toEqual(['audio', 'denoise', 'audio', 'denoise', 'audio', 'denoise']);
+  expect(landed.map((l) => l.voice?.renders)).toEqual([2, 1]);
+});
+
+test('a song cancelled while its render is being checked ends, and nothing is sent again', async () => {
+  const server = fakeServer([40, 0]);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const job = server.client.job.bind(server.client);
+  // The separator's job stays running until the test lets it end.
+  (server.client as unknown as { job: (id: string) => Promise<unknown> }).job = async (id: string) => {
+    await gate;
+    return job(id);
+  };
+  const ended: JobView[] = [];
+  const landed: Landed[] = [];
+  const jobs = new JobRunner(
+    {
+      publish: () => undefined,
+      ended: (view) => { ended.push(view); },
+      land: async (landing) => { landed.push(landing); return { take: { id: 't' } as never, songId: null }; },
+      server: () => pc,
+    },
+    disk, 'pending.json', async () => 3, () => server.client, server.strips,
+  );
+  const [view] = jobs.generate(pc, { id: 'c', kind: 'desktop' }, { params: { tags: 'lo-fi', instrumental: true, seed: 4 }, count: 1 }, 'mp3', null, 'new-songs');
+  await until(() => server.sent.some((r) => r.type === 'denoise'));
+  await jobs.cancel((view as JobView).key);
+  release();
+  await until(() => ended.length === 1);
+  expect(ended[0]?.phase).toBe('cancelled');
+  expect(server.renders()).toHaveLength(1);
+  expect(landed).toHaveLength(0);
 });
