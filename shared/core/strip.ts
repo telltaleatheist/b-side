@@ -5,8 +5,7 @@
  * uploaded, the `denoise` job (`vocals-roformer`, `stems: all`) separates it, and the instrumental
  * stem comes back in the person's own format as a new song. Renders are NOT put through it
  * (Owen, 2026-10-12: "vocal sep doesnt work for yue generated audio ... it damages the audio";
- * the level pumps as the voice comes and goes): an instrumental's stray voice is the model's to
- * leave out (instrumental-model.ts).
+ * the level pumps as the voice comes and goes): a render lands as made.
  *
  * What Crucible's 2.0.4 contract says (crucible-pc-1, 2026-10-11), and B-Sides leans on:
  *   - denoise takes any ffmpeg-decodable input at any rate (2.0.2 took only 44.1 kHz WAV/FLAC);

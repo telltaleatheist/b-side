@@ -59,14 +59,11 @@ test("an instrumental's request carries its seed's set as planning_lyrics, and n
   expect(job.model).toBe('yue2-3b');
 });
 
-test('the instrumental model (Owen, 2026-10-12) changes only the name on the wire: the same params, instrumental still true', () => {
-  const params = settleSong({ tags: 'lo-fi', instrumental: true, seed: 13 });
-  const plain = songJob(params, 'mp3', 'k');
-  const adapted = songJob(params, 'mp3', 'k', 'yue2-3b-instrumental');
-  expect(adapted.model).toBe('yue2-3b-instrumental');
-  expect(adapted.params).toEqual(plain.params);
-  // Never held: no separator job follows a render (Owen, 2026-10-12).
-  expect(adapted.hold).toBeUndefined();
+test('an instrumental goes to yue2-3b, never held (Owen, 2026-10-12: base for everything, no separator on a render)', () => {
+  const job = songJob(settleSong({ tags: 'lo-fi', instrumental: true, seed: 13 }), 'mp3', 'k');
+  expect(job.model).toBe('yue2-3b');
+  expect(job.params['instrumental']).toBe(true);
+  expect(job.hold).toBeUndefined();
 });
 
 test("an instrumental's aim sizes its set, and goes no further than B-Sides", () => {

@@ -10,14 +10,6 @@
 /** The one model B-Sides makes songs with. */
 export const SONG_MODEL = 'yue2-3b';
 
-/**
- * The model an instrumental is made with when the server has it (Crucible 2.0.7): yue2-3b with an
- * instrumental adapter fused around its composing call only (planning stays yue2-3b's). Owen,
- * 2026-10-12, after the listening tests in shared/core/instrumental-model.ts: yue2-3b's composing
- * invents a singer on most instrumentals; with the adapter the voice is rare and quiet. A server
- * without it makes instrumentals with SONG_MODEL, as before.
- */
-export const INSTRUMENTAL_MODEL = 'yue2-3b-instrumental';
 
 /**
  * The chat models that turn a description into style tags and lyrics (shared/core/describe.ts),
@@ -369,8 +361,9 @@ export interface JobView {
   /** An instrumental version of a library song (Owen, 2026-10-11; shared/core/strip.ts); absent: a render. */
   readonly strip?: StripView | null;
   /**
-   * The model it is sent to: INSTRUMENTAL_MODEL for an instrumental on a server that has it, else
-   * SONG_MODEL. Settled once, on first sending; absent (a job pending from before 1.0.29): SONG_MODEL.
+   * The model it is sent to: always SONG_MODEL. 1.0.29 to 1.0.31 sent instrumentals to Crucible's
+   * yue2-3b-instrumental (an instrumental adapter); Owen, 2026-10-12, after listening, it sang
+   * forbidden words where the base model only hummed: "go back to base for everything".
    */
   readonly model?: string;
 }

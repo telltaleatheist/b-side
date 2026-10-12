@@ -7,31 +7,22 @@ import type { ServerNeedsView } from '../shared/types';
 const row = (installed: boolean): CatalogRow => ({ kind: 'denoise', id: 'vocals-roformer', installed } as unknown as CatalogRow);
 const yue = (installed = true): CatalogRow => ({ kind: 'model', id: 'yue2-3b', installed } as unknown as CatalogRow);
 
-test('the module asks for the separator, YuE2 (Owen, 2026-10-11) and the instrumental model (2026-10-12), without its generated backends', () => {
+test('the module asks for the separator and YuE2 (Owen, 2026-10-11), not the instrumental adapter (2026-10-12), without its generated backends', () => {
   const module = moduleForBackend('cuda-linux');
   expect(module.job_types).toEqual([{ type: 'rvc' }, { type: 'audio' }]);
-  expect(module.subjects).toEqual([{ kind: 'denoise', id: 'vocals-roformer' }, { kind: 'model', id: 'yue2-3b' }, { kind: 'model', id: 'yue2-3b-instrumental' }]);
+  expect(module.subjects).toEqual([{ kind: 'denoise', id: 'vocals-roformer' }, { kind: 'model', id: 'yue2-3b' }]);
   expect(module.name).toBe('b-sides');
   expect(JSON.stringify(module)).not.toContain('backends');
 });
 
-test('a subject the server\'s catalog does not know (the instrumental model before 2.0.7) is left out of the post', async () => {
-  const inst = (installed: boolean): CatalogRow => ({ kind: 'model', id: 'yue2-3b-instrumental', installed } as unknown as CatalogRow);
-  const module = moduleForBackend('cuda-linux');
+test('a subject the server\'s catalog does not know is left out of the post', () => {
+  const module = { ...moduleForBackend('cuda-linux'), subjects: [...moduleForBackend('cuda-linux').subjects, { kind: 'model', id: 'newer-model' }] };
   const lines: string[] = [];
   expect(knownTo(module, [row(true), yue()], (line) => lines.push(line)).subjects).toEqual([{ kind: 'denoise', id: 'vocals-roformer' }, { kind: 'model', id: 'yue2-3b' }]);
-  expect(lines).toEqual(['[needs] this server\'s catalog has no model yue2-3b-instrumental; not asked for it']);
-  expect(knownTo(module, [row(true), yue(), inst(false)]).subjects).toHaveLength(3);
-  // A 2.0.7 server without it installed is posted the module naming it; an older server is posted nothing.
-  const newer = fakeClient({ catalog: [row(true), yue(), inst(false)] }, 'cuda-linux', ['audio', 'denoise']);
-  await new ServerNeeds(undefined, 1).ensure('pc', newer.client);
-  expect((newer.posted[0] as { module: { subjects: unknown[] } }).module.subjects).toContainEqual({ kind: 'model', id: 'yue2-3b-instrumental' });
-  const older = fakeClient({ catalog: [row(true), yue()] }, 'cuda-linux', ['audio', 'denoise']);
-  await new ServerNeeds(undefined, 1).ensure('pc', older.client);
-  expect(older.posted).toHaveLength(0);
+  expect(lines).toEqual(['[needs] this server\'s catalog has no model newer-model; not asked for it']);
 });
 
-test('a Mac is not asked for the instrumental model: its YuE2 worker cannot fold it (crucible-pc-1, 2026-10-12)', () => {
+test('a Mac is asked for the same two', () => {
   expect(moduleForBackend('mlx-darwin').subjects).toEqual([{ kind: 'denoise', id: 'vocals-roformer' }, { kind: 'model', id: 'yue2-3b' }]);
 });
 

@@ -25,7 +25,7 @@
  */
 import { CrucibleRefused, type CatalogRow, type CrucibleClient, type CrucibleModule } from '@crucible/client';
 
-import { INSTRUMENTAL_MODEL, SONG_MODEL, type ServerNeedsView } from '../types';
+import { SONG_MODEL, type ServerNeedsView } from '../types';
 
 /** The separator B-Sides asks for, by its catalog id. */
 export const SEPARATOR_MODEL = 'vocals-roformer';
@@ -48,12 +48,6 @@ export const B_SIDES_MODULE = {
   subjects: [
     { kind: 'denoise', id: SEPARATOR_MODEL, backends: ['cuda-linux', 'mlx-darwin'] },
     { kind: 'model', id: SONG_MODEL, backends: ['cuda-linux', 'mlx-darwin'] },
-    // The instrumental model (Owen, 2026-10-12; Crucible 2.0.7, a 140 MB adapter over yue2-3b):
-    // asked for where the server's catalog knows it (knownTo), so an older server is not posted a
-    // module it would refuse whole. cuda-linux only (crucible-pc-1, 2026-10-12): the Mac's YuE2
-    // worker keeps no host copy of the weights to restore after the fold, so its manifest refuses
-    // it, and a Mac makes instrumentals with yue2-3b.
-    { kind: 'model', id: INSTRUMENTAL_MODEL, backends: ['cuda-linux'] },
   ],
 } as const;
 
@@ -71,8 +65,8 @@ export function moduleForBackend(backend: string): CrucibleModule {
 }
 
 /**
- * The module with only the subjects this server's catalog knows (a newer one's, such as the
- * instrumental model on a server before 2.0.7, is left out and said in the log), so the post asks
+ * The module with only the subjects this server's catalog knows (a newer one's is left out and
+ * said in the log), so the post asks
  * for nothing the server cannot name. Job types are not catalog rows and stay.
  */
 export function knownTo(module: CrucibleModule, catalog: readonly CatalogRow[], log: (line: string) => void = () => undefined): CrucibleModule {

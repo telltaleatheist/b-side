@@ -28,8 +28,7 @@
  * strip    (strip.ts) only instrumental VERSIONS of library songs (`versions`): uploaded, put
  *          through Crucible's separator, and landed as the instrumental stem, a playlist's in one
  *          queue session. A render is never stripped (Owen, 2026-10-12: "vocal sep doesnt work
- *          for yue generated audio ... it damages the audio"); an instrumental's stray voice is
- *          the model's to leave out (instrumental-model.ts), and a render lands as made.
+ *          for yue generated audio ... it damages the audio"); a render lands as made.
  */
 
 import {
@@ -250,11 +249,6 @@ export class JobRunner {
     private readonly connect: (server: StoredServer) => CrucibleClient = clientFor,
     /** Making instrumental versions (strip.ts); null: none are made. */
     private readonly strips: StripOptions | null = null,
-    /**
-     * The model an instrumental on `server` goes to (instrumental-model.ts: INSTRUMENTAL_MODEL when the
-     * server has it, else SONG_MODEL); null: SONG_MODEL. Sung songs always go to SONG_MODEL.
-     */
-    private readonly modelFor: ((server: StoredServer, client: CrucibleClient) => Promise<string>) | null = null,
   ) {}
 
   /** Instrumental versions, one run after another per server (each run its own session). */
@@ -561,13 +555,9 @@ export class JobRunner {
 
   private async submit(job: Job): Promise<void> {
     const client = this.clientOf(job);
-    // Which model (Owen, 2026-10-12): an instrumental goes to the server's instrumental model when
-    // it has one. Decided once, on first sending, so a resend or retry goes where the record says.
-    if (job.view.model === undefined) {
-      job.view.model = job.view.params.instrumental === true && this.modelFor !== null
-        ? await this.modelFor(job.server, client).catch(() => SONG_MODEL)
-        : SONG_MODEL;
-    }
+    // Every song goes to yue2-3b (Owen, 2026-10-12: "go back to base for everything"), a job pending
+    // from 1.0.29-1.0.31 with the instrumental adapter's name included.
+    job.view.model = SONG_MODEL;
     let jobId: string | null = null;
     for (let round = 0; jobId === null; round += 1) {
       if (job.gone) return;
