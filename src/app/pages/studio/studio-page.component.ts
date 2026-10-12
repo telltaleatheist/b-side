@@ -21,7 +21,7 @@ import { JobsService } from '../../core/jobs.service';
 import { PlayerService } from '../../core/player.service';
 import { RememberHeightDirective } from '../../core/remember-height.directive';
 import { LibraryService } from '../../core/library.service';
-import { ADD_SECTIONS_KEY, PHONETIC_KEY, StudioService, keepChoice, keepPreChorus } from '../../core/studio.service';
+import { ADD_SECTIONS_KEY, PHONETIC_KEY, StudioService, keepChoice, keepPreChorus, type FormSnapshot } from '../../core/studio.service';
 import { ownTracks } from '@shared/own-words';
 import { RefusalComponent } from '../../components/refusal/refusal.component';
 
@@ -38,13 +38,24 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
  * the desktop sees the form with everything that asks a server disabled, under
  * app-needs-crucible (Owen, 2026-10-11), and its welcome sets one up.
  */
+/** How long Undo clear is offered after Clear all. */
+const UNDO_MS = 15_000;
+
 @Component({
   selector: 'app-studio-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AlbumPlanComponent, RefusalComponent, DecimalPipe, RouterLink, CrucibleSetupComponent, NeedsCrucibleComponent, PresetBarComponent, TagInputComponent, IconComponent, CoverComponent, RememberHeightDirective],
   template: `
     <div class="page">
-      <h1 class="page-title">Make</h1>
+      <div class="make-head">
+        <h1 class="page-title">Make</h1>
+        <!-- Victoria, 2026-10-12: a fresh start without clearing each box by hand; Undo for a few seconds after. -->
+        @if (cleared() !== null) {
+          <button type="button" class="ghost small" (click)="undoClear()"><app-icon name="back" [size]="15" />Undo clear</button>
+        } @else {
+          <button type="button" class="ghost small" title="Empty every box for something new: name, description, tags, lead, lyrics, seed and the plan's songs. The server, presets, templates and checkboxes stay." (click)="clearAll()"><app-icon name="close" [size]="15" />Clear all</button>
+        }
+      </div>
       <div class="modes" role="tablist" aria-label="What to make">
         <button type="button" role="tab" [attr.aria-selected]="mode() === 'songs'" [class.on]="mode() === 'songs'" (click)="mode.set('songs')">Songs</button>
         <button type="button" role="tab" [attr.aria-selected]="mode() === 'album'" [class.on]="mode() === 'album'" (click)="mode.set('album')">Album</button>
@@ -407,6 +418,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
     </div>
   `,
   styles: [`
+    .make-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; background: var(--bg-elevated); border-radius: var(--radius-lg); }
     .hint.warn, .describe.over { color: var(--warn); }
     .describe.over, .brief.over { border-color: var(--warn); }
@@ -538,6 +550,31 @@ export class StudioPageComponent {
   }
   protected readonly albumLength = signal(60);
   protected readonly albumSung = signal(false);
+  /** What Clear all took, while Undo is offered (UNDO_MS); null: nothing to undo. */
+  protected readonly cleared = signal<{ readonly form: FormSnapshot; readonly albumLength: number; readonly albumSung: boolean; readonly albumExact: boolean } | null>(null);
+  private undoTimer: ReturnType<typeof setTimeout> | undefined;
+
+  protected clearAll(): void {
+    const was = { form: this.studio.clearForm(), albumLength: this.albumLength(), albumSung: this.albumSung(), albumExact: this.albumExact() };
+    this.albumLength.set(60);
+    this.albumSung.set(false);
+    this.albumExact.set(false);
+    this.albumRefusal.set(null);
+    this.cleared.set(was);
+    clearTimeout(this.undoTimer);
+    this.undoTimer = setTimeout(() => this.cleared.set(null), UNDO_MS);
+  }
+
+  protected undoClear(): void {
+    const was = this.cleared();
+    if (was === null) return;
+    clearTimeout(this.undoTimer);
+    this.studio.restoreForm(was.form);
+    this.albumLength.set(was.albumLength);
+    this.albumSung.set(was.albumSung);
+    this.albumExact.set(was.albumExact);
+    this.cleared.set(null);
+  }
   /** The tracks the own-words box holds, counted as the hub will split them. */
   protected readonly ownCount = computed(() => ownTracks(this.studio.ownText()).length);
   protected readonly albumExact = signal(false);

@@ -99,6 +99,75 @@ export class StudioService {
     this.planTracks.update((tracks) => tracks.map((track) => (track.tags.trim() === '' ? { ...track, tags } : track)));
   }
 
+  /**
+   * Make's "Clear all" (Victoria, 2026-10-12: "Every time I make something new, I always have to
+   * clear out information that was stored from the last time"): every field of the last song or
+   * album, the plan's tracks included. Kept: the server, presets, templates, the way an album is made,
+   * and the checkboxes Owen wants left as last chosen (Pre-chorus, Pronounce phonetically, Add verse
+   * and chorus tags). Returns what was there, for Undo (restoreForm).
+   */
+  clearForm(): FormSnapshot {
+    const was = this.formSnapshot();
+    this.tags.set([]);
+    this.lyrics.set('');
+    this.instrumental.set(false);
+    this.lead.set('');
+    this.lyricsBrief.set('');
+    this.cfg.set('');
+    this.seed.set('');
+    this.count.set(1);
+    this.description.set('');
+    this.name.set('');
+    this.ownWords.set(false);
+    this.ownText.set('');
+    this.lengthAim.set('');
+    this.remake.set(null);
+    this.described.set(null);
+    this.describeRefusal.set(null);
+    this.lyricsKept.set(false);
+    this.title.set(null);
+    this.lastWritten = '';
+    this.titledLyrics = '';
+    this.generateRefusal.set(null);
+    this.planTagMode.set('vibe');
+    this.planTracks.set([this.blankTrack(false)]);
+    return was;
+  }
+
+  /** Put back what Clear all cleared. */
+  restoreForm(was: FormSnapshot): void {
+    this.tags.set(was.tags);
+    this.lyrics.set(was.lyrics);
+    this.instrumental.set(was.instrumental);
+    this.lead.set(was.lead);
+    this.lyricsBrief.set(was.lyricsBrief);
+    this.cfg.set(was.cfg);
+    this.seed.set(was.seed);
+    this.count.set(was.count);
+    this.description.set(was.description);
+    this.name.set(was.name);
+    this.ownWords.set(was.ownWords);
+    this.ownText.set(was.ownText);
+    this.lengthAim.set(was.lengthAim);
+    this.remake.set(was.remake);
+    this.described.set(was.described);
+    this.title.set(was.title);
+    this.lastWritten = was.lastWritten;
+    this.titledLyrics = was.titledLyrics;
+    this.planTagMode.set(was.planTagMode);
+    this.planTracks.set(was.planTracks);
+  }
+
+  private formSnapshot(): FormSnapshot {
+    return {
+      tags: this.tags(), lyrics: this.lyrics(), instrumental: this.instrumental(), lead: this.lead(), lyricsBrief: this.lyricsBrief(),
+      cfg: this.cfg(), seed: this.seed(), count: this.count(), description: this.description(), name: this.name(),
+      ownWords: this.ownWords(), ownText: this.ownText(), lengthAim: this.lengthAim(), remake: this.remake(),
+      described: this.described(), title: this.title(), lastWritten: this.lastWritten, titledLyrics: this.titledLyrics,
+      planTagMode: this.planTagMode(), planTracks: this.planTracks(),
+    };
+  }
+
   /** Start the plan afresh: one blank track, the vibe of the album's tags. */
   clearPlan(sung: boolean): void {
     this.planTracks.set([this.blankTrack(sung)]);
@@ -492,6 +561,30 @@ export interface PlanTrackDraft {
   readonly tags: string;
   readonly sung: boolean;
   readonly lead: string;
+}
+
+/** What Clear all took, for Undo. */
+export interface FormSnapshot {
+  readonly tags: string[];
+  readonly lyrics: string;
+  readonly instrumental: boolean;
+  readonly lead: string;
+  readonly lyricsBrief: string;
+  readonly cfg: string;
+  readonly seed: string;
+  readonly count: number;
+  readonly description: string;
+  readonly name: string;
+  readonly ownWords: boolean;
+  readonly ownText: string;
+  readonly lengthAim: string;
+  readonly remake: { readonly ask: AlbumAsk; readonly server: string } | null;
+  readonly described: DescribeResult | null;
+  readonly title: string | null;
+  readonly lastWritten: string;
+  readonly titledLyrics: string;
+  readonly planTagMode: AlbumTagMode;
+  readonly planTracks: PlanTrackDraft[];
 }
 
 interface PlanDraft {
