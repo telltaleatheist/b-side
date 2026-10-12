@@ -422,3 +422,42 @@ test("an album's download lists its songs in order, with the cover", async () =>
   expect(files.cover).toMatch(/\.cover\.jpg$/);
   expect(fs.existsSync(files.tracks[0]?.file as string)).toBe(true);
 });
+
+test('Make → Album, planned (Victoria, 2026-10-12): 1 to 45 songs, refused by name outside; kept on the album as asked', async () => {
+  expect((await api('/api/servers', { method: 'POST', body: JSON.stringify({ name: 'nowhere', url: 'http://127.0.0.1:9', token: 't' }) })).status).toBe(200);
+  try {
+    const code = async (body: unknown): Promise<string> => ((await (await api('/api/albums', { method: 'POST', body: JSON.stringify(body) })).json()) as { error: { code: string } }).error.code;
+    const base = { description: '', tags: [], sung: true };
+    expect(await code({ ...base, plan: { tagMode: 'vibe', tracks: [] } })).toBe('plan_empty');
+    expect(await code({ ...base, plan: { tagMode: 'vibe', tracks: Array.from({ length: 46 }, () => ({})) } })).toBe('plan_many');
+    expect(await code({ ...base, plan: { tagMode: 'vibe', tracks: [{ lyrics: 'x' }] }, ownWords: 'y' })).toBe('body_invalid');
+    // Nothing said at all, in the plan or the album: refused as an empty album is.
+    expect(await code({ ...base, plan: { tagMode: 'vibe', tracks: [{}] } })).toBe('album_ask_empty');
+    // No minutes needed: the album is its songs.
+    const plan = { tagMode: 'per-song', tracks: [{ title: 'The Swing', lyrics: 'up in a swing', tags: ['piano'] }, { sung: false, lead: 'cello' }] };
+    const started = await api('/api/albums', { method: 'POST', body: JSON.stringify({ ...base, exactTags: true, plan }) });
+    expect(started.status).toBe(200);
+    const { id } = (await started.json()) as { id: string };
+    const album = ((await (await api('/api/library')).json()) as LibraryView).playlists.find((p) => p.id === id)?.album;
+    expect(album?.ask.plan).toEqual(plan as never);
+    expect(album?.ask.exactTags).toBeUndefined();
+    expect(album?.ask.minutes).toBe(5);
+    await api(`/api/playlists/${id}`, { method: 'DELETE' });
+  } finally {
+    await api('/api/servers/nowhere', { method: 'DELETE' });
+  }
+});
+
+test('album templates: saved, listed, loaded and deleted over the API; a bad plan is refused as a bad album is', async () => {
+  const plan = { tagMode: 'vibe', tracks: [{ title: 'The Swing', lyrics: 'up in a swing' }, { brief: 'windy nights' }] };
+  const saved = await api('/api/album-templates/Poems', { method: 'PUT', body: JSON.stringify({ description: 'poems', tags: ['folk'], lead: '', sung: true, plan }) });
+  expect(saved.status).toBe(200);
+  expect(((await saved.json()) as { name: string; tracks: number }[]).map((t) => [t.name, t.tracks])).toEqual([['Poems', 2]]);
+  const loaded = (await (await api('/api/album-templates/Poems')).json()) as { plan: unknown; tags: string[]; sung: boolean };
+  expect(loaded.plan).toEqual(plan);
+  expect(loaded.tags).toEqual(['folk']);
+  const bad = await api('/api/album-templates/Big', { method: 'PUT', body: JSON.stringify({ sung: true, plan: { tagMode: 'vibe', tracks: Array.from({ length: 46 }, () => ({})) } }) });
+  expect(((await bad.json()) as { error: { code: string } }).error.code).toBe('plan_many');
+  expect(await (await api('/api/album-templates/Poems', { method: 'DELETE' })).json()).toEqual([]);
+  expect((await api('/api/album-templates/Poems')).status).toBe(404);
+});

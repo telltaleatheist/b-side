@@ -734,7 +734,8 @@ export class PlaylistsPageComponent {
       // Stopped or done: only the tracks it set out to make and has no song for (one past the length was never meant).
       // Making: every track left. Otherwise only the ones it set out to make and has no song for, and
       // the rest of the plan only while the album is short of its length (past it, they were never needed).
-      .filter((row) => !made.has(row.title) && (busy || row.lost || album.madeS < album.ask.minutes * 60));
+      // A planned album, or one in the person's own words, sets out to make every track (Victoria, 2026-10-12).
+      .filter((row) => !made.has(row.title) && (busy || row.lost || album.ask.plan !== undefined || album.ask.ownWords !== undefined || album.madeS < album.ask.minutes * 60));
   });
 
   /** The album's real length: its songs added up. */

@@ -60,7 +60,10 @@ export function albumProgress(album: AlbumMeta): AlbumProgress {
       }
       return {
         // Taking turns (Settings, Victoria 2026-10-11): it grows a track at a time beside the others.
-        label: `Making the music${album.takingTurns ? ', taking turns with other albums' : ''}: ${Math.floor(album.madeS / 60)} of ${album.ask.minutes} min`,
+        // A planned album is its songs, not minutes (Victoria, 2026-10-12): its minutes are only a guess.
+        label: `Making the music${album.takingTurns ? ', taking turns with other albums' : ''}: ${album.ask.plan !== undefined
+          ? `${Math.floor(album.madeS / 60)} min so far, ${album.ask.plan.tracks.length} songs planned`
+          : `${Math.floor(album.madeS / 60)} of ${album.ask.minutes} min`}`,
         share: musicShare,
         waiting: false,
       };

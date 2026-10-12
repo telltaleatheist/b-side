@@ -6,6 +6,7 @@ import { MAX_BATCH } from '@shared/batch';
 import { ALBUM_MINUTES, albumBytes, DESCRIPTION_MAX, ENDED_PHASES, LENGTH_AIMS, SINGLES_NAME, type HubPreferences, type Playlist, type RefusalView } from '@shared/types';
 import { styleLine, undeclaredLanguage } from '@shared/tags';
 
+import { AlbumPlanComponent } from '../../components/album-plan/album-plan.component';
 import { CrucibleSetupComponent } from '../../components/crucible-setup/crucible-setup.component';
 import { NeedsCrucibleComponent } from '../../components/needs-crucible/needs-crucible.component';
 import { PresetBarComponent } from '../../components/preset-bar/preset-bar.component';
@@ -40,7 +41,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
 @Component({
   selector: 'app-studio-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RefusalComponent, DecimalPipe, RouterLink, CrucibleSetupComponent, NeedsCrucibleComponent, PresetBarComponent, TagInputComponent, IconComponent, CoverComponent, RememberHeightDirective],
+  imports: [AlbumPlanComponent, RefusalComponent, DecimalPipe, RouterLink, CrucibleSetupComponent, NeedsCrucibleComponent, PresetBarComponent, TagInputComponent, IconComponent, CoverComponent, RememberHeightDirective],
   template: `
     <div class="page">
       <h1 class="page-title">Make</h1>
@@ -48,6 +49,13 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
         <button type="button" role="tab" [attr.aria-selected]="mode() === 'songs'" [class.on]="mode() === 'songs'" (click)="mode.set('songs')">Songs</button>
         <button type="button" role="tab" [attr.aria-selected]="mode() === 'album'" [class.on]="mode() === 'album'" (click)="mode.set('album')">Album</button>
       </div>
+      @if (mode() === 'album') {
+        <!-- Victoria, 2026-10-12: "Generate for me" is the album as it was; "I want to plan it" goes song by song. -->
+        <div class="ways" role="radiogroup" aria-label="How to make the album">
+          <button type="button" role="radio" [attr.aria-checked]="!planning()" [class.on]="!planning()" (click)="studio.albumWay.set('generate')">Generate for me</button>
+          <button type="button" role="radio" [attr.aria-checked]="planning()" [class.on]="planning()" (click)="studio.albumWay.set('plan')">I want to plan it</button>
+        </div>
+      }
       @if (hub.needsCrucible() && !isDesktop) {
         <!-- A phone or a browser tab: its own pairing, here. The desktop has its welcome, and the form greyed below. -->
         <div class="card">
@@ -169,9 +177,18 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
           </div>
         </div>
 
-        @if (!instrumentalHere()) {
+        @if (wordsHere()) {
           <div class="field">
-            @if (mode() === 'album') {
+            @if (planning()) {
+              <label class="label" for="album-lyrics">What the lyrics are about <span class="hint">(songs written for you)</span></label>
+              <textarea id="album-lyrics" appRememberHeight="album-about" rows="2" spellcheck="true" class="brief" [class.over]="studio.lyricsBrief().length > briefMax"
+                        placeholder="the mood or style for every song you leave to be written: wry and tender"
+                        [value]="studio.lyricsBrief()" (input)="studio.lyricsBrief.set($any($event.target).value)"></textarea>
+              <label class="switch" title="Each stanza a verse, a stanza sung twice the chorus; no word changed">
+                <input type="checkbox" [checked]="studio.addSections()" (change)="setAddSections($any($event.target).checked)" />
+                Add verse and chorus tags to my lyrics
+              </label>
+            } @else if (mode() === 'album') {
               <label class="switch" title="Every track sung in words you give, exactly as written">
                 <input type="checkbox" [checked]="studio.ownWords()" (change)="studio.ownWords.set($any($event.target).checked)" />
                 Sing my own words
@@ -202,7 +219,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
             @if (studio.lyricsBrief().length > briefMax * 0.8) {
               <p class="hint" [class.warn]="studio.lyricsBrief().length > briefMax">{{ studio.lyricsBrief().length }} / {{ briefMax }}{{ studio.lyricsBrief().length > briefMax ? ': too long. Shorten it before you make it; nothing is cut.' : '' }}</p>
             }
-            @if (!(mode() === 'album' && studio.ownWords())) {
+            @if (planning() || !(mode() === 'album' && studio.ownWords())) {
             <label class="switch" title="A short build-up between each verse and chorus">
               <input type="checkbox" [checked]="studio.preChorus()" (change)="setPreChorus($any($event.target).checked)" />
               Pre-chorus
@@ -218,7 +235,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
               <p class="hint warn">YuE2 often leaves a pre-chorus out of the melody (in 38 of 67 of Victoria's songs it dropped at least one), and its lines are then squeezed into the verse or chorus. Unticked, the verses build into the chorus instead.</p>
             }
             }
-            <p class="hint">{{ mode() === 'album' && studio.ownWords() ? 'The sound, the names and the cover are still written for you, from the description and tags.' : mode() === 'album' ? "Every track's lyrics are written to this, and the titles fit it. Blank: the album's description leads." : 'Fill in the tags writes the lyrics to this. With the Lyrics box empty, Make writes them first.' }}</p>
+            <p class="hint">{{ planning() ? 'Lyrics you give are sung exactly as written; these choices shape only the songs written for you. Section tags change no word.' : mode() === 'album' && studio.ownWords() ? 'The sound, the names and the cover are still written for you, from the description and tags.' : mode() === 'album' ? "Every track's lyrics are written to this, and the titles fit it. Blank: the album's description leads." : 'Fill in the tags writes the lyrics to this. With the Lyrics box empty, Make writes them first.' }}</p>
           </div>
           @if (mode() !== 'album') {
             <div class="field">
@@ -232,9 +249,13 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
           }
         }
 
+        @if (planning()) {
+          <app-album-plan [(albumSung)]="albumSung" />
+        }
+
         @if (mode() === 'album' || studio.page()?.length) {
           <div class="options">
-            @if (mode() === 'album' && !(albumSung() && studio.ownWords())) {
+            @if (mode() === 'album' && !planning() && !(albumSung() && studio.ownWords())) {
               <div class="opt">
                 <span class="opt-name">Album length</span>
                 <div class="opt-chips">
@@ -273,6 +294,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
                   </div>
                 </div>
               }
+              @if (!planning()) {
               <div class="opt">
                 <span class="opt-name">Tracks</span>
                 <div class="opt-chips">
@@ -280,6 +302,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
                   <button type="button" class="chip" [class.on]="albumExact()" (click)="albumExact.set(true)" title="Every track keeps exactly the album's tags; none adds a voice, instrument or genre">Stick to my tags</button>
                 </div>
               </div>
+              }
               <!-- Add to folder (Victoria, 2026-10-11): the new album is filed there from the start. -->
               <div class="opt">
                 <label class="opt-name" for="album-folder">Add to folder</label>
@@ -300,7 +323,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
                   <button type="button" class="ghost small" (click)="namingFolder.set(false)">Cancel</button>
                 </form>
               }
-              <p class="opt-note hint">{{ studio.page()?.lyricist ?? studio.tagModel() ?? "This server's model" }} writes the words: the name, the artist and every track{{ albumSung() ? ', then the lyrics, a song per two minutes so ' + albumLength() + ' minutes is always filled' : '' }}; {{ studio.tagModel() ?? "the server's model" }} writes the sound and the cover's description; the server's image model, when it has one, paints the cover (without one, the album gets the standard cover). All of that is done first, so the album comes out right; then the music is made, track by track, and fills in while you listen.</p>
+              <p class="opt-note hint">{{ studio.page()?.lyricist ?? studio.tagModel() ?? "This server's model" }} writes the words: the name, the artist and {{ planning() ? 'every song you left without a name or lyrics; yours are kept as written' : 'every track' }}{{ !planning() && albumSung() ? ', then the lyrics, a song per two minutes so ' + albumLength() + ' minutes is always filled' : '' }}; {{ studio.tagModel() ?? "the server's model" }} writes the sound and the cover's description; the server's image model, when it has one, paints the cover (without one, the album gets the standard cover). All of that is done first, so the album comes out right; then the music is made, track by track, and fills in while you listen.</p>
             }
           </div>
         }
@@ -389,6 +412,9 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
     .describe.over, .brief.over { border-color: var(--warn); }
     .modes button { height: 40px; border: none; border-radius: 10px; background: transparent; color: var(--text-secondary); font-size: 14px; font-weight: 600; }
     .modes button.on { background: var(--text-primary); color: var(--bg-base); }
+    .ways { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: -10px; }
+    .ways button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--border-default); border-radius: 999px; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
+    .ways button.on { border-color: var(--accent); color: var(--accent); background: var(--accent-faint); }
     .options { display: flex; flex-direction: column; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
     .opt { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap; }
     .options > :last-child { border-bottom: none; }
@@ -556,6 +582,10 @@ export class StudioPageComponent {
 
   /** Instrumental where the person is: the album's Vocals choice, or the song's switch. */
   protected readonly instrumentalHere = computed(() => (this.mode() === 'album' ? !this.albumSung() : this.studio.instrumental()));
+  /** Make → Album, "I want to plan it" (Victoria, 2026-10-12). */
+  protected readonly planning = computed(() => this.mode() === 'album' && this.studio.albumWay() === 'plan');
+  /** Whether anything here is sung: planned, any track (each is sung or not on its own); else the Vocals choice. */
+  protected readonly wordsHere = computed(() => (this.planning() ? this.studio.planTracks().some((track) => track.sung) : !this.instrumentalHere()));
 
   /** Fill in the tags for what is being made: an instrumental gets no lyrics and no singer. */
   protected fillTags(): void {
@@ -627,21 +657,22 @@ export class StudioPageComponent {
   /** Start an album and open its page, where it fills in. */
   protected async makeAlbum(): Promise<void> {
     this.albumSending.set(true);
+    // Planned (Victoria, 2026-10-12): its songs are its length, and its tag mode its own.
+    const planning = this.planning();
     const outcome = await this.hub.call<{ id: string }>('POST', '/api/albums', {
       description: this.studio.description(),
       tags: this.studio.tags(),
-      minutes: this.albumLength(),
+      ...(planning ? { plan: this.studio.planBody(this.albumSung()), addSections: this.studio.addSections() } : { minutes: this.albumLength(), exactTags: this.albumExact() }),
       sung: this.albumSung(),
-      lyrics: this.albumSung() ? this.studio.lyricsBrief().trim() : '',
+      lyrics: this.wordsHere() ? this.studio.lyricsBrief().trim() : '',
       cfg: this.studio.cfg().trim() === '' ? null : Number(this.studio.cfg()),
-      exactTags: this.albumExact(),
       ...(this.studio.lead().trim() !== '' ? { lead: this.studio.lead().trim() } : {}),
       ...(this.studio.lengthAim() !== '' && this.studio.page()?.length ? { trackLength: this.studio.lengthAim() } : {}),
       server: this.albumServer() ?? '',
       folder: this.albumFolder(),
-      ...(this.albumSung() && this.studio.ownWords() ? { ownWords: this.studio.ownText(), addSections: this.studio.addSections() } : {}),
-      preChorus: this.albumSung() && this.studio.preChorus(),
-      phonetic: this.albumSung() && this.studio.phonetic(),
+      ...(!planning && this.albumSung() && this.studio.ownWords() ? { ownWords: this.studio.ownText(), addSections: this.studio.addSections() } : {}),
+      preChorus: this.wordsHere() && this.studio.preChorus(),
+      phonetic: this.wordsHere() && this.studio.phonetic(),
       ...(this.studio.name().trim() !== '' ? { title: this.studio.name().trim() } : {}),
     });
     this.albumSending.set(false);

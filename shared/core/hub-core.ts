@@ -20,7 +20,8 @@
  */
 import type { CrucibleClient } from '@crucible/client';
 
-import { AlbumMaker, albumLine, trackSong } from './albums';
+import { AlbumMaker, albumLine, trackSong, TYPICAL_TRACK_S } from './albums';
+import { TemplateStore } from './album-templates';
 import { ServerNeeds } from './server-needs';
 
 /** Turn the separator's job on (PUT /v1/settings/jobs/denoise); the pinned SDK has no call for it. */
@@ -37,7 +38,7 @@ async function enableDenoise(server: StoredServer): Promise<void> {
 }
 import { clientFor, clientName, probe, serverPresets, setClientName, songPage, startInstall } from './crucible';
 import { PresetStore } from './presets';
-import { describe, layLyrics, lyricsBrief } from './describe';
+import { describe, layLyrics, lyricsBrief, MAX_LYRICS_BRIEF } from './describe';
 import { describeSound, nameSong } from './split-text';
 import { OWN_TRACKS_MAX, OWN_WORDS_MAX, ownTracks, withSections } from '../own-words';
 import { freshLine } from './fresh-names';
@@ -57,6 +58,11 @@ import { coverOf,
   ALBUM_MINUTES,
   ALBUM_ORDERS,
   ALBUM_SPACE_GB,
+  ALBUM_TAG_MODES,
+  PLAN_TRACKS_MAX,
+  type AlbumTagMode,
+  type AlbumTrackPlan,
+  type PlannedTrack,
   albumBytes,
   DESCRIPTION_MAX,
   ENDED_PHASES,
@@ -226,6 +232,60 @@ function albumDescription(value: unknown): string {
   return description;
 }
 
+/**
+ * Make → Album's "I want to plan it" (Victoria, 2026-10-12), as sent: checked and tidied, each
+ * problem refused by name and track number, nothing cut. Lyrics are kept exactly (Windows line ends
+ * and the blank lines around them aside), with section tags only when asked (`addSections`); an
+ * instrumental track carries no lyrics, and a track is sung or briefed, not both. Each track is sung
+ * or not on its own (absent: the album's `sung`), and may have its own lead. Tags are kept only with
+ * 'per-song'. No tagMode (an older sender) reads `exactTags`.
+ */
+export function plannedAlbum(value: unknown, sung: boolean, addSections: boolean, exactTags: boolean): AlbumTrackPlan {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Refusal('body_invalid', 'plan is {tagMode, tracks: [...]}.');
+  const body = value as Record<string, unknown>;
+  const mode = body['tagMode'] ?? (exactTags ? 'exact' : 'vibe');
+  if (!ALBUM_TAG_MODES.includes(mode as AlbumTagMode)) throw new Refusal('body_invalid', `plan.tagMode is one of ${ALBUM_TAG_MODES.join(', ')}.`);
+  const tagMode = mode as AlbumTagMode;
+  const given = body['tracks'];
+  if (!Array.isArray(given)) throw new Refusal('body_invalid', 'plan.tracks must be a list.');
+  if (given.length === 0) throw new Refusal('plan_empty', 'Add a song to the plan first.');
+  if (given.length > PLAN_TRACKS_MAX) throw new Refusal('plan_many', `That is ${given.length} songs; an album takes at most ${PLAN_TRACKS_MAX}. Split it into two albums.`);
+  const tracks = given.map((raw: unknown, at): PlannedTrack => {
+    const n = at + 1;
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Refusal('body_invalid', `Song ${n} of the plan is not a track.`);
+    const track = raw as Record<string, unknown>;
+    const said = (key: string): string => {
+      const field = track[key] ?? '';
+      if (typeof field !== 'string') throw new Refusal('body_invalid', `Song ${n}'s ${key} must be text.`);
+      return field;
+    };
+    const title = said('title').replace(/\s+/g, ' ').trim();
+    if (title.length > 120) throw new Refusal('plan_title_long', `Song ${n}'s name is ${title.length} characters; a name is at most 120.`);
+    const lyrics = said('lyrics').replace(/\r/g, '').replace(/^\s*\n/, '').replace(/\s+$/, '');
+    if (lyrics.length > OWN_WORDS_MAX) throw new Refusal('plan_lyrics_long', `Song ${n}'s lyrics run ${lyrics.length} characters; one track takes at most ${OWN_WORDS_MAX}. Split it into two songs.`);
+    if (track['sung'] !== undefined && typeof track['sung'] !== 'boolean') throw new Refusal('body_invalid', `Song ${n}'s sung must be true or false.`);
+    const own = track['sung'] as boolean | undefined;
+    if (lyrics.trim() !== '' && !(own ?? sung)) throw new Refusal('plan_lyrics_instrumental', `Song ${n} has lyrics, but it is instrumental. Make it sung, or clear them.`);
+    const lead = said('lead').replace(/\s+/g, ' ').trim();
+    if (lead.length > 80) throw new Refusal('plan_lead_long', `Song ${n}'s lead is ${lead.length} characters; a lead is at most 80.`);
+    const brief = said('brief').trim();
+    if (brief.length > MAX_LYRICS_BRIEF) throw new Refusal('plan_brief_long', `What song ${n} is about runs ${brief.length} characters; at most ${MAX_LYRICS_BRIEF}. Shorten it; nothing is cut.`);
+    if (lyrics.trim() !== '' && brief !== '') throw new Refusal('plan_lyrics_and_brief', `Song ${n} has both lyrics and what it is about; keep one. Lyrics are sung as written.`);
+    const tagsGiven = track['tags'] ?? [];
+    if (!Array.isArray(tagsGiven) || !tagsGiven.every((tag) => typeof tag === 'string')) throw new Refusal('body_invalid', `Song ${n}'s tags must be a list of text.`);
+    const tags = (tagsGiven as string[]).map((tag) => tag.trim()).filter((tag) => tag !== '');
+    return {
+      ...(title !== '' ? { title } : {}),
+      ...(lyrics.trim() !== '' ? { lyrics: addSections ? withSections(lyrics) : lyrics } : {}),
+      ...(brief !== '' ? { brief } : {}),
+      ...(tagMode === 'per-song' && tags.length > 0 ? { tags } : {}),
+      ...(own !== undefined && own !== sung ? { sung: own } : {}),
+      ...(lead !== '' ? { lead } : {}),
+    };
+  });
+  return { tagMode, tracks };
+}
+
 /** What an album download holds. */
 export interface AlbumFiles {
   readonly name: string;
@@ -311,6 +371,7 @@ export class HubCore {
   private readonly sink: EventSink;
   private preferences: HubPreferences = DEFAULT_PREFERENCES;
   private readonly presets: PresetStore;
+  private readonly templates: TemplateStore;
   private readonly needs = new ServerNeeds();
   /** Which servers can take a song's voice out (strip.ts; Owen, 2026-10-11). */
   private readonly strips = new StripGate();
@@ -331,6 +392,7 @@ export class HubCore {
     });
     this.takes = new TakeStore(options.disk, join(options.dataDir, 'takes'), options.takeLimits);
     this.presets = new PresetStore(options.disk, options.dataDir, serverPresets);
+    this.templates = new TemplateStore(options.disk, options.dataDir);
     this.takes.onGone((take, reason) => this.sink.send(take.client, { type: 'take-gone', id: take.id, reason }));
     this.jobs = new JobRunner(
       {
@@ -1132,13 +1194,34 @@ export class HubCore {
     });
     this.route('DELETE', '/api/presets/:name', (request) =>
       this.presets.remove(this.registry.all(), request.params['name'] as string));
+    // Planned albums saved by name (Victoria, 2026-10-12), the hub's own so every device sees them.
+    this.route('GET', '/api/album-templates', () => this.templates.list());
+    this.route('GET', '/api/album-templates/:name', (request) => this.templates.get(request.params['name'] as string));
+    this.route('PUT', '/api/album-templates/:name', async (request) => {
+      const body = await request.body();
+      const tags = body['tags'] ?? [];
+      if (!Array.isArray(tags) || !tags.every((tag) => typeof tag === 'string')) throw new Refusal('body_invalid', 'tags must be a list of text.');
+      const lead = typeof body['lead'] === 'string' ? body['lead'].replace(/\s+/g, ' ').trim() : '';
+      if (lead.length > 80) throw new Refusal('plan_lead_long', `The album's lead is ${lead.length} characters; a lead is at most 80.`);
+      const sung = body['sung'] === true;
+      return this.templates.save(request.params['name'] as string, {
+        description: albumDescription(body['description']), tags: tags as string[], lead, sung,
+        plan: plannedAlbum(body['plan'], sung, false, false),
+      });
+    });
+    this.route('DELETE', '/api/album-templates/:name', (request) => this.templates.remove(request.params['name'] as string));
 
     // ── albums ────────────────────────────────────────────────────────────────
     this.route('POST', '/api/albums', async (request) => {
       const body = await request.body();
-      const minutes = body['minutes'];
       const tags = body['tags'];
-      if (typeof minutes !== 'number' || !ALBUM_MINUTES.includes(minutes)) {
+      // Planned song by song (Victoria, 2026-10-12): its length is its tracks, so no minutes are asked.
+      const plan = body['plan'] === undefined || body['plan'] === null
+        ? null
+        : plannedAlbum(body['plan'], body['sung'] === true, body['addSections'] === true, body['exactTags'] === true);
+      if (plan !== null && body['ownWords'] !== undefined) throw new Refusal('body_invalid', 'Send ownWords or plan, not both.');
+      const minutes = plan !== null ? Math.max(1, Math.round((plan.tracks.length * TYPICAL_TRACK_S) / 60)) : body['minutes'];
+      if (typeof minutes !== 'number' || (plan === null && !ALBUM_MINUTES.includes(minutes))) {
         throw new Refusal('body_invalid', `minutes is one of ${ALBUM_MINUTES.join(', ')}.`);
       }
       if (!Array.isArray(tags) || !tags.every((tag) => typeof tag === 'string')) throw new Refusal('body_invalid', 'tags must be a list of text.');
@@ -1153,20 +1236,27 @@ export class HubCore {
       }
       const ownWords = own?.map((track) => (body['addSections'] === true ? { ...track, lyrics: withSections(track.lyrics) } : track)) ?? null;
       const sung = body['sung'] === true || ownWords !== null;
-      const lyrics = sung && ownWords === null ? lyricsBrief(body['lyrics']) : '';
+      // A planned album may mix sung tracks and instrumental ones (Victoria, 2026-10-12): the words'
+      // choices count when any track is sung.
+      const anySung = plan === null ? sung : plan.tracks.some((track) => track.sung ?? sung);
+      const lyrics = anySung && ownWords === null ? lyricsBrief(body['lyrics']) : '';
       const title = givenName(body['title']);
       const ask: AlbumAsk = {
         description: albumDescription(body['description']), tags: tags as string[], minutes, sung, cfg,
         ...(title !== null ? { title } : {}),
-        ...(sung && ownWords === null && body['preChorus'] === true ? { preChorus: true } : {}),
-        ...(sung && ownWords === null && body['phonetic'] === true ? { phonetic: true } : {}),
+        ...(anySung && ownWords === null && body['preChorus'] === true ? { preChorus: true } : {}),
+        ...(anySung && ownWords === null && body['phonetic'] === true ? { phonetic: true } : {}),
         ...(ownWords !== null ? { ownWords } : {}),
-        ...(lyrics ? { lyrics } : {}), ...(body['exactTags'] === true ? { exactTags: true } : {}),
+        ...(plan !== null ? { plan } : {}),
+        ...(lyrics ? { lyrics } : {}),
+        ...((plan === null ? body['exactTags'] === true : plan.tagMode === 'exact') ? { exactTags: true } : {}),
         // Make's Lead (Owen, 2026-10-11): every track's; blank, each track picks its own.
         ...(typeof body['lead'] === 'string' && body['lead'].trim() !== '' ? { lead: body['lead'].replace(/\s+/g, ' ').trim().slice(0, 80) } : {}),
         ...(LENGTH_AIMS.some((aim) => aim.key === body['trackLength']) ? { trackLength: body['trackLength'] as string } : {}),
       };
-      if (ask.description.trim() === '' && ask.tags.length === 0) {
+      // A plan that says something of its own (a name, words, a brief, tags) needs no description.
+      const planSays = plan?.tracks.some((track) => Object.keys(track).length > 0) === true;
+      if (ask.description.trim() === '' && ask.tags.length === 0 && !planSays) {
         throw new Refusal('album_ask_empty', 'Describe the album, or pick some tags, first.');
       }
       if (this.options.limitsAlbumSpace === true) {

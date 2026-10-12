@@ -3,7 +3,8 @@ import { Router } from '@angular/router';
 
 import { batchCount } from '@shared/batch';
 import { addTags, clashesWith, joinTags, leadFits, splitTags, toggleTag, withoutVoice } from '@shared/tags';
-import { LENGTH_AIMS, type AlbumAsk, type DescribeResult, type Preset, type RefusalView, type SongForm, type SongPage, type SongParams } from '@shared/types';
+import {
+  ALBUM_TAG_MODES, LENGTH_AIMS, type AlbumAsk, type AlbumTagMode, type AlbumTemplate, type AlbumTemplateSummary, type PlannedTrack, type DescribeResult, type Preset, type RefusalView, type SongForm, type SongPage, type SongParams } from '@shared/types';
 
 import { HubService } from './hub.service';
 import { JobsService } from './jobs.service';
@@ -71,12 +72,122 @@ export class StudioService {
    */
   readonly remake = signal<{ readonly ask: AlbumAsk; readonly server: string } | null>(null);
 
+  // ── Make → Album, "I want to plan it" (Victoria, 2026-10-12) ──────────────
+  /** Generate for me (as before), or plan it song by song. */
+  readonly albumWay = signal<'generate' | 'plan'>('generate');
+  readonly planTagMode = signal<AlbumTagMode>('vibe');
+  /** The tracks being planned, in order; kept on this device as a draft (PLAN_KEY) until cleared. */
+  readonly planTracks = signal<PlanTrackDraft[]>([]);
+  /** The templates on the hub (names and sizes), as last listed. */
+  readonly templates = signal<AlbumTemplateSummary[]>([]);
+
+  /** A new blank track: sung as the album is, its tags the album's (for "Set tags for each song"). */
+  blankTrack(sung: boolean): PlanTrackDraft {
+    return { title: '', lyrics: '', brief: '', briefOpen: false, tags: joinTags(this.tags()), sung, lead: '' };
+  }
+
+  /** Change one track of the plan. */
+  editTrack(at: number, change: Partial<PlanTrackDraft>): void {
+    this.planTracks.update((tracks) => tracks.map((track, i) => (i === at ? { ...track, ...change } : track)));
+  }
+
+  /** "Set tags for each song": a track with no tags of its own starts from the album's. */
+  setTagMode(mode: AlbumTagMode): void {
+    this.planTagMode.set(mode);
+    if (mode !== 'per-song') return;
+    const tags = joinTags(this.tags());
+    this.planTracks.update((tracks) => tracks.map((track) => (track.tags.trim() === '' ? { ...track, tags } : track)));
+  }
+
+  /** Start the plan afresh: one blank track, the vibe of the album's tags. */
+  clearPlan(sung: boolean): void {
+    this.planTracks.set([this.blankTrack(sung)]);
+    this.planTagMode.set('vibe');
+  }
+
+  /**
+   * The plan as POST /api/albums takes it (AlbumAsk.plan). A track's lyrics go only when it is sung,
+   * and its brief only when it has no lyrics, as the form shows them; its tags only for "Set tags
+   * for each song".
+   */
+  planBody(albumSung: boolean): { tagMode: AlbumTagMode; tracks: PlannedTrack[] } {
+    const mode = this.planTagMode();
+    return {
+      tagMode: mode,
+      tracks: this.planTracks().map((track): PlannedTrack => {
+        const lyrics = track.sung ? track.lyrics : '';
+        const tags = splitTags(track.tags);
+        return {
+          ...(track.title.trim() !== '' ? { title: track.title.trim() } : {}),
+          ...(lyrics.trim() !== '' ? { lyrics } : {}),
+          ...(lyrics.trim() === '' && track.brief.trim() !== '' ? { brief: track.brief.trim() } : {}),
+          ...(mode === 'per-song' && tags.length > 0 ? { tags } : {}),
+          ...(track.sung !== albumSung ? { sung: track.sung } : {}),
+          ...(track.lead.trim() !== '' ? { lead: track.lead.trim() } : {}),
+        };
+      }),
+    };
+  }
+
+  /** The plan from a sent one (a template, or an album made again): every track as the form shows it. */
+  private fillPlan(plan: { tagMode: AlbumTagMode; tracks: readonly PlannedTrack[] }, sung: boolean): void {
+    this.planTagMode.set(plan.tagMode);
+    this.planTracks.set(plan.tracks.map((track) => ({
+      title: track.title ?? '',
+      lyrics: track.lyrics ?? '',
+      brief: track.brief ?? '',
+      briefOpen: track.brief !== undefined,
+      tags: track.tags !== undefined ? joinTags(track.tags) : plan.tagMode === 'per-song' ? joinTags(this.tags()) : '',
+      sung: track.sung ?? sung,
+      lead: track.lead ?? '',
+    })));
+    this.albumWay.set('plan');
+  }
+
+  async listTemplates(): Promise<RefusalView | null> {
+    const outcome = await this.hub.call<AlbumTemplateSummary[]>('GET', '/api/album-templates');
+    if (!outcome.ok) return outcome.refusal;
+    this.templates.set(outcome.value);
+    return null;
+  }
+
+  /** Save the plan, and the album's description, tags, lead and Vocals, under `name` on the hub. */
+  async saveTemplate(name: string, albumSung: boolean): Promise<RefusalView | null> {
+    const outcome = await this.hub.call<AlbumTemplateSummary[]>('PUT', `/api/album-templates/${encodeURIComponent(name.trim())}`, {
+      description: this.description(), tags: this.tags(), lead: this.lead().trim(), sung: albumSung, plan: this.planBody(albumSung),
+    });
+    if (!outcome.ok) return outcome.refusal;
+    this.templates.set(outcome.value);
+    return null;
+  }
+
+  /** Fill the plan (and the album's description, tags and lead) from a template; answers its Vocals. */
+  async loadTemplate(name: string): Promise<AlbumTemplate | RefusalView> {
+    const outcome = await this.hub.call<AlbumTemplate>('GET', `/api/album-templates/${encodeURIComponent(name)}`);
+    if (!outcome.ok) return outcome.refusal;
+    const template = outcome.value;
+    this.description.set(template.description);
+    this.tags.set([...template.tags]);
+    this.lead.set(template.lead);
+    this.fillPlan(template.plan, template.sung);
+    return template;
+  }
+
+  async deleteTemplate(name: string): Promise<RefusalView | null> {
+    const outcome = await this.hub.call<AlbumTemplateSummary[]>('DELETE', `/api/album-templates/${encodeURIComponent(name)}`);
+    if (!outcome.ok) return outcome.refusal;
+    this.templates.set(outcome.value);
+    return null;
+  }
+
   /** Fill the form with an album's ask and open Make → Album on it, to change and make again. */
   remakeAlbum(ask: AlbumAsk, server: string): void {
     this.description.set(ask.description);
     this.tags.set([...ask.tags]);
     this.lead.set(ask.lead ?? '');
     this.lyricsBrief.set(ask.lyrics ?? '');
+    if (ask.plan !== undefined) this.fillPlan(ask.plan, ask.sung);
+    else this.albumWay.set('generate');
     this.ownWords.set(ask.ownWords !== undefined);
     this.ownText.set((ask.ownWords ?? []).map((track) => (track.title !== null ? `# ${track.title}\n` : '') + track.lyrics).join('\n\n---\n\n'));
     this.cfg.set(ask.cfg == null ? '' : String(ask.cfg));
@@ -109,6 +220,14 @@ export class StudioService {
   });
 
   constructor() {
+    // The plan draft: read once, then kept as it changes, so a long poems plan survives a reload.
+    const draft = readPlanDraft();
+    if (draft !== null) {
+      this.albumWay.set(draft.way);
+      this.planTagMode.set(draft.tagMode);
+      this.planTracks.set(draft.tracks);
+    }
+    effect(() => keepPlanDraft({ way: this.albumWay(), tagMode: this.planTagMode(), tracks: this.planTracks() }));
     // Whenever the active server changes (and once it is first known), read its page and presets.
     effect(() => {
       const active = this.hub.activeServer();
@@ -360,6 +479,55 @@ export class StudioService {
     this.player.playWhenMade(made.map((job) => job.key));
     const playlist = made[0]?.playlist;
     if (playlist != null) void this.router.navigate(['/library', playlist]);
+  }
+}
+
+/** One track of the plan as the form holds it: every box as typed (tags as one comma line). */
+export interface PlanTrackDraft {
+  readonly title: string;
+  readonly lyrics: string;
+  readonly brief: string;
+  /** "Or say what it's about" opened: the brief box shows instead of the lyrics box being the only one. */
+  readonly briefOpen: boolean;
+  readonly tags: string;
+  readonly sung: boolean;
+  readonly lead: string;
+}
+
+interface PlanDraft {
+  readonly way: 'generate' | 'plan';
+  readonly tagMode: AlbumTagMode;
+  readonly tracks: PlanTrackDraft[];
+}
+
+/** The plan draft on this device (Victoria, 2026-10-12): a draft to finish later, beside the hub's templates. */
+const PLAN_KEY = 'b-sides.albumPlan';
+
+function readPlanDraft(): PlanDraft | null {
+  try {
+    const text = localStorage.getItem(PLAN_KEY);
+    if (text === null) return null;
+    const stored = JSON.parse(text) as Partial<PlanDraft>;
+    const text_ = (value: unknown): string => (typeof value === 'string' ? value : '');
+    return {
+      way: stored.way === 'plan' ? 'plan' : 'generate',
+      tagMode: ALBUM_TAG_MODES.includes(stored.tagMode as AlbumTagMode) ? stored.tagMode as AlbumTagMode : 'vibe',
+      tracks: (Array.isArray(stored.tracks) ? stored.tracks : []).map((track: Partial<PlanTrackDraft>) => ({
+        title: text_(track?.title), lyrics: text_(track?.lyrics), brief: text_(track?.brief), briefOpen: track?.briefOpen === true,
+        tags: text_(track?.tags), sung: track?.sung !== false, lead: text_(track?.lead),
+      })),
+    };
+  } catch {
+    // Unreadable, or a private window: no draft.
+    return null;
+  }
+}
+
+function keepPlanDraft(draft: PlanDraft): void {
+  try {
+    localStorage.setItem(PLAN_KEY, JSON.stringify(draft));
+  } catch {
+    // A private window, or the device's storage full: the draft is only not kept.
   }
 }
 

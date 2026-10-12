@@ -34,14 +34,14 @@ import type { StoredServer } from './servers';
 import { layLyrics } from './describe';
 import { nameSong, writeConcept, writeCore, writeCover, writeIdeas, writeTurns } from './split-text';
 import { ownIdea } from '../own-words';
-import { leadPhrase, VOICE_TAG, withoutVoice } from '../tags';
+import { leadFits, leadPhrase, VOICE_TAG, withoutVoice } from '../tags';
 import { trackSet } from '../planning-sets';
 import {
-  LENGTH_AIMS, type AlbumAsk, type AlbumMeta, type AlbumOrder, type AlbumPlan, type AlbumRemake, type AlbumTrack, type LengthAim, type SinglesOrder, type SongPage, type SongParams,
+  LENGTH_AIMS, type AlbumAsk, type AlbumMeta, type AlbumOrder, type AlbumPlan, type AlbumRemake, type AlbumTrack, type LengthAim, type PlannedTrack, type SinglesOrder, type SongPage, type SongParams,
 } from '../types';
 
-/** A song is about this long: how many are counted as on their way. */
-const TYPICAL_TRACK_S = 150;
+/** A song is about this long: how many are counted as on their way (and a planned album's minutes, roughly). */
+export const TYPICAL_TRACK_S = 150;
 /** Songs run two to five minutes: the plan has a track per shortest song, so the length is always filled. */
 const SHORTEST_TRACK_S = 120;
 const MOST_TRACKS = 45;
@@ -115,6 +115,47 @@ export async function chooseCoverModel(client: CrucibleClient): Promise<string |
 /** The plan's tracks for `minutes`: one per shortest song (the aim's shortest, when it has one). */
 export function trackCount(minutes: number, shortestS: number = SHORTEST_TRACK_S): number {
   return Math.min(MOST_TRACKS, Math.ceil((minutes * 60) / Math.max(60, shortestS)));
+}
+
+/**
+ * The tracks the person gave, in order, or null for an album generated from its minutes: a planned
+ * album's (Victoria, 2026-10-12), or one in their own words (1.0.28), which is a plan of sung tracks
+ * whose every one has its lyrics. Either way the album is these tracks, and its length theirs.
+ */
+export function plannedTracks(ask: AlbumAsk): readonly PlannedTrack[] | null {
+  if (ask.plan !== undefined) return ask.plan.tracks;
+  if (ask.ownWords !== undefined) return ask.ownWords.map((track) => ({ ...(track.title !== null ? { title: track.title } : {}), lyrics: track.lyrics }));
+  return null;
+}
+
+/** Whether plan place `at` is sung: a planned track's own choice (Victoria, 2026-10-12: "Per track"), else the album's. */
+export function trackSung(ask: AlbumAsk, at: number): boolean {
+  return ask.plan?.tracks[at]?.sung ?? ask.sung;
+}
+
+/**
+ * One sung track's words, laid out for YuE: by the lyricist (Claude) or the server's model, told the
+ * album and every title on it, so the within-album variety rules hold for a planned track too. A
+ * planned track's brief is what it is about (its idea, to Claude; the brief itself, to the server's
+ * model, which reads no idea).
+ */
+async function writeTrackLyrics(
+  words: () => Promise<TextModel>, lyricist: Lyricist | null, ask: AlbumAsk, concept: AlbumConcept, tracks: readonly AlbumTrack[], at: number,
+): Promise<string> {
+  const track = tracks[at] as AlbumTrack;
+  const written = lyricist === null
+    ? await writeSongLyrics(await words(), { ...ask, sung: true, ...(track.brief !== undefined ? { lyrics: track.brief } : {}) }, concept, track.title, track.tags)
+    : await lyricist.write({
+      title: track.title,
+      tags: track.tags,
+      about: aboutOf(ask),
+      brief: ask.lyrics ?? '',
+      ...(track.idea ? { idea: track.idea } : {}),
+      ...(ask.preChorus === true ? { preChorus: true } : {}),
+      ...(ask.phonetic === true ? { phonetic: true } : {}),
+      album: { title: concept.title, artist: concept.artist, blurb: concept.blurb, tracks: tracks.map((t) => t.title), at },
+    });
+  return layLyrics(written);
 }
 
 /** The aim an album's tracks were asked for, or null. */
@@ -411,7 +452,7 @@ export class AlbumMaker {
     this.failures.set(id, 0);
     const unwritten = meta.plan === null
       || meta.plan.tracks.length < (meta.plan.trackCount ?? 0)
-      || (meta.ask.sung && meta.plan.tracks.some((track) => track.lyrics === null))
+      || meta.plan.tracks.some((track, at) => trackSung(meta.ask, at) && track.lyrics === null)
       || (meta.cover === null && meta.coverState !== 'failed' && meta.coverState !== 'no_model');
     // Made whole now, not only its remakes.
     const next = await this.recover(id, { ...meta, refusal: null, step: null, remakeOnly: null });
@@ -537,7 +578,7 @@ export class AlbumMaker {
       throw new Refusal('track_making', `"${track.title}" is being made now; make it again once it is in.`, 409);
     }
     if (ask.song === null) throw new Refusal('track_unmade', `"${track.title}" has no take to replace; Make the missing tracks makes it.`, 409);
-    const sung = meta.ask.sung && track.lyrics !== null;
+    const sung = trackSung(meta.ask, at) && track.lyrics !== null;
     if (ask.fresh && !sung) throw new Refusal('track_instrumental', `"${track.title}" is instrumental: it has no words to write again.`, 409);
     this.rewriting.add(key);
     try {
@@ -568,23 +609,11 @@ export class AlbumMaker {
   /** One track's words written again, as the album's lyrics loop writes them (`write`), laid out for YuE. */
   private async lyricsFor(meta: AlbumMeta, at: number): Promise<string> {
     const plan = meta.plan as AlbumPlan;
-    const track = plan.tracks[at] as AlbumTrack;
     const claude = this.hooks.claude();
     const lyricist = claude?.lyricist ?? null;
     const concept: AlbumConcept = { title: plan.title, artist: plan.artist, blurb: plan.blurb, coverPrompt: plan.coverPrompt, core: plan.core ?? '' };
-    const written = lyricist === null
-      ? await writeSongLyrics(claude?.words ?? await this.serverText(this.hooks.server(meta.server)), meta.ask, concept, track.title, track.tags)
-      : await lyricist.write({
-        title: track.title,
-        tags: track.tags,
-        about: aboutOf(meta.ask),
-        brief: meta.ask.lyrics ?? '',
-        ...(track.idea ? { idea: track.idea } : {}),
-        ...(meta.ask.preChorus === true ? { preChorus: true } : {}),
-        ...(meta.ask.phonetic === true ? { phonetic: true } : {}),
-        album: { title: concept.title, artist: concept.artist, blurb: concept.blurb, tracks: plan.tracks.map((t) => t.title), at },
-      });
-    return layLyrics(written);
+    const words = async (): Promise<TextModel> => claude?.words ?? this.serverText(this.hooks.server(meta.server));
+    return writeTrackLyrics(words, lyricist, meta.ask, concept, plan.tracks, at);
   }
 
   /** The server's text model, for one call outside a writing session (a piece written again). */
@@ -615,6 +644,9 @@ export class AlbumMaker {
     }
     if (meta.ask.ownWords !== undefined) {
       throw new Refusal('album_own_words', 'This album sings your own words, and every one is on it. Make another album for more.', 409);
+    }
+    if (meta.ask.plan !== undefined) {
+      throw new Refusal('album_planned', 'You planned this album song by song, and every song is on it. Make another album for more.', 409);
     }
     const spare = plan.tracks.length - meta.sent;
     const more = Math.max(0, trackCount(EXTEND_MINUTES, trackAim(meta.ask)?.min) - spare);
@@ -748,7 +780,7 @@ export class AlbumMaker {
     try {
       const page = await this.hooks.page(server);
       // A plan from before v2 was written whole, in one call: its own length is its count.
-      const own = meta.ask.ownWords ?? null;
+      const own = plannedTracks(meta.ask);
       const count = meta.plan == null
         ? (own !== null ? own.length : trackCount(meta.ask.minutes, trackAim(meta.ask)?.min))
         : (meta.plan.trackCount ?? meta.plan.tracks.length);
@@ -794,18 +826,35 @@ export class AlbumMaker {
       } else {
         plan = meta.plan;
       }
-      // In the person's own words: a track for each, its words as given, named by them or for them.
+      // Planned by the person (Victoria, 2026-10-12), or in their own words: a track for each, in
+      // order. Their lyrics are kept as given and their names stand; a track named by nobody is named
+      // for its words or its brief, and one left blank is written as a generated album's are, told
+      // every title so far. One at a time, each kept as it comes, so a restart carries on.
       if (own !== null && plan.tracks.length < own.length) {
         await show({ kind: 'plan', done: 1, of: steps });
-        for (const given of own.slice(plan.tracks.length)) {
+        for (const [at, given] of own.entries()) {
+          if (at < plan.tracks.length) continue;
           if (await this.halted(id)) return meta;
           const taken = plan.tracks.map((track) => track.title);
-          const title = given.title
-            ?? await nameSong(await words(), aboutOf(meta.ask), meta.ask.tags, given.lyrics, await this.hooks.freshNames?.() ?? '').catch(() => null)
-            ?? `Track ${taken.length + 1}`;
-          const track: AlbumTrack = { title, idea: ownIdea(given.lyrics), tags: '', lyrics: given.lyrics };
+          const tags = given.tags ?? meta.ask.tags;
+          const named = async (about: string, lyrics: string): Promise<string> => given.title
+            ?? await nameSong(await words(), about, tags, lyrics, await this.hooks.freshNames?.() ?? '').catch(() => null)
+            ?? `Track ${at + 1}`;
+          let track: AlbumTrack;
+          if (given.lyrics !== undefined) {
+            track = { title: await named(aboutOf(meta.ask), given.lyrics), idea: ownIdea(given.lyrics), tags: '', lyrics: given.lyrics };
+          } else if (given.brief !== undefined) {
+            track = { title: await named(given.brief, ''), idea: given.brief, brief: given.brief, tags: '', lyrics: null };
+          } else if (given.title !== undefined) {
+            track = { title: given.title, tags: '', lyrics: null };
+          } else {
+            const [idea] = await writeIdeas(
+              await words(), { ...meta.ask, sung: trackSung(meta.ask, at) }, plan, at + 1, at + 1, count, taken, await this.hooks.freshNames?.() ?? '',
+            );
+            track = { title: idea?.title ?? `Track ${at + 1}`, ...(idea?.idea ? { idea: idea.idea } : {}), tags: '', lyrics: null };
+          }
           plan = { ...plan, tracks: [...plan.tracks, track] };
-          meta = { ...(await this.hooks.meta(id) ?? meta), plan, lyricsBy: 'you' };
+          meta = { ...(await this.hooks.meta(id) ?? meta), plan, ...(given.lyrics !== undefined ? { lyricsBy: 'you' } : {}) };
           await this.hooks.update(id, meta);
         }
       }
@@ -843,21 +892,40 @@ export class AlbumMaker {
         await show({ kind: 'plan', done: 2 + plans.length + at, of: steps });
         const writer = await sound();
         const theirs = meta.ask.lead?.trim() || null;
-        const exact = meta.ask.exactTags === true;
-        const turns = await writeTurns(writer, meta.ask.sung, core, batch, page, theirs);
-        plan = {
-          ...plan,
-          tracks: plan.tracks.map((track, i) => {
-            if (i < first - 1 || i >= last || track.tags !== '') return track;
-            const turn = turns[i - (first - 1)];
-            // One lead a track (Owen, 2026-10-11): the person's, else the writer's; sticking to the
-            // person's tags, none is added but theirs.
-            const lead = theirs ?? (exact ? null : turn?.lead ?? null);
-            const tags = trackTags(core, turn?.more ?? '', meta.ask.sung, exact, lead);
-            const sent = lead === null ? null : leadPhrase(lead, !meta.ask.sung);
-            return { ...track, tags, ...(sent !== null ? { lead: sent } : {}) };
-          }),
-        };
+        // Set for each song (Victoria, 2026-10-12): a track's own tags are its core, kept as exactly
+        // as the album's are with "stick exactly to the tags"; one left without keeps the album's.
+        const perSong = meta.ask.plan?.tagMode === 'per-song';
+        const exact = meta.ask.exactTags === true || perSong;
+        const coreOf = (i: number): string => (perSong ? (meta.ask.plan?.tracks[i]?.tags ?? []).join(', ') : '') || core;
+        // A planned album may mix sung and instrumental tracks: each kind is given its sound apart.
+        const places = batch.map((_, k) => first - 1 + k).filter((i) => (plan.tracks[i] as AlbumTrack).tags === '');
+        for (const sung of [true, false]) {
+          const group = places.filter((i) => trackSung(meta.ask, i) === sung);
+          if (group.length === 0) continue;
+          // One lead a track (Owen, 2026-10-11): the track's own (Victoria, 2026-10-12), else the
+          // album's where it fits the track (a singer leads no instrumental), else the writer's;
+          // sticking to the person's tags, none is added but theirs.
+          const leads = group.map((i) => meta.ask.plan?.tracks[i]?.lead
+            ?? (theirs !== null && (meta.ask.plan === undefined || leadFits(theirs, !sung)) ? theirs : null));
+          const shared = leads.every((lead) => lead === leads[0]) ? leads[0] ?? null : null;
+          const turns = await writeTurns(writer, sung, core, group.map((i) => {
+            const track = plan.tracks[i] as AlbumTrack;
+            const idea = [track.idea, coreOf(i) !== core ? `its own sound: ${coreOf(i)}` : ''].filter((said) => said).join('; ');
+            return { title: track.title, ...(idea !== '' ? { idea } : {}) };
+          }), page, shared);
+          plan = {
+            ...plan,
+            tracks: plan.tracks.map((track, i) => {
+              const k = group.indexOf(i);
+              if (k < 0) return track;
+              const turn = turns[k];
+              const lead = leads[k] ?? (exact ? null : turn?.lead ?? null);
+              const tags = trackTags(coreOf(i), turn?.more ?? '', sung, exact, lead);
+              const sent = lead === null ? null : leadPhrase(lead, !sung);
+              return { ...track, tags, ...(sent !== null ? { lead: sent } : {}) };
+            }),
+          };
+        }
         meta = { ...(await this.hooks.meta(id) ?? meta), soundBy: writer.name, plan };
         await this.hooks.update(id, meta);
       }
@@ -872,9 +940,10 @@ export class AlbumMaker {
         await this.hooks.update(id, meta);
       }
       const concept: AlbumConcept = { title: plan.title, artist: plan.artist, blurb: plan.blurb, coverPrompt: plan.coverPrompt, core };
-      if (meta.ask.sung) {
-        const early = meta.openers ?? 0;
-        const sungAt = plan.tracks.map((_, at) => at).filter((at) => at >= early);
+      const early = meta.openers ?? 0;
+      // The sung tracks with no words yet; a planned track's own lyrics are never touched.
+      const sungAt = plan.tracks.map((_, at) => at).filter((at) => at >= early && trackSung(meta.ask, at));
+      if (sungAt.some((at) => (plan.tracks[at] as AlbumTrack).lyrics === null)) {
         // [lyrics], one call per track, each kept as it comes (a restart carries on).
         const lyricist = claude?.lyricist ?? null;
         // Claude writing the words: the server's text model is let go first, not held on the card
@@ -885,19 +954,7 @@ export class AlbumMaker {
           if (track.lyrics !== null) continue;
           if (await this.halted(id)) return meta;
           await show({ kind: 'lyrics', done, of: sungAt.length });
-          const written = lyricist === null
-            ? await writeSongLyrics(await words(), meta.ask, concept, track.title, track.tags)
-            : await lyricist.write({
-              title: track.title,
-              tags: track.tags,
-              about: aboutOf(meta.ask),
-              brief: meta.ask.lyrics ?? '',
-              ...(track.idea ? { idea: track.idea } : {}),
-              ...(meta.ask.preChorus === true ? { preChorus: true } : {}),
-              ...(meta.ask.phonetic === true ? { phonetic: true } : {}),
-              album: { title: concept.title, artist: concept.artist, blurb: concept.blurb, tracks: plan.tracks.map((t) => t.title), at },
-            });
-          const lyrics = layLyrics(written);
+          const lyrics = await writeTrackLyrics(words, lyricist, meta.ask, concept, plan.tracks, at);
           plan = { ...plan, tracks: plan.tracks.map((t, i) => (i === at ? { ...t, lyrics } : t)) };
           meta = { ...(await this.hooks.meta(id) ?? meta), plan, lyricsBy: lyricist?.name ?? (await words()).name };
           await this.hooks.update(id, meta);
@@ -1017,6 +1074,8 @@ export class AlbumMaker {
     // Back only for its remakes (a finished or stopped album): nothing else is sent, not even a lost track.
     if (meta.remakeOnly != null) return redo.find((at) => (meta.remakes ?? []).some((each) => each.at === at)) ?? null;
     if (redo.length > 0) return redo[0] as number;
+    // Planned, or in the person's own words: every track they gave is made, whatever its length.
+    if (meta.sent < plan.tracks.length && plannedTracks(meta.ask) !== null) return meta.sent;
     if (meta.sent < plan.tracks.length && meta.madeS + flying * TYPICAL_TRACK_S < meta.ask.minutes * 60) return meta.sent;
     return null;
   }
@@ -1030,13 +1089,14 @@ export class AlbumMaker {
     // A remake sings its own words (new ones, or the old take's); the plan takes them once it lands.
     const remake = again ? (meta.remakes ?? []).find((each) => each.at === at) : undefined;
     const lyrics = remake?.lyrics ?? track.lyrics;
-    const sung = meta.ask.sung && lyrics !== null;
+    // Sung or not as its plan place is (a planned album may mix them; Victoria, 2026-10-12).
+    const sung = trackSung(meta.ask, at) && lyrics !== null;
     const aim = trackAim(meta.ask);
     this.hooks.render(id, at, this.hooks.server(meta.server), {
       tags: track.tags,
       // Its lead, a remake's too (Owen, 2026-10-11). A sung album's track that lost its words is sent
       // instrumental: a singer is no lead for it, and its tags' own melody stands.
-      ...(track.lead !== undefined && sung === meta.ask.sung ? { lead: track.lead } : {}),
+      ...(track.lead !== undefined && sung === trackSung(meta.ask, at) ? { lead: track.lead } : {}),
       instrumental: !sung,
       ...(sung ? { lyrics: lyrics as string } : {}),
       ...(meta.ask.cfg != null ? { cfg: meta.ask.cfg } : {}),

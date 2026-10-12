@@ -549,6 +549,8 @@ export interface AlbumTrack {
   readonly lyrics: string | null;
   /** What the song is about, in a sentence, from the lyricist (split-text.ts [ideas]); absent on older plans. */
   readonly idea?: string;
+  /** A planned track's brief, in the person's words (AlbumAsk.plan); its lyrics are written to it. */
+  readonly brief?: string;
 }
 
 /** What the chat model planned in its one call. */
@@ -696,7 +698,72 @@ export interface AlbumAsk {
    * of its own is named for its words. The album's length is these tracks, not `minutes`.
    */
   readonly ownWords?: readonly { readonly title: string | null; readonly lyrics: string }[];
+  /**
+   * Make → Album's "I want to plan it" (Victoria, 2026-10-12; Owen approved): the person picks how
+   * many songs and goes song by song. A track with lyrics is sung exactly as given (as ownWords);
+   * one with a brief, or with nothing, is written by the lyricist as in a generated album. Its
+   * length is these tracks, not `minutes`. `exactTags` is set with tagMode 'exact', as before.
+   */
+  readonly plan?: AlbumTrackPlan;
 }
+
+/**
+ * How a planned album's tracks take the tags, in Victoria's words (2026-10-12): "keep the general
+ * vibe of the album tags" (each varies on them), "stick exactly to the tags", or "set tags for
+ * each song" (each track's own, for an album with one instrument a song or a world tour).
+ */
+export type AlbumTagMode = 'vibe' | 'exact' | 'per-song';
+export const ALBUM_TAG_MODES: readonly AlbumTagMode[] = ['vibe', 'exact', 'per-song'];
+
+/** A planned album: its tag mode and its tracks, in order. */
+export interface AlbumTrackPlan {
+  readonly tagMode: AlbumTagMode;
+  readonly tracks: readonly PlannedTrack[];
+}
+
+/** One track the person planned; anything left out is written for them. */
+export interface PlannedTrack {
+  /** Its name; absent, it is named as a generated track is. */
+  readonly title?: string;
+  /** Sung exactly as written: no lyricist, no fix-up (sung albums only). */
+  readonly lyrics?: string;
+  /** What it is about, in a line, for the lyricist (or, instrumental, for its sound). */
+  readonly brief?: string;
+  /** Its own tags, with tagMode 'per-song'; absent there, the album's. */
+  readonly tags?: readonly string[];
+  /**
+   * Sung or instrumental, track by track (Victoria, 2026-10-12: "Per track"); absent, the album's
+   * `sung`, which is only the default for new tracks. An instrumental track has no lyrics.
+   */
+  readonly sung?: boolean;
+  /** Its own lead (Victoria: "Album lead by default, changeable per track"); absent, the album's, else the writer's. */
+  readonly lead?: string;
+}
+
+/**
+ * A planned album saved by name to start the next one from (Victoria, 2026-10-12: a series of poems
+ * albums), kept by the hub in templates.json so the phone and the desktop see the same ones.
+ */
+export interface AlbumTemplate {
+  readonly name: string;
+  readonly savedAt: string;
+  readonly description: string;
+  readonly tags: readonly string[];
+  readonly lead: string;
+  /** The default for new tracks. */
+  readonly sung: boolean;
+  readonly plan: AlbumTrackPlan;
+}
+
+/** A template as listed: enough to pick one, not its words. */
+export interface AlbumTemplateSummary {
+  readonly name: string;
+  readonly savedAt: string;
+  readonly tracks: number;
+}
+
+/** The most tracks a planned album takes (as many as an album in your own words). */
+export const PLAN_TRACKS_MAX = 45;
 
 /**
  * The longest description B-Sides takes, for a song or an album. Too long is refused by name, never
