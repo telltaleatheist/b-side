@@ -194,7 +194,7 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
                 Sing my own words
               </label>
             }
-            @if (mode() === 'album' && studio.ownWords()) {
+            @if (!planning() && mode() === 'album' && studio.ownWords()) {
               <label class="label" for="own-words">Your words</label>
               <textarea id="own-words" appRememberHeight="own-words" rows="12" spellcheck="true"
                         placeholder="# The Swing&#10;How do you like to go up in a swing,&#10;Up in the air so blue?&#10;...&#10;&#10;---&#10;&#10;# Windy Nights&#10;Whenever the moon and stars are set,&#10;..."
@@ -205,12 +205,12 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
                 Add verse and chorus tags
               </label>
               <p class="hint">{{ studio.addSections() ? 'Each stanza becomes a [Verse], and a stanza that comes back becomes the [Chorus]. Words that already have tags are left as they are.' : 'Sent exactly as pasted. Tags like [Verse] and [Chorus] can help YuE2 shape the melody, but none are needed.' }}</p>
-            } @else if (mode() === 'album') {
+            } @else if (mode() === 'album' && !planning()) {
               <label class="label" for="album-lyrics">What the lyrics are about</label>
               <textarea id="album-lyrics" appRememberHeight="album-about" rows="2" spellcheck="true" class="brief" [class.over]="studio.lyricsBrief().length > briefMax"
                         placeholder="their mood, style or story: late-night regrets, wry and tender, told by a bartender"
                         [value]="studio.lyricsBrief()" (input)="studio.lyricsBrief.set($any($event.target).value)"></textarea>
-            } @else {
+            } @else if (!planning()) {
               <label class="label" for="lyrics-brief">What the lyrics are about</label>
               <textarea id="lyrics-brief" appRememberHeight="song-about" rows="2" spellcheck="true" class="brief" [class.over]="studio.lyricsBrief().length > briefMax"
                         placeholder="a banana going brown on the windowsill; bittersweet, a little funny"
