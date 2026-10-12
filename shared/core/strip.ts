@@ -5,7 +5,9 @@
  * uploaded, the `denoise` job (`vocals-roformer`, `stems: all`) separates it, and the instrumental
  * stem comes back in the person's own format as a new song. Renders are NOT put through it
  * (Owen, 2026-10-12: "vocal sep doesnt work for yue generated audio ... it damages the audio";
- * the level pumps as the voice comes and goes): a render lands as made.
+ * the level pumps as the voice comes and goes): a render lands as made. An instrumental render is
+ * only METERED by it (runVoiceCheck; jobs.ts VOICE_TRIES): how much voice, to decide whether to make
+ * it again.
  *
  * What Crucible's 2.0.4 contract says (crucible-pc-1, 2026-10-11), and B-Sides leans on:
  *   - denoise takes any ffmpeg-decodable input at any rate (2.0.2 took only 44.1 kHz WAV/FLAC);
@@ -19,6 +21,7 @@
 import { CrucibleRefused, CrucibleUnreachable, type CrucibleClient, type JobInput, type JobRequest, type ServerInfo } from '@crucible/client';
 
 import { Refusal } from './refusal';
+import { levelsOf, readWav } from './voice-check';
 import { SEPARATOR_MODEL } from './server-needs';
 import type { StoredServer } from './servers';
 import type { SongFormat, StripAbility } from '../types';
@@ -222,6 +225,46 @@ async function runSeparation(client: CrucibleClient, request: JobRequest, watch:
     else watch.progress(status.progress > 0 ? status.progress : null, doing);
     await pause(pollMs);
   }
+}
+
+/**
+ * Voice in a render (Owen, 2026-10-12: "render a song, do vocal sep, and if there are vocals, throw
+ * it away and re-render up to twice"): the seconds of its vocal stem at or above VOICED_DBFS. Only
+ * measured: the render kept is always as made, never the stem. A clean render reads 0; yue2-3b's
+ * leaky instrumentals read 13-115 s (2026-10-11), its hums a few. VOICED_S is the bar, a few seconds
+ * so a stray bleed of guitar into the vocal stem does not throw a clean render away. Owen's to move.
+ */
+export const VOICED_DBFS = -30;
+export const VOICED_S = 3;
+
+/** The vocal stem among a separation's artifacts: "(vocals)", else the one that is not an instrumental. */
+export function vocalStem(stems: readonly string[]): string | null {
+  const named = stems.find((name) => /\((vocals?|voice)\)/i.test(name));
+  if (named !== undefined) return named;
+  const rest = stems.filter((name) => !/\((other|instrumental|no[ _-]?vocals?)\)/i.test(name));
+  return rest.length === 1 ? (rest[0] as string) : null;
+}
+
+/** The meter's job: the vocal stem alone, as WAV (the separator's own output), read by B-Sides itself. */
+export function voiceCheckJob(input: JobInput, inputName: string, key: string): JobRequest {
+  return {
+    type: 'denoise',
+    model: SEPARATOR_MODEL,
+    params: { stems: 'primary' },
+    inputs: { [inputName]: input },
+    clientRef: `b-sides:voice-check:${key}`,
+  };
+}
+
+/** Meter a render (voiceCheckJob): the seconds of voice it holds. The stem is read, then forgotten. */
+export async function runVoiceCheck(client: CrucibleClient, request: JobRequest, watch: StripWatch, pollMs = POLL_MS): Promise<number> {
+  const { jobId, artifacts } = await runSeparation(client, request, watch, null, pollMs, 'Listening for a voice');
+  const stem = vocalStem(artifacts);
+  if (stem === null) throw new Refusal('voice_check_empty', `The separator answered without a vocal stem (it gave ${artifacts.join(', ') || 'nothing'}).`);
+  const { samples, rate } = readWav(await client.artifact(jobId, stem));
+  // The separator's own job is done with: its stem is not kept on the server either.
+  void client.releaseArtifacts(jobId).catch(() => undefined);
+  return levelsOf(samples, rate).perSecond.filter((level) => level >= VOICED_DBFS).length;
 }
 
 /** The file name a render is given as the separator's input: its own extension, so ffmpeg knows it. */

@@ -366,6 +366,23 @@ export interface JobView {
    * forbidden words where the base model only hummed: "go back to base for everything".
    */
   readonly model?: string;
+  /**
+   * An instrumental's renders so far, each metered for voice (Owen, 2026-10-12: "render a song, do
+   * vocal sep, and if there are vocals, throw it away and re-render up to twice"; shared/core/jobs.ts
+   * VOICE_TRIES). Kept on the server, held, until one lands. Absent: not metered.
+   */
+  readonly tries?: readonly VoiceTry[];
+}
+
+/** One render of an instrumental and the voice the separator found in it. */
+export interface VoiceTry {
+  readonly jobId: string;
+  readonly artifact: string;
+  readonly seed: number;
+  readonly durationS: number | null;
+  readonly effective: unknown;
+  /** Seconds of its vocal stem at or above VOICED_DBFS. */
+  readonly voiceS: number;
 }
 
 /**
@@ -462,6 +479,12 @@ export interface SongFacts {
   readonly stripFailed?: string;
   /** An instrumental version: the library song it was made from. */
   readonly instrumentalOf?: string;
+  /**
+   * An instrumental metered for voice (1.0.38): the seconds of voice the separator found in the
+   * render kept (the audio itself is never stripped), and how many renders it took (1-3).
+   */
+  readonly voiceS?: number;
+  readonly renders?: number;
 }
 
 /**

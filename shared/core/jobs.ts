@@ -29,6 +29,11 @@
  *          through Crucible's separator, and landed as the instrumental stem, a playlist's in one
  *          queue session. A render is never stripped (Owen, 2026-10-12: "vocal sep doesnt work
  *          for yue generated audio ... it damages the audio"); a render lands as made.
+ *
+ * voice    (Owen, 2026-10-12: "i must have a way to get songs without the voice in it") an
+ *          instrumental on a server with the separator is rendered held and METERED: the separator's
+ *          vocal stem is measured, never kept. Under VOICED_S it lands; over, it is made again with a
+ *          new seed, up to VOICE_TRIES renders, and the one with the least voice lands, as made.
  */
 
 import {
@@ -47,7 +52,7 @@ import { clientFor } from './crucible';
 import type { Disk } from './disk';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
-import { denoiseJob, inputNameOf, runStrip, type StripWatch } from './strip';
+import { denoiseJob, inputNameOf, runStrip, runVoiceCheck, voiceCheckJob, VOICED_S, type StripWatch } from './strip';
 import { batchSeeds } from '../batch';
 import { namedSet, pickSet, planningLyrics, type Planned } from '../planning-sets';
 import { styleLine, varyInstrumental } from '../tags';
@@ -58,6 +63,7 @@ import {
   type GenerateRequest,
   type InstallView,
   type JobView,
+  type VoiceTry,
   type RefusalView,
   type SongFormat,
   type Song,
@@ -91,6 +97,8 @@ interface Job {
 
 /** What the runner needs to make instrumental versions (strip.ts); without it none are made. */
 export interface StripOptions {
+  /** Whether `server` can meter an instrumental's voice (its separator is in; a StripGate). Absent: none are. */
+  meter?(server: StoredServer, client: CrucibleClient): Promise<boolean>;
   /** A strip the server refused for a reason no song changes (ffmpeg missing): told to the gate. */
   refuse?(server: StoredServer, why: string): void;
   /** A queue session for a run of strips, so the separator loads once; null (or absent): each on its own. */
@@ -142,7 +150,7 @@ export function settleSong(params: SongParams): SongParams {
  * A sung song sends no range either: Crucible only recorded it against the score, and the library
  * works that out from the score's length itself (library.ts aimOf).
  */
-export function songJob(params: SongParams, format: SongFormat, key: string, model: string = SONG_MODEL): JobRequest {
+export function songJob(params: SongParams, format: SongFormat, key: string, model: string = SONG_MODEL, hold = false): JobRequest {
   const wire: Record<string, unknown> = { format };
   if (params.tags !== undefined) wire['tags'] = params.tags;
   if (params.instrumental === true && params.experiment?.lyrics !== undefined) wire['lyrics'] = params.experiment.lyrics;
@@ -151,7 +159,9 @@ export function songJob(params: SongParams, format: SongFormat, key: string, mod
   if (params.instrumental !== undefined) wire['instrumental'] = params.instrumental;
   if (params.cfg !== undefined) wire['cfg'] = params.cfg;
   if (params.seed !== undefined) wire['seed'] = params.seed;
-  return { type: 'audio', model, params: wire, inputs: {}, clientRef: `b-sides:${key}` };
+  // Held: an instrumental to meter stays on the server until the separator has read it, and until
+  // the render kept is fetched (VOICE_TRIES).
+  return { type: 'audio', model, params: wire, inputs: {}, clientRef: `b-sides:${key}`, ...(hold ? { hold: true } : {}) };
 }
 
 /** An instrumental's planning lyrics: its set (else the seed's; settleSong names one), sized to its aim. */
@@ -183,6 +193,14 @@ const RESENDS = 2;
 const RETRY_CODES: readonly string[] = ['worker_failed'];
 
 /**
+ * Renders an instrumental gets before one is kept (Owen, 2026-10-12: "render a song, do vocal sep,
+ * and if there are vocals, throw it away and re-render up to twice. if after a total of three songs
+ * ... theres still voice, keep the one with the lowest amount of voice"; "i must have a way to get
+ * songs without the voice in it").
+ */
+export const VOICE_TRIES = 3;
+
+/**
  * Fetch a finished job's artifact into `file` and answer its size. A server that
  * cannot be reached is `CrucibleUnreachable`, which the runner retries.
  */
@@ -203,6 +221,8 @@ export interface Landed {
    * the library song it was made from, `beside` filed next to it. Absent: a render, as made.
    */
   readonly strip?: { readonly jobId?: string; readonly of?: string; readonly beside?: boolean };
+  /** An instrumental metered for voice: the seconds found in the render kept, and how many renders it took. */
+  readonly voice?: { readonly voiceS: number; readonly renders: number };
 }
 
 export interface JobHooks {
@@ -528,6 +548,7 @@ export class JobRunner {
     job.view.ended = Date.now();
     job.view.install = null;
     this.publish(job);
+    this.releaseTries(job);
     // A finished job IS its take now; the playing list shows the take, so the job is done with.
     if (phase === 'done') this.jobs.delete(job.view.key);
     else this.hooks.ended?.({ ...job.view });
@@ -558,6 +579,12 @@ export class JobRunner {
     // Every song goes to yue2-3b (Owen, 2026-10-12: "go back to base for everything"), a job pending
     // from 1.0.29-1.0.31 with the instrumental adapter's name included.
     job.view.model = SONG_MODEL;
+    // Metered for voice (VOICE_TRIES): an instrumental on a server with the separator. Decided once,
+    // on first sending; `tries` then holds every render so far.
+    if (job.view.tries === undefined && job.view.params.instrumental === true && this.strips?.meter !== undefined
+      && await this.strips.meter(job.server, client).catch(() => false)) {
+      job.view.tries = [];
+    }
     let jobId: string | null = null;
     for (let round = 0; jobId === null; round += 1) {
       if (job.gone) return;
@@ -566,7 +593,7 @@ export class JobRunner {
         // retry, a job resumed from pending.json, the phone's hub): an instrumental goes with its set.
         job.view.params = settleSong(job.view.params);
         if (job.view.params.seed !== undefined) job.view.seed = job.view.params.seed;
-        jobId = await client.submit(songJob(job.view.params, job.format, job.view.key, job.view.model));
+        jobId = await client.submit(songJob(job.view.params, job.format, job.view.key, job.view.model, job.view.tries !== undefined));
       } catch (error) {
         if (job.gone) return;
         if (!isInstalling(error) || round >= INSTALL_ROUNDS) {
@@ -818,8 +845,77 @@ export class JobRunner {
       this.finish(job, 'failed', refusalOf(error));
       return;
     }
+    const effective = (done.extra as Record<string, unknown>)['audio'];
     // As made (Owen, 2026-10-12): a render is never put through the separator, which damages it.
-    await this.deliver(job, { fill: this.filler(job, jobId, result.artifact), extension: extensionOf(result.artifact), seed: result.seed, durationS: result.audioSeconds, effective: (done.extra as Record<string, unknown>)['audio'] });
+    if (job.view.tries === undefined) {
+      await this.deliver(job, { fill: this.filler(job, jobId, result.artifact), extension: extensionOf(result.artifact), seed: result.seed, durationS: result.audioSeconds, effective });
+      return;
+    }
+    await this.meter(job, { jobId, artifact: result.artifact, seed: result.seed, durationS: result.audioSeconds, effective });
+  }
+
+  /**
+   * An instrumental's render, metered (VOICE_TRIES): the separator only listens, and what lands is
+   * always a render as made. Under VOICED_S it lands; over, it is put aside (held) and the song is
+   * made again with a new seed; after the last try, the one with the least voice lands. A meter that
+   * fails lands this render as made, and says why in the log.
+   */
+  private async meter(job: Job, render: Omit<VoiceTry, 'voiceS'>): Promise<void> {
+    const tries = job.view.tries ?? [];
+    const n = tries.length + 1;
+    let voiceS: number;
+    try {
+      this.watch(job).progress(null, `Listening for a voice (render ${n} of ${VOICE_TRIES})`);
+      const client = this.clientOf(job);
+      voiceS = await runVoiceCheck(client, voiceCheckJob(client.artifactRef(render.jobId, render.artifact), inputNameOf(render.artifact), job.view.key), this.watch(job), this.strips?.pollMs);
+    } catch (error) {
+      if (job.gone) {
+        this.finish(job, 'cancelled');
+        return;
+      }
+      console.error(`[voice] ${job.view.server} could not meter ${render.jobId}; it is kept as made: ${refusalOf(error).message}`);
+      await this.deliver(job, { fill: this.filler(job, render.jobId, render.artifact), extension: extensionOf(render.artifact), seed: render.seed, durationS: render.durationS, effective: render.effective });
+      return;
+    }
+    const all = [...tries, { ...render, voiceS }];
+    job.view.tries = all;
+    console.log(`[voice] ${job.view.server}: render ${n} of ${VOICE_TRIES} (${render.jobId}, seed ${render.seed}) has ${voiceS} s of voice`);
+    if (job.gone) {
+      this.finish(job, 'cancelled');
+      return;
+    }
+    if (voiceS >= VOICED_S && n < VOICE_TRIES) {
+      // Made again with a new seed, as a crash retry is: an album's track keeps its turn's set.
+      const { seed: _voiced, planning_set: set, ...params } = job.view.params;
+      job.view.params = job.view.album != null && set !== undefined ? { ...params, planning_set: set } : params;
+      job.view.seed = null;
+      job.view.jobId = null;
+      job.view.phase = 'submitting';
+      job.view.fraction = null;
+      job.view.message = `Heard ${voiceS} s of voice; making it again with a new seed (render ${n + 1} of ${VOICE_TRIES})`;
+      this.publish(job);
+      void this.submit(job);
+      return;
+    }
+    // The least voice; on a tie, the first made.
+    const best = all.reduce((kept, next) => (next.voiceS < kept.voiceS ? next : kept));
+    if (best.voiceS >= VOICED_S) console.log(`[voice] ${job.view.server}: every render had a voice; kept the least, ${best.voiceS} s (${best.jobId})`);
+    job.view.seed = best.seed;
+    await this.deliver(job, {
+      fill: this.filler(job, best.jobId, best.artifact), extension: extensionOf(best.artifact), seed: best.seed, durationS: best.durationS, effective: best.effective,
+      voice: { voiceS: best.voiceS, renders: all.length },
+    });
+  }
+
+  /** An ended job's held renders let go on the server (in the background): fetched, or not wanted. */
+  private releaseTries(job: Job): void {
+    if (job.view.tries === undefined) return;
+    const held = new Set(job.view.tries.map((t) => t.jobId));
+    if (job.view.jobId !== null) held.add(job.view.jobId);
+    const client = this.clientOf(job);
+    for (const id of held) {
+      void client.releaseArtifacts(id).catch((err: unknown) => console.error(`[voice] could not let go of ${id} on ${job.view.server}:`, err));
+    }
   }
 
   /** Fetch `artifact` of `jobId` into a file, retrying while the server cannot be reached. */

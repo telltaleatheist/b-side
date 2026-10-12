@@ -412,6 +412,8 @@ export class HubCore {
           // An instrumental version (Owen, 2026-10-11): it says so, with its denoise job.
           const strip = landed.strip;
           const stripped = strip?.jobId !== undefined ? { stripped: true, stripJob: strip.jobId } : {};
+          // Metered for voice (VOICE_TRIES): what the render kept held, and how many it took.
+          const voice = landed.voice === undefined ? {} : { voiceS: landed.voice.voiceS, renders: landed.voice.renders };
           // An instrumental version: the same title and record as the song it was made from, and a link to it.
           const original = strip?.of === undefined ? null : await this.library.song(strip.of).catch(() => null);
           if (original !== null) {
@@ -430,6 +432,7 @@ export class HubCore {
               effective: null,
               createdAt: new Date().toISOString(),
               ...stripped,
+              ...voice,
               instrumentalOf: original.id,
             });
             const songId = landed.job.playlist == null ? null : await this.fileTake(landed.job.playlist, take.id);
@@ -447,6 +450,7 @@ export class HubCore {
             // What made it (Owen, 2026-10-12): the instrumental model or yue2-3b, as the job was sent.
             model: landed.job.model ?? SONG_MODEL,
             ...stripped,
+            ...voice,
             params: {
               tags: params.tags ?? null,
               lyrics: params.lyrics ?? null,
@@ -496,6 +500,7 @@ export class HubCore {
       options.fetchAudio,
       clientFor,
       {
+        meter: (server, client) => this.strips.can(server, client),
         refuse: (server, why) => this.strips.refuse(server, why),
         // Its own client name, as an album's: a session counts every job sent under its name as its
         // own, and a song made meanwhile under the hub's name must not join it (hub-core, albums).
