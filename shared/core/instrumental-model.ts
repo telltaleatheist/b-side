@@ -30,9 +30,11 @@ interface Known {
 }
 
 /**
- * Whether each server has INSTRUMENTAL_MODEL installed, asked of its model list at most every
- * RECHECK_MS. A server that cannot be asked is taken not to have it; the song then goes to
- * SONG_MODEL, which it did before too. Said once in the log when the answer changes.
+ * Whether each server has INSTRUMENTAL_MODEL installed, asked of its catalog (`GET /v1/catalog`:
+ * the audio models live there, not in `/v1/models`, which lists the text models only; the PC's
+ * Crucible 2.0.7, 2026-10-12) at most every RECHECK_MS. A server that cannot be asked is taken not
+ * to have it; the song then goes to SONG_MODEL, which it did before too. Said once in the log when
+ * the answer changes.
  */
 export class InstrumentalModelGate {
   private readonly known = new Map<string, Known>();
@@ -58,7 +60,7 @@ export class InstrumentalModelGate {
     if (known !== undefined && this.now() - known.at < this.recheckMs) return known.has;
     let has = false;
     try {
-      has = (await client.models()).some((row) => row.id === INSTRUMENTAL_MODEL && row.installed);
+      has = (await client.catalog()).some((row) => row.kind === 'model' && row.id === INSTRUMENTAL_MODEL && row.installed);
     } catch (error) {
       this.log(`[model] could not ask ${server.name} for ${INSTRUMENTAL_MODEL} (${error instanceof Error ? error.message : String(error)}); instrumentals go to ${SONG_MODEL}`);
     }

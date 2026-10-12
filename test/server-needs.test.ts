@@ -31,6 +31,10 @@ test('a subject the server\'s catalog does not know (the instrumental model befo
   expect(older.posted).toHaveLength(0);
 });
 
+test('a Mac is not asked for the instrumental model: its YuE2 worker cannot fold it (crucible-pc-1, 2026-10-12)', () => {
+  expect(moduleForBackend('mlx-darwin').subjects).toEqual([{ kind: 'denoise', id: 'vocals-roformer' }, { kind: 'model', id: 'yue2-3b' }]);
+});
+
 test('a Windows-native engine is asked for nothing: it has no separator', () => {
   const module = moduleForBackend('llama-windows');
   expect(module.job_types).toEqual([]);

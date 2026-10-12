@@ -50,8 +50,10 @@ export const B_SIDES_MODULE = {
     { kind: 'model', id: SONG_MODEL, backends: ['cuda-linux', 'mlx-darwin'] },
     // The instrumental model (Owen, 2026-10-12; Crucible 2.0.7, a 140 MB adapter over yue2-3b):
     // asked for where the server's catalog knows it (knownTo), so an older server is not posted a
-    // module it would refuse whole.
-    { kind: 'model', id: INSTRUMENTAL_MODEL, backends: ['cuda-linux', 'mlx-darwin'] },
+    // module it would refuse whole. cuda-linux only (crucible-pc-1, 2026-10-12): the Mac's YuE2
+    // worker keeps no host copy of the weights to restore after the fold, so its manifest refuses
+    // it, and a Mac makes instrumentals with yue2-3b.
+    { kind: 'model', id: INSTRUMENTAL_MODEL, backends: ['cuda-linux'] },
   ],
 } as const;
 

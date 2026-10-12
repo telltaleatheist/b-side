@@ -40,7 +40,7 @@ function fakeServer(has: boolean) {
   const sent: JobRequest[] = [];
   const finished = new Set<string>();
   const client = {
-    models: async () => [{ id: SONG_MODEL, installed: true }, ...(has ? [{ id: INSTRUMENTAL_MODEL, installed: true }] : [])],
+    catalog: async () => [{ kind: 'model', id: SONG_MODEL, installed: true }, ...(has ? [{ kind: 'model', id: INSTRUMENTAL_MODEL, installed: true }] : [])],
     submit: async (request: JobRequest) => {
       sent.push(request);
       return `${request.type}-${sent.length}`;
@@ -72,18 +72,18 @@ function runner(server: ReturnType<typeof fakeServer>, landed: Landed[], fetched
   );
 }
 
-test('the gate asks a server once and names the instrumental model only where it is installed', async () => {
+test('the gate asks a server\'s catalog once (the audio models are not in /v1/models) and names the instrumental model only where it is installed', async () => {
   const lines: string[] = [];
   let asked = 0;
   let now = 0;
   const gate = new InstrumentalModelGate((line) => lines.push(line), 1000, () => now);
-  const client = { models: async () => { asked += 1; return [{ id: INSTRUMENTAL_MODEL, installed: asked > 1 }]; } } as unknown as CrucibleClient;
+  const client = { catalog: async () => { asked += 1; return [{ kind: 'model', id: INSTRUMENTAL_MODEL, installed: asked > 1 }]; } } as unknown as CrucibleClient;
   for (let i = 0; i < 3; i += 1) expect(await gate.pick(pc, client)).toBe(SONG_MODEL);
   expect(asked).toBe(1);
   now = 5000;
   expect(await gate.pick(pc, client)).toBe(INSTRUMENTAL_MODEL);
   expect(lines.length).toBe(2);
-  const broken = { models: async () => { throw new Error('no route'); } } as unknown as CrucibleClient;
+  const broken = { catalog: async () => { throw new Error('no route'); } } as unknown as CrucibleClient;
   expect(await new InstrumentalModelGate(() => undefined).pick(pc, broken)).toBe(SONG_MODEL);
 });
 
