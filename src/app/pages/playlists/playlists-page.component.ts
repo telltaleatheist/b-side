@@ -304,19 +304,22 @@ const COVER_PX = 768;
         <div class="title-row">
           <h1 class="page-title">Library</h1>
         </div>
-        @if (cloud.linked()) { <h2 class="section-title">On this phone</h2> }
+        @if (cloud.linked()) { <h2 class="section-title"><button type="button" class="lib-toggle" [class.open]="libraryOpen('phone')" [attr.aria-expanded]="libraryOpen('phone')" [title]="libraryOpen('phone') ? 'Hide this library' : 'Show this library'" (click)="toggleLibrary('phone')"><app-icon name="chevron" [size]="16" class="chev" />On this phone</button></h2> }
         <!-- Folders first, then what is at the top. Dropped in the open space here, an album or folder leaves its folder. -->
+        @if (!cloud.linked() || libraryOpen('phone')) {
         <div class="shelf" [attr.data-drop]="folders.mark(top)" (dragover)="folders.over($event, top)" (drop)="dropOn($event, top)">
           <ng-container *ngTemplateOutlet="shelf; context: { $implicit: null }" />
           @if (library.playlists().length === 0 && library.folders().length === 0) {
             <p class="hint">{{ cloud.linked() ? 'Nothing kept only on this phone.' : 'No playlists yet. Save a song from the playing list, or make one here.' }}</p>
           }
         </div>
+        }
         @for (peer of peers.present(); track peer.url) {
           <div class="cloud-head">
-            <h2 class="section-title">{{ peers.name(peer) }}'s library</h2>
+            <h2 class="section-title"><button type="button" class="lib-toggle" [class.open]="libraryOpen('peer:' + peerId(peer))" [attr.aria-expanded]="libraryOpen('peer:' + peerId(peer))" [title]="libraryOpen('peer:' + peerId(peer)) ? 'Hide this library' : 'Show this library'" (click)="toggleLibrary('peer:' + peerId(peer))"><app-icon name="chevron" [size]="16" class="chev" />{{ peers.name(peer) }}'s library</button></h2>
             <span class="mono hint">{{ peer.library?.songs?.length ?? 0 }} songs · on the network</span>
           </div>
+          @if (libraryOpen('peer:' + peerId(peer))) {
           <div class="grid">
             @for (playlist of peer.library?.playlists ?? []; track playlist.id) {
               <a class="tile" [routerLink]="['/peer', peerId(peer), playlist.id]">
@@ -335,15 +338,17 @@ const COVER_PX = 768;
               <p class="hint">Nothing in it yet.</p>
             }
           </div>
+          }
         }
         @if (hub.kind === 'ios') {
           <a class="add-library ghost small" routerLink="/settings">+ Add another B-Sides library</a>
         }
         @if (cloud.linked()) {
           <div class="cloud-head">
-            <h2 class="section-title">In the cloud</h2>
+            <h2 class="section-title"><button type="button" class="lib-toggle" [class.open]="libraryOpen('cloud')" [attr.aria-expanded]="libraryOpen('cloud')" [title]="libraryOpen('cloud') ? 'Hide this library' : 'Show this library'" (click)="toggleLibrary('cloud')"><app-icon name="chevron" [size]="16" class="chev" />In the cloud</button></h2>
             <span class="mono hint">{{ cloud.host() }}{{ cloud.state() === 'unreachable' ? ' · not answering' : '' }}</span>
           </div>
+          @if (libraryOpen('cloud')) {
           <div class="grid">
             @for (playlist of cloud.library()?.playlists ?? []; track playlist.id) {
               <a class="tile" [routerLink]="['/cloud', playlist.id]">
@@ -357,6 +362,7 @@ const COVER_PX = 768;
               <p class="hint">{{ cloud.state() === 'ok' ? 'Nothing in the cloud yet. Save an album to it from its page.' : (cloud.trouble() ?? 'Reading the cloud…') }}</p>
             }
           </div>
+          }
         }
         <form class="new" (submit)="$event.preventDefault(); create()">
           <input type="text" maxlength="120" placeholder="New playlist" aria-label="New playlist name" [value]="newName()" (input)="newName.set($any($event.target).value)" />
@@ -529,6 +535,12 @@ const COVER_PX = 768;
     .tile-sub { font-size: 12px; color: var(--text-tertiary); }
     .new { display: flex; gap: 8px; max-width: 420px; }
     .cloud-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 8px; }
+    /* A library's name shows or hides it (Owen, 2026-10-12), and it stays as left on this device. */
+    .lib-toggle {
+      display: inline-flex; align-items: center; gap: 6px; padding: 0; border: none; background: transparent;
+      color: inherit; font: inherit; text-align: left; cursor: pointer;
+    }
+    .lib-toggle.open .chev { transform: rotate(90deg); }
     .mark { display: inline-flex; align-items: center; gap: 5px; }
     .mark.down { color: var(--accent); }
     .new input { flex: 1; min-width: 0; }
@@ -594,6 +606,8 @@ export class PlaylistsPageComponent {
     return peer === null ? this.peerKey() : this.peers.name(peer);
   });
   protected readonly peerId = peerId;
+  /** The libraries hidden on this device ('phone', 'cloud', 'peer:<id>'): per viewer, kept in this browser like shut folders. */
+  private readonly closedLibraries = signal<ReadonlySet<string>>(readClosedLibraries());
   protected readonly newName = signal('');
   protected readonly renaming = signal<string | null>(null);
   /** Which piece of the album its model is writing again (a sentence's noun), or null. */
@@ -1162,5 +1176,31 @@ export class PlaylistsPageComponent {
 
   protected async reveal(song: Song): Promise<void> {
     this.refusal.set(await this.library.reveal(song));
+  }
+
+  protected libraryOpen(key: string): boolean {
+    return !this.closedLibraries().has(key);
+  }
+
+  protected toggleLibrary(key: string): void {
+    const next = new Set(this.closedLibraries());
+    if (!next.delete(key)) next.add(key);
+    this.closedLibraries.set(next);
+    try {
+      localStorage.setItem(LIBRARIES_CLOSED_KEY, JSON.stringify([...next]));
+    } catch {
+      // Not kept (storage blocked): shown again next time.
+    }
+  }
+}
+
+const LIBRARIES_CLOSED_KEY = 'bside.libraries.closed';
+
+function readClosedLibraries(): ReadonlySet<string> {
+  try {
+    const kept = JSON.parse(localStorage.getItem(LIBRARIES_CLOSED_KEY) ?? '[]') as unknown;
+    return new Set(Array.isArray(kept) ? kept.filter((key): key is string => typeof key === 'string') : []);
+  } catch {
+    return new Set();
   }
 }
