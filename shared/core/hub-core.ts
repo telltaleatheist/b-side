@@ -350,13 +350,9 @@ export class HubCore {
           const params = landed.job.params;
           const album = landed.job.album ?? null;
           const planned = album === null ? null : ((await this.library.album(album.id))?.plan?.tracks[album.track] ?? null);
-          // Stripped (Owen, 2026-10-11): it says so, with its denoise job; a failed strip says why.
+          // An instrumental version (Owen, 2026-10-11): it says so, with its denoise job.
           const strip = landed.strip;
-          const stripped = {
-            ...(strip?.jobId !== undefined ? { stripped: true, stripJob: strip.jobId } : {}),
-            ...(strip?.failed !== undefined ? { stripFailed: strip.failed } : {}),
-            ...(strip?.voiceS !== undefined ? { voiceS: strip.voiceS } : {}),
-          };
+          const stripped = strip?.jobId !== undefined ? { stripped: true, stripJob: strip.jobId } : {};
           // An instrumental version: the same title and record as the song it was made from, and a link to it.
           const original = strip?.of === undefined ? null : await this.library.song(strip.of).catch(() => null);
           if (original !== null) {
@@ -435,17 +431,12 @@ export class HubCore {
         fetching: (job) => {
           if (job.album == null) this.singleLeft(job.server);
         },
-        // An album's track rendered and waiting for its strip: its render is off the server, so the album sends its next.
-        rendered: (job) => {
-          void this.albums.next(job.server).then(() => this.libraryChanged()).catch((err: unknown) => console.error(`[albums] could not carry on on ${job.server}:`, err));
-        },
       },
       options.disk,
       join(options.dataDir, 'pending.json'),
       options.fetchAudio,
       clientFor,
       {
-        can: (server, client) => this.strips.can(server, client),
         refuse: (server, why) => this.strips.refuse(server, why),
         // Its own client name, as an album's: a session counts every job sent under its name as its
         // own, and a song made meanwhile under the hub's name must not join it (hub-core, albums).
@@ -478,13 +469,6 @@ export class HubCore {
       },
       inFlight: (id) => this.jobs.list(albumClient(id)).filter((job) => !ENDED_PHASES.includes(job.phase)).length,
       rendering: (id) => this.jobs.rendering(albumClient(id)),
-      strips: (server) => {
-        try {
-          return this.strips.ability(this.registry.get(server))?.can === true;
-        } catch {
-          return false;
-        }
-      },
       retitle: async (id, titles) => {
         const view = await this.libraryView();
         const songs = view.playlists.find((p) => p.id === id)?.songs ?? [];
@@ -521,8 +505,7 @@ export class HubCore {
         .filter((job) => !ENDED_PHASES.includes(job.phase) && job.album?.id === id)
         .map((job) => job.album?.track as number),
       cancelInFlight: async (id) => {
-        // A track already made and waiting for (or in) its strip is kept: it is the album's, made.
-        for (const job of this.jobs.list(albumClient(id)).filter((j) => !ENDED_PHASES.includes(j.phase) && j.strip?.state !== 'waiting' && j.strip?.state !== 'stripping')) {
+        for (const job of this.jobs.list(albumClient(id)).filter((j) => !ENDED_PHASES.includes(j.phase))) {
           await this.jobs.cancel(job.key).catch((err: unknown) => console.error(`[albums] could not cancel ${job.key}:`, err));
         }
       },

@@ -11,9 +11,10 @@ import { JobRunner, type Landed, type StripOptions } from '../shared/core/jobs';
 import { instrumentalStem, StripGate, stripVerdict, versionAtLeast } from '../shared/core/strip';
 import { SINGLES_NAME, type JobView, type Song } from '../shared/types';
 
-// Owen, 2026-10-11: every instrumental goes through Crucible's separator (2.0.4+), and any song can
-// be made into an instrumental version. These run on a fake server; what only a real 2.0.4 shows
-// (the stems' sound, the session's timing) is not tested here.
+// Owen, 2026-10-11: any song can be made into an instrumental version through Crucible's separator
+// (2.0.4+). Renders are never stripped (Owen, 2026-10-12: the separator damages YuE2's audio). These
+// run on a fake server; what only a real 2.0.4 shows (the stems' sound, the session's timing) is
+// not tested here.
 
 const pc = { name: 'pc', url: 'http://pc:7100', token: 't' };
 const disk: Disk = {
@@ -106,7 +107,6 @@ function fakeServer(denoise: 'done' | 'failed' = 'done') {
     cancel: async () => ({}),
   } as unknown as CrucibleClient;
   const strips: StripOptions = {
-    can: async () => true,
     session: async () => {
       sessions.push('open');
       return { client, close: async () => sessions.push('close') };
@@ -117,12 +117,11 @@ function fakeServer(denoise: 'done' | 'failed' = 'done') {
   return { client, sent, released, sessions, strips, finish: (id: string) => finished.add(id) };
 }
 
-function runner(server: ReturnType<typeof fakeServer>, landed: Landed[], ended: JobView[] = [], fetched: string[] = [], rendered: JobView[] = [], strips: StripOptions | null = server.strips): JobRunner {
+function runner(server: ReturnType<typeof fakeServer>, landed: Landed[], ended: JobView[] = [], fetched: string[] = [], strips: StripOptions | null = server.strips): JobRunner {
   return new JobRunner(
     {
       publish: () => undefined,
       ended: (job) => { ended.push(job); },
-      rendered: (job) => { rendered.push(job); },
       land: async (landing) => {
         await landing.fill('x');
         landed.push(landing);
@@ -134,89 +133,25 @@ function runner(server: ReturnType<typeof fakeServer>, landed: Landed[], ended: 
   );
 }
 
-test('an instrumental is rendered as a held FLAC, stripped by reference, and lands as its "(other)" stem in the song format', async () => {
-  const server = fakeServer();
-  const landed: Landed[] = [];
-  const fetched: string[] = [];
-  const jobs = runner(server, landed, [], fetched);
-  const [job] = jobs.generate(pc, { id: 'c', kind: 'desktop' }, { params: { tags: 'lo-fi', instrumental: true, seed: 4 }, count: 1 }, 'mp3', null, 'new-songs');
-  await until(() => server.sent.length === 1);
-  const render = server.sent[0] as JobRequest;
-  expect(render.params['format']).toBe('flac');
-  expect(render.hold).toBe(true);
-  server.finish('audio-1');
-  await until(() => landed.length === 1);
-  const denoise = server.sent[1] as JobRequest;
-  expect(denoise.type).toBe('denoise');
-  expect(denoise.model).toBe('vocals-roformer');
-  expect(denoise.params).toEqual({ stems: 'all', format: 'mp3' });
-  expect(denoise.inputs).toEqual({ 'song.flac': { artifact: { jobId: 'audio-1', name: 'audio.flac' } } });
-  const song = landed[0] as Landed;
-  expect(song.extension).toBe('mp3');
-  expect(song.strip).toEqual({ jobId: 'denoise-2' });
-  expect(song.job.title ?? null).toBeNull();
-  expect(song.job.key).toBe(job?.key as string);
-  expect(fetched).toEqual(['denoise-2/song_(other)_vocals_mel_band_roformer.mp3']);
-  await until(() => server.released.length === 1);
-  expect(server.released).toEqual(['audio-1']);
-});
-
-test('a strip that fails keeps the song as rendered (the held FLAC), and says why', async () => {
-  const server = fakeServer('failed');
-  const landed: Landed[] = [];
-  const ended: JobView[] = [];
-  const fetched: string[] = [];
-  const jobs = runner(server, landed, ended, fetched);
-  jobs.generate(pc, { id: 'c', kind: 'desktop' }, { params: { tags: 'lo-fi', instrumental: true, seed: 4 }, count: 1 }, 'mp3', null, 'new-songs');
-  await until(() => server.sent.length === 1);
-  server.finish('audio-1');
-  await until(() => landed.length === 1);
-  expect(ended).toEqual([]);
-  expect(landed[0]?.extension).toBe('flac');
-  expect(landed[0]?.strip?.failed).toContain('the separator crashed');
-  expect(fetched).toEqual(['audio-1/audio.flac']);
-  await until(() => server.released.length === 1);
-});
-
-test('a server that cannot strip gets the song as always: its format, no hold, no separator', async () => {
-  const server = fakeServer();
-  const landed: Landed[] = [];
-  const jobs = runner(server, landed, [], [], [], { ...server.strips, can: async () => false });
-  jobs.generate(pc, { id: 'c', kind: 'desktop' }, { params: { tags: 'lo-fi', instrumental: true, seed: 4 }, count: 1 }, 'mp3', null, 'new-songs');
-  await until(() => server.sent.length === 1);
-  expect(server.sent[0]?.params['format']).toBe('mp3');
-  expect(server.sent[0]?.hold).toBeUndefined();
-  server.finish('audio-1');
-  await until(() => landed.length === 1);
-  expect(server.sent.length).toBe(1);
-  expect(landed[0]?.strip).toBeUndefined();
-});
-
-test('a sung song is never stripped', async () => {
-  const server = fakeServer();
-  const landed: Landed[] = [];
-  const jobs = runner(server, landed);
-  jobs.generate(pc, { id: 'c', kind: 'desktop' }, { params: { tags: 'pop', lyrics: '[verse]\nhi', instrumental: false }, count: 1 }, 'mp3', null, 'new-songs');
-  await until(() => server.sent.length === 1);
-  expect(server.sent[0]?.hold).toBeUndefined();
-  server.finish('audio-1');
-  await until(() => landed.length === 1);
-  expect(server.sent.length).toBe(1);
-});
-
-test("an album's track is stripped as soon as it is made, and lands before the next is rendered (Owen, 2026-10-11)", async () => {
-  const server = fakeServer();
-  const landed: Landed[] = [];
-  const jobs = runner(server, landed);
-  jobs.generate(pc, { id: 'album-a', kind: 'desktop' }, { params: { tags: 'lo-fi', instrumental: true, seed: 1 }, count: 1 }, 'flac', { id: 'a', track: 0 });
-  await until(() => server.sent.length === 1);
-  server.finish('audio-1');
-  // Its strip goes at once, from its own held render, in the album's song format.
-  await until(() => landed.length === 1);
-  const strips = server.sent.filter((request) => request.type === 'denoise');
-  expect(strips.map((request) => [request.params['format'], request.inputs['song.flac']]))
-    .toEqual([['flac', { artifact: { jobId: 'audio-1', name: 'audio.flac' } }]]);
-  expect(landed[0]?.strip?.jobId).toBeDefined();
+test('a render, instrumental or sung, is never stripped (Owen, 2026-10-12): its format, no hold, no separator', async () => {
+  for (const params of [{ tags: 'lo-fi', instrumental: true, seed: 4 }, { tags: 'pop', lyrics: '[verse]\nhi', instrumental: false }]) {
+    const server = fakeServer();
+    const landed: Landed[] = [];
+    const fetched: string[] = [];
+    const jobs = runner(server, landed, [], fetched);
+    jobs.generate(pc, { id: 'c', kind: 'desktop' }, { params, count: 1 }, 'mp3', null, 'new-songs');
+    await until(() => server.sent.length === 1);
+    expect(server.sent[0]?.params['format']).toBe('mp3');
+    expect(server.sent[0]?.hold).toBeUndefined();
+    server.finish('audio-1');
+    await until(() => landed.length === 1);
+    expect(server.sent.length).toBe(1);
+    expect(landed[0]?.strip).toBeUndefined();
+    // The fake renders a FLAC whatever is asked: what lands is the render itself, by its own name.
+    expect(landed[0]?.extension).toBe('flac');
+    expect(fetched).toEqual(['audio-1/audio.flac']);
+    expect(server.released).toEqual([]);
+  }
 });
 
 test('an instrumental version uploads the library file and lands linked to its original', async () => {

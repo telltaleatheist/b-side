@@ -13,7 +13,8 @@
  * yue2-3b and composes with the adapter, as its model `yue2-3b-instrumental` (2.0.7).
  *
  * B-Sides names that model for an instrumental when the server lists it installed, and yue2-3b
- * (stripped as before) when not; it never swaps silently, so a song's record says what made it.
+ * when not; it never swaps silently, so a song's record says what made it. Either way the render
+ * lands as made: the separator is no fix (Owen, 2026-10-12: it damages YuE2's audio).
  */
 import type { CrucibleClient } from '@crucible/client';
 
@@ -65,7 +66,7 @@ export class InstrumentalModelGate {
     if (known?.has !== has) {
       this.log(has
         ? `[model] ${server.name} makes instrumentals with ${INSTRUMENTAL_MODEL}`
-        : `[model] ${server.name} has no ${INSTRUMENTAL_MODEL}; instrumentals go to ${SONG_MODEL} and are stripped`);
+        : `[model] ${server.name} has no ${INSTRUMENTAL_MODEL}; instrumentals go to ${SONG_MODEL}`);
     }
     return has;
   }

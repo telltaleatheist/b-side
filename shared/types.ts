@@ -15,7 +15,7 @@ export const SONG_MODEL = 'yue2-3b';
  * instrumental adapter fused around its composing call only (planning stays yue2-3b's). Owen,
  * 2026-10-12, after the listening tests in shared/core/instrumental-model.ts: yue2-3b's composing
  * invents a singer on most instrumentals; with the adapter the voice is rare and quiet. A server
- * without it makes instrumentals with SONG_MODEL and strips them, as before.
+ * without it makes instrumentals with SONG_MODEL, as before.
  */
 export const INSTRUMENTAL_MODEL = 'yue2-3b-instrumental';
 
@@ -366,7 +366,7 @@ export interface JobView {
   readonly title?: string | null;
   /** Once filed into `playlist`: the song it became. */
   readonly songId?: string | null;
-  /** Its voice taken out by the separator (Owen, 2026-10-11; shared/core/strip.ts); absent: not stripped. */
+  /** An instrumental version of a library song (Owen, 2026-10-11; shared/core/strip.ts); absent: a render. */
   readonly strip?: StripView | null;
   /**
    * The model it is sent to: INSTRUMENTAL_MODEL for an instrumental on a server that has it, else
@@ -376,30 +376,19 @@ export interface JobView {
 }
 
 /**
- * A song whose stray voices are taken out (Owen, 2026-10-11: YuE2 instrumentals sometimes sing
- * though asked not to). Every instrumental rendered on a server that can strip, and every song
- * made into an instrumental version, goes through Crucible's separator and is kept as its
- * instrumental stem.
+ * A library song made into an instrumental version (Owen, 2026-10-11): put through Crucible's
+ * separator and kept as its instrumental stem. Renders are never stripped (Owen, 2026-10-12: the
+ * separator damages YuE2's audio).
  */
 export interface StripView {
-  /**
-   * rendering: the song is being made (held on the server for its strip); waiting: made, its strip
-   * waits for the server's other renders to finish (an album's, so the separator loads once);
-   * stripping: the separator runs. A version of a library song is `stripping` from the start.
-   */
-  readonly state: 'rendering' | 'waiting' | 'stripping';
+  /** The separator runs (from the start: nothing is rendered). */
+  readonly state: 'stripping';
   /** The format the stem is asked in: the person's song format then. */
   readonly format: SongFormat;
   /** The denoise job, once sent. */
   readonly jobId: string | null;
-  /** An instrumental version: the library song it is made from (nothing is rendered). */
+  /** The library song it is made from. */
   readonly of?: string | null;
-  /**
-   * A safety net, not the rule (Owen, 2026-10-12, for INSTRUMENTAL_MODEL's songs): the render is
-   * metered first (its vocal stem's level), and stripped only when a voice is found; otherwise it
-   * lands as made. The render is then in the person's own format, not a held FLAC.
-   */
-  readonly gated?: boolean;
 }
 
 /** Whether instrumental versions can be made on the active server now, and why not (`GET /api/strip`). */
@@ -476,13 +465,8 @@ export interface SongFacts {
   readonly stripped?: boolean;
   /** The denoise job its stem came from, when stripped. */
   readonly stripJob?: string;
-  /** Why a strip it went through failed (it was kept as rendered); absent when none failed. */
+  /** Why a strip it went through failed (it was kept as rendered): songs of 1.0.17-1.0.29, when renders were stripped. */
   readonly stripFailed?: string;
-  /**
-   * Seconds of voice the meter found in it before deciding whether to strip (StripView.gated):
-   * seconds of its vocal stem at or above VOICED_DBFS. Absent when it was not metered.
-   */
-  readonly voiceS?: number;
   /** An instrumental version: the library song it was made from. */
   readonly instrumentalOf?: string;
 }

@@ -95,13 +95,12 @@ function takeOf(sidecar: TakeSidecar): Take {
 }
 
 /** A song's strip record (Owen, 2026-10-11), only the fields it has: an unstripped song's sidecar is as before. */
-export function stripFacts(facts: Pick<SongFacts, 'stripped' | 'stripJob' | 'stripFailed' | 'instrumentalOf' | 'voiceS'>): Pick<SongFacts, 'stripped' | 'stripJob' | 'stripFailed' | 'instrumentalOf' | 'voiceS'> {
+export function stripFacts(facts: Pick<SongFacts, 'stripped' | 'stripJob' | 'stripFailed' | 'instrumentalOf'>): Pick<SongFacts, 'stripped' | 'stripJob' | 'stripFailed' | 'instrumentalOf'> {
   return {
     ...(facts.stripped === true ? { stripped: true } : {}),
     ...(typeof facts.stripJob === 'string' ? { stripJob: facts.stripJob } : {}),
     ...(typeof facts.stripFailed === 'string' ? { stripFailed: facts.stripFailed } : {}),
     ...(typeof facts.instrumentalOf === 'string' ? { instrumentalOf: facts.instrumentalOf } : {}),
-    ...(typeof facts.voiceS === 'number' ? { voiceS: facts.voiceS } : {}),
   };
 }
 

@@ -1,29 +1,27 @@
 /**
- * strip — a song's voice taken out by Crucible's separator, its instrumental stem kept as the song.
+ * strip — a library song's voice taken out by Crucible's separator: an "Instrumental version".
  *
- * Owen, 2026-10-11: YuE2 instrumentals sometimes carry stray voices (gibberish, humming) that no
- * prompt reliably stops, so B-Sides runs every instrumental through the separator, "before it
- * converts to mp3": the song is rendered lossless (FLAC) and held on the server, the `denoise` job
- * (`vocals-roformer`, `stems: all`) takes that held render by reference, and the stem comes back in
- * the person's own format. Any song can also be made into an instrumental version: its library file
- * is uploaded and stripped the same way.
+ * Owen, 2026-10-11: any song can be made into an instrumental version: its library file is
+ * uploaded, the `denoise` job (`vocals-roformer`, `stems: all`) separates it, and the instrumental
+ * stem comes back in the person's own format as a new song. Renders are NOT put through it
+ * (Owen, 2026-10-12: "vocal sep doesnt work for yue generated audio ... it damages the audio";
+ * the level pumps as the voice comes and goes): an instrumental's stray voice is the model's to
+ * leave out (instrumental-model.ts).
  *
  * What Crucible's 2.0.4 contract says (crucible-pc-1, 2026-10-11), and B-Sides leans on:
- *   - denoise takes any ffmpeg-decodable input at any rate (2.0.2 took only 44.1 kHz WAV/FLAC, and
- *     YuE2 renders at 48 kHz, so before 2.0.4 a strip cannot run: songs come out as they always did);
+ *   - denoise takes any ffmpeg-decodable input at any rate (2.0.2 took only 44.1 kHz WAV/FLAC);
  *   - `format` (wav | flac | mp3) is each stem's container, encoded as an audio job's;
  *   - stems are named from the input's name: `<input>_(vocals)_<checkpoint>.<ext>` and
  *     `<input>_(other)_<checkpoint>.<ext>`; "(other)" is the instrumental. The vocals stem of a clean
  *     song is silent, never missing, and is not read at all here.
- *   - one engine is resident on a card at a time: a strip between two renders reloads YuE2 (~20 s),
- *     so an album's strips wait for its renders and run together in one queue session (jobs.ts).
+ *   - one engine is resident on a card at a time, so a playlist's versions run in one queue
+ *     session (jobs.ts).
  */
 import { CrucibleRefused, CrucibleUnreachable, type CrucibleClient, type JobInput, type JobRequest, type ServerInfo } from '@crucible/client';
 
 import { Refusal } from './refusal';
 import { SEPARATOR_MODEL } from './server-needs';
 import type { StoredServer } from './servers';
-import { levelsOf, readWav } from './voice-check';
 import type { SongFormat, StripAbility } from '../types';
 
 /** The first Crucible whose separator takes YuE2's 48 kHz songs and encodes its stems (2.0.4). */
@@ -140,39 +138,6 @@ export function denoiseJob(input: JobInput, inputName: string, format: SongForma
   };
 }
 
-/**
- * The meter's job (a gated strip, StripView.gated): the vocal stem alone, as WAV (the separator's
- * own output when no format is asked), which B-Sides reads itself (voice-check.ts). Nothing is
- * kept from it but a number.
- */
-export function voiceCheckJob(input: JobInput, inputName: string, key: string): JobRequest {
-  return {
-    type: 'denoise',
-    model: SEPARATOR_MODEL,
-    params: { stems: 'primary' },
-    inputs: { [inputName]: input },
-    clientRef: `b-sides:voice-check:${key}`,
-  };
-}
-
-/**
- * What counts as a voice worth stripping, from the listening tests of 2026-10-11/12 (memory:
- * yue2-vocal-leak-findings): the vocal stem's seconds at or above VOICED_DBFS. A clean render reads
- * 0; yue2-3b's instrumentals read 13-115 s; the instrumental model's hums read 7.5-24 s on metal
- * and 0 on soul. Owen hears the hums as acceptable and the strip as a band-aid that dulls the whole
- * track, so the bar sits above a short hum: a render at or over VOICED_S is stripped, under it
- * lands as made. Owen's number to move.
- */
-export const VOICED_DBFS = -30;
-export const VOICED_S = 8;
-
-/** The vocal stem among a separation's artifacts: "(vocals)", else the one that is not an instrumental. */
-export function vocalStem(stems: readonly string[]): string | null {
-  const named = stems.find((name) => /\((vocals?|voice)\)/i.test(name));
-  if (named !== undefined) return named;
-  const rest = stems.filter((name) => !/\((other|instrumental|no[ _-]?vocals?)\)/i.test(name));
-  return rest.length === 1 ? (rest[0] as string) : null;
-}
 
 /** What a strip run tells the job it is for. */
 export interface StripWatch {
@@ -205,32 +170,13 @@ function pause(ms: number): Promise<void> {
  * `existing`: a denoise job sent before (a restart): followed, not sent again, while it lives.
  */
 export async function runStrip(client: CrucibleClient, request: JobRequest, watch: StripWatch, existing: string | null = null, pollMs = POLL_MS): Promise<Stripped> {
-  const { jobId, artifacts } = await runSeparation(client, request, watch, existing, pollMs, 'Taking out stray voices');
+  const { jobId, artifacts } = await runSeparation(client, request, watch, existing, pollMs, 'Taking out the voice');
   const stem = instrumentalStem(artifacts);
   if (stem === null) throw new Refusal('strip_no_stem', `The separator answered without an instrumental stem (it gave ${artifacts.join(', ') || 'nothing'}).`);
   return { jobId, stem };
 }
 
-/** What the meter found in a render: its job, and the seconds of voice (VOICED_DBFS) in its vocal stem. */
-export interface Metered {
-  readonly jobId: string;
-  readonly voiceS: number;
-}
-
-/**
- * Meter a render (voiceCheckJob) and answer how many seconds of voice it holds. The stem is fetched
- * to be read and then forgotten. Throws a Refusal naming why, like runStrip.
- */
-export async function runVoiceCheck(client: CrucibleClient, request: JobRequest, watch: StripWatch, pollMs = POLL_MS): Promise<Metered> {
-  const { jobId, artifacts } = await runSeparation(client, request, watch, null, pollMs, 'Listening for stray voices');
-  const stem = vocalStem(artifacts);
-  if (stem === null) throw new Refusal('voice_check_empty', `The separator answered without a vocal stem (it gave ${artifacts.join(', ') || 'nothing'}).`);
-  const { samples, rate } = readWav(await client.artifact(jobId, stem));
-  const levels = levelsOf(samples, rate);
-  return { jobId, voiceS: levels.perSecond.filter((level) => level >= VOICED_DBFS).length };
-}
-
-/** A separation sent and followed to its artifacts (runStrip, runVoiceCheck); `doing` is its sentence while it runs. */
+/** A separation sent and followed to its artifacts; `doing` is its sentence while it runs. */
 async function runSeparation(client: CrucibleClient, request: JobRequest, watch: StripWatch, existing: string | null, pollMs: number, doing: string): Promise<{ readonly jobId: string; readonly artifacts: readonly string[] }> {
   let jobId = existing;
   if (jobId !== null) {

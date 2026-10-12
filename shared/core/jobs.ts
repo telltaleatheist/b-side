@@ -25,17 +25,11 @@
  * a native download straight to disk on the phone (a 35 MB song must never cross
  * the WebView bridge as base64).
  *
- * strip    (Owen, 2026-10-11; strip.ts) an instrumental, on a server that can strip, is
- *          rendered as a held FLAC; once done, a `denoise` job takes it by reference and its
- *          instrumental stem, in the person's format, is what lands. On a server with the
- *          instrumental model (instrumental-model.ts, 2026-10-12) the render is held in the
- *          person's format, metered first, and stripped only when a voice is found. A song on its own is
- *          stripped at once. An album's tracks wait (`waiting`) until nothing of ours is
- *          rendering on that server, then are stripped together in one queue session, so the
- *          separator loads once instead of trading places with YuE2 for every track. A strip
- *          that fails lands the held render as it was made (FLAC: B-Sides has no encoder of its
- *          own, and Crucible no transcode job), and says why. Instrumental versions of library
- *          songs (`versions`) are uploaded and stripped the same way, a playlist's in one session.
+ * strip    (strip.ts) only instrumental VERSIONS of library songs (`versions`): uploaded, put
+ *          through Crucible's separator, and landed as the instrumental stem, a playlist's in one
+ *          queue session. A render is never stripped (Owen, 2026-10-12: "vocal sep doesnt work
+ *          for yue generated audio ... it damages the audio"); an instrumental's stray voice is
+ *          the model's to leave out (instrumental-model.ts), and a render lands as made.
  */
 
 import {
@@ -54,7 +48,7 @@ import { clientFor } from './crucible';
 import type { Disk } from './disk';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
-import { denoiseJob, inputNameOf, runStrip, runVoiceCheck, voiceCheckJob, VOICED_S, type StripWatch } from './strip';
+import { denoiseJob, inputNameOf, runStrip, type StripWatch } from './strip';
 import { batchSeeds } from '../batch';
 import { namedSet, pickSet, planningLyrics, type Planned } from '../planning-sets';
 import { styleLine, varyInstrumental } from '../tags';
@@ -92,16 +86,12 @@ interface Job {
   resends?: number;
   /** Sent again, with a new seed, after its worker crashed on it (at most once). */
   retried?: boolean;
-  /** A held render waiting for (or in) its strip: what its done event said. */
-  rendered?: { readonly artifact: string; readonly seed: number; readonly durationS: number | null; readonly effective: unknown };
   /** An instrumental version: the library song, and its audio file to upload. */
   source?: { readonly song: Song; readonly file: string; readonly beside?: boolean };
 }
 
-/** What the runner needs to strip songs (strip.ts); without it nothing is stripped. */
+/** What the runner needs to make instrumental versions (strip.ts); without it none are made. */
 export interface StripOptions {
-  /** Whether `server` can strip now (a StripGate). */
-  can(server: StoredServer, client: CrucibleClient): Promise<boolean>;
   /** A strip the server refused for a reason no song changes (ffmpeg missing): told to the gate. */
   refuse?(server: StoredServer, why: string): void;
   /** A queue session for a run of strips, so the separator loads once; null (or absent): each on its own. */
@@ -153,7 +143,7 @@ export function settleSong(params: SongParams): SongParams {
  * A sung song sends no range either: Crucible only recorded it against the score, and the library
  * works that out from the score's length itself (library.ts aimOf).
  */
-export function songJob(params: SongParams, format: SongFormat, key: string, hold = false, model: string = SONG_MODEL): JobRequest {
+export function songJob(params: SongParams, format: SongFormat, key: string, model: string = SONG_MODEL): JobRequest {
   const wire: Record<string, unknown> = { format };
   if (params.tags !== undefined) wire['tags'] = params.tags;
   if (params.instrumental === true && params.experiment?.lyrics !== undefined) wire['lyrics'] = params.experiment.lyrics;
@@ -162,8 +152,7 @@ export function songJob(params: SongParams, format: SongFormat, key: string, hol
   if (params.instrumental !== undefined) wire['instrumental'] = params.instrumental;
   if (params.cfg !== undefined) wire['cfg'] = params.cfg;
   if (params.seed !== undefined) wire['seed'] = params.seed;
-  // Held (Owen, 2026-10-11): a song to strip stays on the server until its separator job has read it.
-  return { type: 'audio', model, params: wire, inputs: {}, clientRef: `b-sides:${key}`, ...(hold ? { hold: true } : {}) };
+  return { type: 'audio', model, params: wire, inputs: {}, clientRef: `b-sides:${key}` };
 }
 
 /** An instrumental's planning lyrics: its set (else the seed's; settleSong names one), sized to its aim. */
@@ -211,12 +200,10 @@ export interface Landed {
   readonly durationS: number | null;
   readonly effective: unknown;
   /**
-   * Its strip (Owen, 2026-10-11): `jobId` the denoise job its stem came from; `failed` why a strip
-   * failed (the render landed as made); `of` the library song an instrumental version was made from;
-   * `voiceS` what the meter found before deciding (a gated strip; the render landed as made when
-   * there is no `jobId`). Absent: not stripped, not metered.
+   * An instrumental version (Owen, 2026-10-11): `jobId` the denoise job its stem came from, `of`
+   * the library song it was made from, `beside` filed next to it. Absent: a render, as made.
    */
-  readonly strip?: { readonly jobId?: string; readonly failed?: string; readonly of?: string; readonly beside?: boolean; readonly voiceS?: number };
+  readonly strip?: { readonly jobId?: string; readonly of?: string; readonly beside?: boolean };
 }
 
 export interface JobHooks {
@@ -226,8 +213,6 @@ export interface JobHooks {
   ended?(job: JobView): void;
   /** A job's song is made and is being fetched: it is off the server's line (single songs going next). */
   fetching?(job: JobView): void;
-  /** An album's track is rendered and waits for its strip: its render is off the server (the album may send more). */
-  rendered?(job: JobView): void;
   /** Keep a finished song: as a take, and filed into its playlist when it has one (answers the song then). */
   land(landed: Landed): Promise<{ readonly take: Take; readonly songId: string | null }>;
   /** Find a server again by name (to resume a pending job after a restart). */
@@ -263,7 +248,7 @@ export class JobRunner {
     private readonly fetchAudio: AudioFetcher,
     /** A client for a server; the real one, or a test's stand-in. */
     private readonly connect: (server: StoredServer) => CrucibleClient = clientFor,
-    /** Stripping songs' voices (strip.ts); null: nothing is stripped. */
+    /** Making instrumental versions (strip.ts); null: none are made. */
     private readonly strips: StripOptions | null = null,
     /**
      * The model an instrumental on `server` goes to (instrumental-model.ts: INSTRUMENTAL_MODEL when the
@@ -272,18 +257,12 @@ export class JobRunner {
     private readonly modelFor: ((server: StoredServer, client: CrucibleClient) => Promise<string>) | null = null,
   ) {}
 
-  /** Servers whose waiting strips are running now, as one batch. */
-  private readonly stripping = new Set<string>();
   /** Instrumental versions, one run after another per server (each run its own session). */
   private readonly versionLines = new Map<string, Promise<void>>();
 
-  /**
-   * One client's jobs still rendering on the server (sent, waiting or running), not those made and
-   * waiting for or in their strip: an album keeps this many on the server, and sends more as each
-   * render ends, though its strip comes later.
-   */
+  /** One client's jobs still rendering on the server (sent, waiting or running): an album keeps this many on it. */
   rendering(client: string): number {
-    return [...this.jobs.values()].filter((job) => job.view.client === client && !this.ended(job) && !this.pastRender(job) && job.view.phase !== 'fetching').length;
+    return [...this.jobs.values()].filter((job) => job.view.client === client && !this.ended(job) && job.view.phase !== 'fetching').length;
   }
 
   /** One client's jobs, oldest first. */
@@ -445,15 +424,11 @@ export class JobRunner {
   async cancel(key: string): Promise<null> {
     const job = this.jobs.get(key);
     if (job === undefined || this.ended(job)) return null;
-    if (job.view.strip != null && (job.view.strip.of != null || this.pastRender(job))) {
-      // Its render is done (or there is none): the strip, or its turn for one, is what is cancelled.
+    if (job.view.strip?.of != null) {
+      // An instrumental version: its strip, or its turn for one, is what is cancelled. One not begun
+      // ends now; one running sees `gone` and takes its denoise job off the server itself.
       job.gone = true;
-      // Waiting for its turn (an album track's batch, a version not begun): it ends now. One running
-      // sees `gone` and takes its denoise job off the server itself.
-      if (job.view.strip.state === 'waiting' || (job.view.strip.of != null && job.view.phase === 'submitting')) {
-        this.release(job);
-        this.finish(job, 'cancelled');
-      }
+      if (job.view.phase === 'submitting') this.finish(job, 'cancelled');
       return null;
     }
     if (job.view.phase === 'installing') {
@@ -563,8 +538,6 @@ export class JobRunner {
     if (phase === 'done') this.jobs.delete(job.view.key);
     else this.hooks.ended?.({ ...job.view });
     void this.savePending();
-    // A render ending may be the last on its server: the album tracks waiting to be stripped go now.
-    this.flushStrips(job.view.server);
   }
 
   /** The jobs the server has and that have not ended: what a restart must pick up. */
@@ -595,16 +568,6 @@ export class JobRunner {
         ? await this.modelFor(job.server, client).catch(() => SONG_MODEL)
         : SONG_MODEL;
     }
-    // Stripped (Owen, 2026-10-11): an instrumental, on a server that can, is rendered lossless and
-    // held; the separator's stem comes back in the person's format. Decided once, on first sending.
-    // On the instrumental model the strip is a safety net (Owen, 2026-10-12): the render is held in
-    // the person's own format, metered, and stripped only when a voice is found (StripView.gated).
-    if (job.view.strip === undefined && job.view.params.instrumental === true && this.strips !== null) {
-      const can = await this.strips.can(job.server, client).catch(() => false);
-      const gated = job.view.model !== SONG_MODEL;
-      job.view.strip = can ? { state: 'rendering', format: job.format, jobId: null, ...(gated ? { gated } : {}) } : null;
-    }
-    const strip = job.view.strip ?? null;
     let jobId: string | null = null;
     for (let round = 0; jobId === null; round += 1) {
       if (job.gone) return;
@@ -613,7 +576,7 @@ export class JobRunner {
         // retry, a job resumed from pending.json, the phone's hub): an instrumental goes with its set.
         job.view.params = settleSong(job.view.params);
         if (job.view.params.seed !== undefined) job.view.seed = job.view.params.seed;
-        jobId = await client.submit(songJob(job.view.params, strip === null || strip.gated === true ? job.format : 'flac', job.view.key, strip !== null, job.view.model));
+        jobId = await client.submit(songJob(job.view.params, job.format, job.view.key, job.view.model));
       } catch (error) {
         if (job.gone) return;
         if (!isInstalling(error) || round >= INSTALL_ROUNDS) {
@@ -857,38 +820,16 @@ export class JobRunner {
   /** `done`: fetch the audio and file it. A fetch the server cannot answer is retried, saying so. */
   private async land(job: Job, done: DoneData): Promise<void> {
     const jobId = job.view.jobId as string;
-    let rendered: NonNullable<Job['rendered']>;
+    let result;
     try {
-      const result = readAudioResult(done);
+      result = readAudioResult(done);
       job.view.seed = result.seed;
-      rendered = { artifact: result.artifact, seed: result.seed, durationS: result.audioSeconds, effective: (done.extra as Record<string, unknown>)['audio'] };
     } catch (error) {
       this.finish(job, 'failed', refusalOf(error));
       return;
     }
-    const strip = job.view.strip ?? null;
-    if (strip === null) {
-      await this.deliver(job, { fill: this.filler(job, jobId, rendered.artifact), extension: extensionOf(rendered.artifact), seed: rendered.seed, durationS: rendered.durationS, effective: rendered.effective });
-      return;
-    }
-    job.rendered = rendered;
-    // Every song, an album's track too, is stripped at once and delivered, so it can be heard as soon
-    // as it is made (Owen, 2026-10-11: "the goal is to get the user listening asap"); the album sends
-    // its next track once this one is in. The cost is a reload of YuE2 after each strip.
-    await this.stripRendered(job, this.clientOf(job));
-  }
-
-  /** Whether a job's render is behind it: made and waiting for its strip, or in it (or never had one). */
-  private pastRender(job: Job): boolean {
-    const state = job.view.strip?.state;
-    return state === 'waiting' || state === 'stripping';
-  }
-
-  /** A held render no longer needed on the server: its hold let go (in the background). */
-  private release(job: Job): void {
-    const renderId = job.rendered === undefined ? null : job.view.jobId;
-    if (renderId === null || job.client === null) return;
-    void job.client.releaseArtifacts(renderId).catch((err: unknown) => console.error(`[strip] could not let go of ${renderId} on ${job.view.server}:`, err));
+    // As made (Owen, 2026-10-12): a render is never put through the separator, which damages it.
+    await this.deliver(job, { fill: this.filler(job, jobId, result.artifact), extension: extensionOf(result.artifact), seed: result.seed, durationS: result.audioSeconds, effective: (done.extra as Record<string, unknown>)['audio'] });
   }
 
   /** Fetch `artifact` of `jobId` into a file, retrying while the server cannot be reached. */
@@ -940,87 +881,6 @@ export class JobRunner {
       },
       gone: () => job.gone,
     };
-  }
-
-  /**
-   * Strip a held render through `client` (a session's in a batch) and land its instrumental stem. A
-   * strip that fails lands the render as made, and says why; the song is never lost to it.
-   */
-  private async stripRendered(job: Job, client: CrucibleClient): Promise<void> {
-    const rendered = job.rendered as NonNullable<Job['rendered']>;
-    const renderId = job.view.jobId as string;
-    const strip = job.view.strip as NonNullable<JobView['strip']>;
-    job.view.strip = { ...strip, state: 'stripping' };
-    this.watch(job).progress(null, strip.gated === true ? 'Listening for stray voices' : 'Taking out stray voices');
-    let landed: Omit<Landed, 'job' | 'server'>;
-    try {
-      // Chained (crucible-pc-1, 2026-10-11): the held render is the separator's input by reference,
-      // nothing is uploaded. Named for its own extension, as the stems are named from it.
-      const input = { artifact: { jobId: renderId, name: rendered.artifact } };
-      const name = inputNameOf(rendered.artifact);
-      let voiceS: number | null = null;
-      // Gated (Owen, 2026-10-12): metered first; a render with less than VOICED_S of voice lands as
-      // made. A strip already sent (strip.jobId, a restart) is followed instead of metering again.
-      if (strip.gated === true && strip.jobId === null) {
-        const metered = await runVoiceCheck(client, voiceCheckJob(input, name, job.view.key), this.watch(job), this.strips?.pollMs);
-        voiceS = metered.voiceS;
-        if (voiceS < VOICED_S) {
-          console.log(`[strip] ${job.view.server} found ${voiceS} s of voice in ${renderId}; kept as made`);
-          await this.deliver(job, { fill: this.filler(job, renderId, rendered.artifact), extension: extensionOf(rendered.artifact), seed: rendered.seed, durationS: rendered.durationS, effective: rendered.effective, strip: { voiceS } });
-          this.release(job);
-          return;
-        }
-        console.log(`[strip] ${job.view.server} found ${voiceS} s of voice in ${renderId}; taking it out`);
-        this.watch(job).progress(null, 'Taking out stray voices');
-      }
-      const done = await runStrip(client, denoiseJob(input, name, strip.format, job.view.key), this.watch(job), strip.jobId, this.strips?.pollMs);
-      landed = { fill: this.filler(job, done.jobId, done.stem), extension: extensionOf(done.stem), seed: rendered.seed, durationS: rendered.durationS, effective: rendered.effective, strip: { jobId: done.jobId, ...(voiceS === null ? {} : { voiceS }) } };
-    } catch (error) {
-      if (job.gone) {
-        this.release(job);
-        this.finish(job, 'cancelled');
-        return;
-      }
-      const why = refusalOf(error).message;
-      console.error(`[strip] ${job.view.server} could not strip ${renderId}; it is kept as made (${rendered.artifact}): ${why}`);
-      if (error instanceof CrucibleRefused && error.code === 'ffmpeg_missing') this.strips?.refuse?.(job.server, why);
-      landed = { fill: this.filler(job, renderId, rendered.artifact), extension: extensionOf(rendered.artifact), seed: rendered.seed, durationS: rendered.durationS, effective: rendered.effective, strip: { failed: why } };
-    }
-    try {
-      await this.deliver(job, landed);
-    } finally {
-      this.release(job);
-    }
-  }
-
-  /**
-   * An album's tracks waiting for their strips on `server` go once nothing of ours is rendering
-   * there (crucible-pc-1, 2026-10-11: one engine on a card at a time, ~20 s to trade YuE2 for the
-   * separator): all of them, in one queue session, so the separator loads once.
-   */
-  private flushStrips(server: string): void {
-    if (this.stripping.has(server)) return;
-    const on = [...this.jobs.values()].filter((job) => job.view.server === server && !this.ended(job) && job.view.strip?.of == null);
-    const waiting = on.filter((job) => job.view.strip?.state === 'waiting' && !job.gone);
-    if (waiting.length === 0 || on.some((job) => !this.pastRender(job))) return;
-    this.stripping.add(server);
-    void this.stripBatch(server, (waiting[0] as Job).server)
-      .catch((err: unknown) => console.error(`[strip] the strips waiting on ${server} stopped:`, err))
-      .finally(() => {
-        this.stripping.delete(server);
-        this.flushStrips(server);
-      });
-  }
-
-  private async stripBatch(name: string, server: StoredServer): Promise<void> {
-    const next = (): Job | undefined => [...this.jobs.values()]
-      .find((job) => job.view.server === name && job.view.strip?.state === 'waiting' && !job.gone && !this.ended(job));
-    const session = await this.openSession(server, next());
-    try {
-      for (let job = next(); job !== undefined; job = next()) await this.stripRendered(job, session?.client ?? this.clientOf(job));
-    } finally {
-      await session?.close().catch(() => undefined);
-    }
   }
 
   /** A queue session for a run of strips; null when there is none to be had (each strip goes on its own). */
