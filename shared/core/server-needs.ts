@@ -25,7 +25,7 @@
  */
 import { CrucibleRefused, type CatalogRow, type CrucibleClient, type CrucibleModule } from '@crucible/client';
 
-import type { ServerNeedsView } from '../types';
+import { INSTRUMENTAL_MODEL, SONG_MODEL, type ServerNeedsView } from '../types';
 
 /** The separator B-Sides asks for, by its catalog id. */
 export const SEPARATOR_MODEL = 'vocals-roformer';
@@ -47,7 +47,11 @@ export const B_SIDES_MODULE = {
   needs: [],
   subjects: [
     { kind: 'denoise', id: SEPARATOR_MODEL, backends: ['cuda-linux', 'mlx-darwin'] },
-    { kind: 'model', id: 'yue2-3b', backends: ['cuda-linux', 'mlx-darwin'] },
+    { kind: 'model', id: SONG_MODEL, backends: ['cuda-linux', 'mlx-darwin'] },
+    // The instrumental model (Owen, 2026-10-12; Crucible 2.0.7, a 140 MB adapter over yue2-3b):
+    // asked for where the server's catalog knows it (knownTo), so an older server is not posted a
+    // module it would refuse whole.
+    { kind: 'model', id: INSTRUMENTAL_MODEL, backends: ['cuda-linux', 'mlx-darwin'] },
   ],
 } as const;
 
@@ -62,6 +66,20 @@ export function moduleForBackend(backend: string): CrucibleModule {
     needs: [],
     subjects: B_SIDES_MODULE.subjects.filter((row) => here(row, backend)).map(({ kind, id }) => ({ kind, id })),
   };
+}
+
+/**
+ * The module with only the subjects this server's catalog knows (a newer one's, such as the
+ * instrumental model on a server before 2.0.7, is left out and said in the log), so the post asks
+ * for nothing the server cannot name. Job types are not catalog rows and stay.
+ */
+export function knownTo(module: CrucibleModule, catalog: readonly CatalogRow[], log: (line: string) => void = () => undefined): CrucibleModule {
+  const subjects = module.subjects.filter((subject) => {
+    const known = catalog.some((row) => row.kind === subject.kind && row.id === subject.id);
+    if (!known) log(`[needs] this server's catalog has no ${subject.kind} ${subject.id}; not asked for it`);
+    return known;
+  });
+  return { ...module, subjects };
 }
 
 /**
@@ -142,12 +160,14 @@ export class ServerNeeds {
 
   private async run(server: string, client: CrucibleClient, enable: () => Promise<void>): Promise<void> {
     const info = await client.info();
-    const module = moduleForBackend(info.host.backend);
-    if (module.subjects.length === 0 && module.job_types.length === 0) {
+    const whole = moduleForBackend(info.host.backend);
+    if (whole.subjects.length === 0 && whole.job_types.length === 0) {
       this.set({ server, state: 'not-here', sentence: `${server} runs Crucible's ${info.host.backend} engine, which has no vocal separator; everything else works.`, task: null });
       return;
     }
-    const missing = missingOf(module, await client.catalog(), info.jobTypes);
+    const catalog = await client.catalog();
+    const module = knownTo(whole, catalog, (line) => console.log(`${line} (${server})`));
+    const missing = missingOf(module, catalog, info.jobTypes);
     if (missing.length === 0) {
       if (!info.jobTypes.includes('denoise')) await enable();
       this.set({ server, state: 'ready', sentence: `${server} has the vocal separator.`, task: null });

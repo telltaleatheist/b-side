@@ -50,6 +50,7 @@ import { Library, type ImportedAlbum } from './library';
 import { PairingSessions } from './pairing';
 import { Refusal } from './refusal';
 import { ServerRegistry, type StoredServer, type Vault } from './servers';
+import { InstrumentalModelGate } from './instrumental-model';
 import { StripGate } from './strip';
 import { stripFacts, TakeStore, type TakeLimits } from './takes';
 import { defaultTitle } from './titles';
@@ -314,6 +315,8 @@ export class HubCore {
   private readonly needs = new ServerNeeds();
   /** Which servers can take a song's voice out (strip.ts; Owen, 2026-10-11). */
   private readonly strips = new StripGate();
+  /** Which servers have the instrumental model (instrumental-model.ts; Owen, 2026-10-12). */
+  private readonly models = new InstrumentalModelGate();
 
   constructor(private readonly options: HubCoreOptions) {
     this.sink = options.sink;
@@ -352,6 +355,7 @@ export class HubCore {
           const stripped = {
             ...(strip?.jobId !== undefined ? { stripped: true, stripJob: strip.jobId } : {}),
             ...(strip?.failed !== undefined ? { stripFailed: strip.failed } : {}),
+            ...(strip?.voiceS !== undefined ? { voiceS: strip.voiceS } : {}),
           };
           // An instrumental version: the same title and record as the song it was made from, and a link to it.
           const original = strip?.of === undefined ? null : await this.library.song(strip.of).catch(() => null);
@@ -385,7 +389,8 @@ export class HubCore {
             title: planned?.title ?? landed.job.title ?? defaultTitle(params),
             extension: landed.extension,
             fill: landed.fill,
-            model: SONG_MODEL,
+            // What made it (Owen, 2026-10-12): the instrumental model or yue2-3b, as the job was sent.
+            model: landed.job.model ?? SONG_MODEL,
             ...stripped,
             params: {
               tags: params.tags ?? null,
@@ -450,6 +455,7 @@ export class HubCore {
         },
         ...(options.disk.readBytes !== undefined ? { readFile: (file: string) => (options.disk.readBytes as NonNullable<Disk['readBytes']>).call(options.disk, file) } : {}),
       },
+      (server, client) => this.models.pick(server, client),
     );
     this.albums = new AlbumMaker({
       meta: (id) => this.library.album(id),

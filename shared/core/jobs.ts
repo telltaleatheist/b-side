@@ -27,7 +27,9 @@
  *
  * strip    (Owen, 2026-10-11; strip.ts) an instrumental, on a server that can strip, is
  *          rendered as a held FLAC; once done, a `denoise` job takes it by reference and its
- *          instrumental stem, in the person's format, is what lands. A song on its own is
+ *          instrumental stem, in the person's format, is what lands. On a server with the
+ *          instrumental model (instrumental-model.ts, 2026-10-12) the render is held in the
+ *          person's format, metered first, and stripped only when a voice is found. A song on its own is
  *          stripped at once. An album's tracks wait (`waiting`) until nothing of ours is
  *          rendering on that server, then are stripped together in one queue session, so the
  *          separator loads once instead of trading places with YuE2 for every track. A strip
@@ -52,7 +54,7 @@ import { clientFor } from './crucible';
 import type { Disk } from './disk';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
-import { denoiseJob, inputNameOf, runStrip, type StripWatch } from './strip';
+import { denoiseJob, inputNameOf, runStrip, runVoiceCheck, voiceCheckJob, VOICED_S, type StripWatch } from './strip';
 import { batchSeeds } from '../batch';
 import { namedSet, pickSet, planningLyrics, type Planned } from '../planning-sets';
 import { styleLine, varyInstrumental } from '../tags';
@@ -151,7 +153,7 @@ export function settleSong(params: SongParams): SongParams {
  * A sung song sends no range either: Crucible only recorded it against the score, and the library
  * works that out from the score's length itself (library.ts aimOf).
  */
-export function songJob(params: SongParams, format: SongFormat, key: string, hold = false): JobRequest {
+export function songJob(params: SongParams, format: SongFormat, key: string, hold = false, model: string = SONG_MODEL): JobRequest {
   const wire: Record<string, unknown> = { format };
   if (params.tags !== undefined) wire['tags'] = params.tags;
   if (params.instrumental === true && params.experiment?.lyrics !== undefined) wire['lyrics'] = params.experiment.lyrics;
@@ -161,7 +163,7 @@ export function songJob(params: SongParams, format: SongFormat, key: string, hol
   if (params.cfg !== undefined) wire['cfg'] = params.cfg;
   if (params.seed !== undefined) wire['seed'] = params.seed;
   // Held (Owen, 2026-10-11): a song to strip stays on the server until its separator job has read it.
-  return { type: 'audio', model: SONG_MODEL, params: wire, inputs: {}, clientRef: `b-sides:${key}`, ...(hold ? { hold: true } : {}) };
+  return { type: 'audio', model, params: wire, inputs: {}, clientRef: `b-sides:${key}`, ...(hold ? { hold: true } : {}) };
 }
 
 /** An instrumental's planning lyrics: its set (else the seed's; settleSong names one), sized to its aim. */
@@ -210,10 +212,11 @@ export interface Landed {
   readonly effective: unknown;
   /**
    * Its strip (Owen, 2026-10-11): `jobId` the denoise job its stem came from; `failed` why a strip
-   * failed (the render landed as made); `of` the library song an instrumental version was made from.
-   * Absent: not stripped.
+   * failed (the render landed as made); `of` the library song an instrumental version was made from;
+   * `voiceS` what the meter found before deciding (a gated strip; the render landed as made when
+   * there is no `jobId`). Absent: not stripped, not metered.
    */
-  readonly strip?: { readonly jobId?: string; readonly failed?: string; readonly of?: string; readonly beside?: boolean };
+  readonly strip?: { readonly jobId?: string; readonly failed?: string; readonly of?: string; readonly beside?: boolean; readonly voiceS?: number };
 }
 
 export interface JobHooks {
@@ -262,6 +265,11 @@ export class JobRunner {
     private readonly connect: (server: StoredServer) => CrucibleClient = clientFor,
     /** Stripping songs' voices (strip.ts); null: nothing is stripped. */
     private readonly strips: StripOptions | null = null,
+    /**
+     * The model an instrumental on `server` goes to (instrumental-model.ts: INSTRUMENTAL_MODEL when the
+     * server has it, else SONG_MODEL); null: SONG_MODEL. Sung songs always go to SONG_MODEL.
+     */
+    private readonly modelFor: ((server: StoredServer, client: CrucibleClient) => Promise<string>) | null = null,
   ) {}
 
   /** Servers whose waiting strips are running now, as one batch. */
@@ -580,11 +588,21 @@ export class JobRunner {
 
   private async submit(job: Job): Promise<void> {
     const client = this.clientOf(job);
+    // Which model (Owen, 2026-10-12): an instrumental goes to the server's instrumental model when
+    // it has one. Decided once, on first sending, so a resend or retry goes where the record says.
+    if (job.view.model === undefined) {
+      job.view.model = job.view.params.instrumental === true && this.modelFor !== null
+        ? await this.modelFor(job.server, client).catch(() => SONG_MODEL)
+        : SONG_MODEL;
+    }
     // Stripped (Owen, 2026-10-11): an instrumental, on a server that can, is rendered lossless and
     // held; the separator's stem comes back in the person's format. Decided once, on first sending.
+    // On the instrumental model the strip is a safety net (Owen, 2026-10-12): the render is held in
+    // the person's own format, metered, and stripped only when a voice is found (StripView.gated).
     if (job.view.strip === undefined && job.view.params.instrumental === true && this.strips !== null) {
       const can = await this.strips.can(job.server, client).catch(() => false);
-      job.view.strip = can ? { state: 'rendering', format: job.format, jobId: null } : null;
+      const gated = job.view.model !== SONG_MODEL;
+      job.view.strip = can ? { state: 'rendering', format: job.format, jobId: null, ...(gated ? { gated } : {}) } : null;
     }
     const strip = job.view.strip ?? null;
     let jobId: string | null = null;
@@ -595,7 +613,7 @@ export class JobRunner {
         // retry, a job resumed from pending.json, the phone's hub): an instrumental goes with its set.
         job.view.params = settleSong(job.view.params);
         if (job.view.params.seed !== undefined) job.view.seed = job.view.params.seed;
-        jobId = await client.submit(songJob(job.view.params, strip === null ? job.format : 'flac', job.view.key, strip !== null));
+        jobId = await client.submit(songJob(job.view.params, strip === null || strip.gated === true ? job.format : 'flac', job.view.key, strip !== null, job.view.model));
       } catch (error) {
         if (job.gone) return;
         if (!isInstalling(error) || round >= INSTALL_ROUNDS) {
@@ -933,14 +951,30 @@ export class JobRunner {
     const renderId = job.view.jobId as string;
     const strip = job.view.strip as NonNullable<JobView['strip']>;
     job.view.strip = { ...strip, state: 'stripping' };
-    this.watch(job).progress(null, 'Taking out stray voices');
+    this.watch(job).progress(null, strip.gated === true ? 'Listening for stray voices' : 'Taking out stray voices');
     let landed: Omit<Landed, 'job' | 'server'>;
     try {
       // Chained (crucible-pc-1, 2026-10-11): the held render is the separator's input by reference,
       // nothing is uploaded. Named for its own extension, as the stems are named from it.
       const input = { artifact: { jobId: renderId, name: rendered.artifact } };
-      const done = await runStrip(client, denoiseJob(input, inputNameOf(rendered.artifact), strip.format, job.view.key), this.watch(job), strip.jobId, this.strips?.pollMs);
-      landed = { fill: this.filler(job, done.jobId, done.stem), extension: extensionOf(done.stem), seed: rendered.seed, durationS: rendered.durationS, effective: rendered.effective, strip: { jobId: done.jobId } };
+      const name = inputNameOf(rendered.artifact);
+      let voiceS: number | null = null;
+      // Gated (Owen, 2026-10-12): metered first; a render with less than VOICED_S of voice lands as
+      // made. A strip already sent (strip.jobId, a restart) is followed instead of metering again.
+      if (strip.gated === true && strip.jobId === null) {
+        const metered = await runVoiceCheck(client, voiceCheckJob(input, name, job.view.key), this.watch(job), this.strips?.pollMs);
+        voiceS = metered.voiceS;
+        if (voiceS < VOICED_S) {
+          console.log(`[strip] ${job.view.server} found ${voiceS} s of voice in ${renderId}; kept as made`);
+          await this.deliver(job, { fill: this.filler(job, renderId, rendered.artifact), extension: extensionOf(rendered.artifact), seed: rendered.seed, durationS: rendered.durationS, effective: rendered.effective, strip: { voiceS } });
+          this.release(job);
+          return;
+        }
+        console.log(`[strip] ${job.view.server} found ${voiceS} s of voice in ${renderId}; taking it out`);
+        this.watch(job).progress(null, 'Taking out stray voices');
+      }
+      const done = await runStrip(client, denoiseJob(input, name, strip.format, job.view.key), this.watch(job), strip.jobId, this.strips?.pollMs);
+      landed = { fill: this.filler(job, done.jobId, done.stem), extension: extensionOf(done.stem), seed: rendered.seed, durationS: rendered.durationS, effective: rendered.effective, strip: { jobId: done.jobId, ...(voiceS === null ? {} : { voiceS }) } };
     } catch (error) {
       if (job.gone) {
         this.release(job);

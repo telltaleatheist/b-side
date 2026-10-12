@@ -1,18 +1,34 @@
 import { expect, test } from 'bun:test';
 import { CrucibleRefused, type CatalogRow, type CrucibleClient } from '@crucible/client';
 
-import { missingOf, moduleForBackend, ServerNeeds } from '../shared/core/server-needs';
+import { knownTo, missingOf, moduleForBackend, ServerNeeds } from '../shared/core/server-needs';
 import type { ServerNeedsView } from '../shared/types';
 
 const row = (installed: boolean): CatalogRow => ({ kind: 'denoise', id: 'vocals-roformer', installed } as unknown as CatalogRow);
 const yue = (installed = true): CatalogRow => ({ kind: 'model', id: 'yue2-3b', installed } as unknown as CatalogRow);
 
-test('the module asks for the separator and YuE2 (Owen, 2026-10-11), without its generated backends', () => {
+test('the module asks for the separator, YuE2 (Owen, 2026-10-11) and the instrumental model (2026-10-12), without its generated backends', () => {
   const module = moduleForBackend('cuda-linux');
   expect(module.job_types).toEqual([{ type: 'rvc' }, { type: 'audio' }]);
-  expect(module.subjects).toEqual([{ kind: 'denoise', id: 'vocals-roformer' }, { kind: 'model', id: 'yue2-3b' }]);
+  expect(module.subjects).toEqual([{ kind: 'denoise', id: 'vocals-roformer' }, { kind: 'model', id: 'yue2-3b' }, { kind: 'model', id: 'yue2-3b-instrumental' }]);
   expect(module.name).toBe('b-sides');
   expect(JSON.stringify(module)).not.toContain('backends');
+});
+
+test('a subject the server\'s catalog does not know (the instrumental model before 2.0.7) is left out of the post', async () => {
+  const inst = (installed: boolean): CatalogRow => ({ kind: 'model', id: 'yue2-3b-instrumental', installed } as unknown as CatalogRow);
+  const module = moduleForBackend('cuda-linux');
+  const lines: string[] = [];
+  expect(knownTo(module, [row(true), yue()], (line) => lines.push(line)).subjects).toEqual([{ kind: 'denoise', id: 'vocals-roformer' }, { kind: 'model', id: 'yue2-3b' }]);
+  expect(lines).toEqual(['[needs] this server\'s catalog has no model yue2-3b-instrumental; not asked for it']);
+  expect(knownTo(module, [row(true), yue(), inst(false)]).subjects).toHaveLength(3);
+  // A 2.0.7 server without it installed is posted the module naming it; an older server is posted nothing.
+  const newer = fakeClient({ catalog: [row(true), yue(), inst(false)] }, 'cuda-linux', ['audio', 'denoise']);
+  await new ServerNeeds(undefined, 1).ensure('pc', newer.client);
+  expect((newer.posted[0] as { module: { subjects: unknown[] } }).module.subjects).toContainEqual({ kind: 'model', id: 'yue2-3b-instrumental' });
+  const older = fakeClient({ catalog: [row(true), yue()] }, 'cuda-linux', ['audio', 'denoise']);
+  await new ServerNeeds(undefined, 1).ensure('pc', older.client);
+  expect(older.posted).toHaveLength(0);
 });
 
 test('a Windows-native engine is asked for nothing: it has no separator', () => {
@@ -22,7 +38,8 @@ test('a Windows-native engine is asked for nothing: it has no separator', () => 
 });
 
 test('missing: the model by the catalog, the environment by the job types served', () => {
-  const module = moduleForBackend('mlx-darwin');
+  // As the ask runs: the module cut to what the catalog knows (knownTo), then what of it is missing.
+  const module = knownTo(moduleForBackend('mlx-darwin'), [row(true), yue()]);
   expect(missingOf(module, [row(true), yue()], ['denoise', 'audio'])).toEqual([]);
   expect(missingOf(module, [row(false), yue()], ['denoise', 'audio'])).toEqual(['denoise vocals-roformer']);
   expect(missingOf(module, [row(true), yue()], ['audio'])).toEqual(['the rvc environment']);

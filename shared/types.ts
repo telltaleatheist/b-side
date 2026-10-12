@@ -11,6 +11,15 @@
 export const SONG_MODEL = 'yue2-3b';
 
 /**
+ * The model an instrumental is made with when the server has it (Crucible 2.0.7): yue2-3b with an
+ * instrumental adapter fused around its composing call only (planning stays yue2-3b's). Owen,
+ * 2026-10-12, after the listening tests in shared/core/instrumental-model.ts: yue2-3b's composing
+ * invents a singer on most instrumentals; with the adapter the voice is rare and quiet. A server
+ * without it makes instrumentals with SONG_MODEL and strips them, as before.
+ */
+export const INSTRUMENTAL_MODEL = 'yue2-3b-instrumental';
+
+/**
  * The chat models that turn a description into style tags and lyrics (shared/core/describe.ts),
  * best first: qwen3.5-4b fine-tuned on B-Sides' own describe answers (training/lyrics). Since
  * Crucible 1.0.124 one id serves every card: a Q8_0 GGUF on llama.cpp on a PC (~5.4-5.9 GB, so it
@@ -359,6 +368,11 @@ export interface JobView {
   readonly songId?: string | null;
   /** Its voice taken out by the separator (Owen, 2026-10-11; shared/core/strip.ts); absent: not stripped. */
   readonly strip?: StripView | null;
+  /**
+   * The model it is sent to: INSTRUMENTAL_MODEL for an instrumental on a server that has it, else
+   * SONG_MODEL. Settled once, on first sending; absent (a job pending from before 1.0.29): SONG_MODEL.
+   */
+  readonly model?: string;
 }
 
 /**
@@ -380,6 +394,12 @@ export interface StripView {
   readonly jobId: string | null;
   /** An instrumental version: the library song it is made from (nothing is rendered). */
   readonly of?: string | null;
+  /**
+   * A safety net, not the rule (Owen, 2026-10-12, for INSTRUMENTAL_MODEL's songs): the render is
+   * metered first (its vocal stem's level), and stripped only when a voice is found; otherwise it
+   * lands as made. The render is then in the person's own format, not a held FLAC.
+   */
+  readonly gated?: boolean;
 }
 
 /** Whether instrumental versions can be made on the active server now, and why not (`GET /api/strip`). */
@@ -458,6 +478,11 @@ export interface SongFacts {
   readonly stripJob?: string;
   /** Why a strip it went through failed (it was kept as rendered); absent when none failed. */
   readonly stripFailed?: string;
+  /**
+   * Seconds of voice the meter found in it before deciding whether to strip (StripView.gated):
+   * seconds of its vocal stem at or above VOICED_DBFS. Absent when it was not metered.
+   */
+  readonly voiceS?: number;
   /** An instrumental version: the library song it was made from. */
   readonly instrumentalOf?: string;
 }

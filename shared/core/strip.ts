@@ -23,6 +23,7 @@ import { CrucibleRefused, CrucibleUnreachable, type CrucibleClient, type JobInpu
 import { Refusal } from './refusal';
 import { SEPARATOR_MODEL } from './server-needs';
 import type { StoredServer } from './servers';
+import { levelsOf, readWav } from './voice-check';
 import type { SongFormat, StripAbility } from '../types';
 
 /** The first Crucible whose separator takes YuE2's 48 kHz songs and encodes its stems (2.0.4). */
@@ -139,6 +140,40 @@ export function denoiseJob(input: JobInput, inputName: string, format: SongForma
   };
 }
 
+/**
+ * The meter's job (a gated strip, StripView.gated): the vocal stem alone, as WAV (the separator's
+ * own output when no format is asked), which B-Sides reads itself (voice-check.ts). Nothing is
+ * kept from it but a number.
+ */
+export function voiceCheckJob(input: JobInput, inputName: string, key: string): JobRequest {
+  return {
+    type: 'denoise',
+    model: SEPARATOR_MODEL,
+    params: { stems: 'primary' },
+    inputs: { [inputName]: input },
+    clientRef: `b-sides:voice-check:${key}`,
+  };
+}
+
+/**
+ * What counts as a voice worth stripping, from the listening tests of 2026-10-11/12 (memory:
+ * yue2-vocal-leak-findings): the vocal stem's seconds at or above VOICED_DBFS. A clean render reads
+ * 0; yue2-3b's instrumentals read 13-115 s; the instrumental model's hums read 7.5-24 s on metal
+ * and 0 on soul. Owen hears the hums as acceptable and the strip as a band-aid that dulls the whole
+ * track, so the bar sits above a short hum: a render at or over VOICED_S is stripped, under it
+ * lands as made. Owen's number to move.
+ */
+export const VOICED_DBFS = -30;
+export const VOICED_S = 8;
+
+/** The vocal stem among a separation's artifacts: "(vocals)", else the one that is not an instrumental. */
+export function vocalStem(stems: readonly string[]): string | null {
+  const named = stems.find((name) => /\((vocals?|voice)\)/i.test(name));
+  if (named !== undefined) return named;
+  const rest = stems.filter((name) => !/\((other|instrumental|no[ _-]?vocals?)\)/i.test(name));
+  return rest.length === 1 ? (rest[0] as string) : null;
+}
+
 /** What a strip run tells the job it is for. */
 export interface StripWatch {
   /** The run's place: a fraction (null: not known) and a sentence. */
@@ -170,6 +205,33 @@ function pause(ms: number): Promise<void> {
  * `existing`: a denoise job sent before (a restart): followed, not sent again, while it lives.
  */
 export async function runStrip(client: CrucibleClient, request: JobRequest, watch: StripWatch, existing: string | null = null, pollMs = POLL_MS): Promise<Stripped> {
+  const { jobId, artifacts } = await runSeparation(client, request, watch, existing, pollMs, 'Taking out stray voices');
+  const stem = instrumentalStem(artifacts);
+  if (stem === null) throw new Refusal('strip_no_stem', `The separator answered without an instrumental stem (it gave ${artifacts.join(', ') || 'nothing'}).`);
+  return { jobId, stem };
+}
+
+/** What the meter found in a render: its job, and the seconds of voice (VOICED_DBFS) in its vocal stem. */
+export interface Metered {
+  readonly jobId: string;
+  readonly voiceS: number;
+}
+
+/**
+ * Meter a render (voiceCheckJob) and answer how many seconds of voice it holds. The stem is fetched
+ * to be read and then forgotten. Throws a Refusal naming why, like runStrip.
+ */
+export async function runVoiceCheck(client: CrucibleClient, request: JobRequest, watch: StripWatch, pollMs = POLL_MS): Promise<Metered> {
+  const { jobId, artifacts } = await runSeparation(client, request, watch, null, pollMs, 'Listening for stray voices');
+  const stem = vocalStem(artifacts);
+  if (stem === null) throw new Refusal('voice_check_empty', `The separator answered without a vocal stem (it gave ${artifacts.join(', ') || 'nothing'}).`);
+  const { samples, rate } = readWav(await client.artifact(jobId, stem));
+  const levels = levelsOf(samples, rate);
+  return { jobId, voiceS: levels.perSecond.filter((level) => level >= VOICED_DBFS).length };
+}
+
+/** A separation sent and followed to its artifacts (runStrip, runVoiceCheck); `doing` is its sentence while it runs. */
+async function runSeparation(client: CrucibleClient, request: JobRequest, watch: StripWatch, existing: string | null, pollMs: number, doing: string): Promise<{ readonly jobId: string; readonly artifacts: readonly string[] }> {
   let jobId = existing;
   if (jobId !== null) {
     const alive = await client.job(jobId).then((status) => !ENDED.includes(status.status), () => false);
@@ -203,20 +265,16 @@ export async function runStrip(client: CrucibleClient, request: JobRequest, watc
       status = await client.job(jobId);
     } catch (error) {
       if (!(error instanceof CrucibleUnreachable)) throw error;
-      watch.progress(null, 'Taking out stray voices: the server is not answering, trying again');
+      watch.progress(null, `${doing}: the server is not answering, trying again`);
       await pause(pollMs);
       continue;
     }
-    if (status.status === 'done') {
-      const stem = instrumentalStem(status.artifacts);
-      if (stem === null) throw new Refusal('strip_no_stem', `The separator answered without an instrumental stem (it gave ${status.artifacts.join(', ') || 'nothing'}).`);
-      return { jobId, stem };
-    }
+    if (status.status === 'done') return { jobId, artifacts: status.artifacts };
     if (ENDED.includes(status.status)) {
       throw new Refusal(status.error?.code ?? 'strip_failed', `The separator's job ${status.status}: ${status.error?.message ?? status.removal?.message ?? 'no reason given'}.`);
     }
     if (status.status === 'queued') watch.progress(null, status.position === null ? 'Waiting for the separator' : `Waiting for the separator, number ${status.position} in line`);
-    else watch.progress(status.progress > 0 ? status.progress : null, 'Taking out stray voices');
+    else watch.progress(status.progress > 0 ? status.progress : null, doing);
     await pause(pollMs);
   }
 }

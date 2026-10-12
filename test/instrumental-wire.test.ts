@@ -56,6 +56,16 @@ test("an instrumental's request carries its seed's set as planning_lyrics, and n
   const job = songJob(settleSong({ tags: 'lo-fi', instrumental: true, seed: 13 }), 'mp3', 'k');
   expect(planned(job.params)).toBe(pickSet(13).lyrics);
   expect(job.params['seed']).toBe(13);
+  expect(job.model).toBe('yue2-3b');
+});
+
+test('the instrumental model (Owen, 2026-10-12) changes only the name on the wire: the same params, instrumental still true', () => {
+  const params = settleSong({ tags: 'lo-fi', instrumental: true, seed: 13 });
+  const plain = songJob(params, 'mp3', 'k', true);
+  const adapted = songJob(params, 'mp3', 'k', true, 'yue2-3b-instrumental');
+  expect(adapted.model).toBe('yue2-3b-instrumental');
+  expect(adapted.params).toEqual(plain.params);
+  expect(adapted.hold).toBe(true);
 });
 
 test("an instrumental's aim sizes its set, and goes no further than B-Sides", () => {
