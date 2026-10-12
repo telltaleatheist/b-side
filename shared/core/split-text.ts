@@ -21,7 +21,7 @@ import type { TextModel } from './text-model';
 import { YUE2_STYLE_GUIDE } from './yue2-style';
 import { aboutOf, NO_WRITING, vocabLine, type AlbumConcept } from './album-text';
 import { clashesIn, composeTags } from './describe';
-import { leadOf, leadPhrase, VOICE_TAG, withoutVoice } from '../tags';
+import { cleanPhrase, leadOf, leadPhrase, VOICE_TAG, withoutVoice } from '../tags';
 import type { AlbumAsk, DescribeResult, SongPage } from '../types';
 
 const PHRASE_MAX = 48;
@@ -65,7 +65,7 @@ function phrasesOf(value: unknown, tag: string, writer: TextModel): string[] {
   }
   const out: string[] = [];
   for (const item of value as string[]) {
-    const pieces = item.split(',').map((piece) => piece.replace(/\s+/g, ' ').trim());
+    const pieces = item.split(',').map((piece) => cleanPhrase(piece).replace(/\s+/g, ' ').trim());
     if (item.length >= PHRASE_MAX && pieces.length > 1) pieces.pop();
     for (const piece of pieces) {
       if (piece === '' || /^(english|chinese|mandarin|cantonese)$/i.test(piece)) continue;

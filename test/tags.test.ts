@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { SONG_TAG_CONFLICTS } from '../shared/song-tags';
 
-import { addTags, clashesWith, clashText, joinTags, splitTags, toggleTag } from '../shared/tags';
+import { addTags, clashesWith, clashText, joinTags, leadPhrase, splitTags, styleLine, toggleTag } from '../shared/tags';
 
 // The shape GET /v1/playground sends for yue2-3b (crucible/audio/tags/song.toml): lower-cased keys.
 const conflicts = {
@@ -67,4 +67,11 @@ test("B-Sides' own conflict map matches the rules it states", () => {
   expect(SONG_TAG_CONFLICTS['slow']?.map((c) => c.tag)).toEqual(['128 BPM', '140 BPM', 'fast', 'mid-tempo']);
   expect(SONG_TAG_CONFLICTS['instrumental']?.some((c) => c.tag === 'duet' && c.why === 'an instrumental has no singer')).toBe(true);
   expect(SONG_TAG_CONFLICTS['duet']?.map((c) => c.tag)).toEqual(['Instrumental', 'no singing', 'no vocals']);
+});
+
+test('a lead written as code is sent as its words (Victoria\'s jobs 9a00b01bc9, 6e60247c90; 2026-10-12)', () => {
+  expect(leadPhrase('["searing lead guitar melody"][0]', true)).toBe('searing lead guitar melody');
+  expect(styleLine('heavy metal, thrash metal, 186 BPM', true, '["searing lead guitar melody"][0]'))
+    .toBe('Instrumental, searing lead guitar melody, heavy metal, thrash metal, 186 BPM, no vocals, no singing, no choir, no spoken words.');
+  expect(leadPhrase('"soft female vocal"', false)).toBe('soft female vocal');
 });

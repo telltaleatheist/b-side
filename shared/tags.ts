@@ -19,6 +19,16 @@ export function splitTags(text: string): string[] {
     .filter((part) => part !== '');
 }
 
+/**
+ * A phrase without code around it. The text model once wrote an instrumental's lead as
+ * `["searing lead guitar melody"][0]` (Victoria's jobs 9a00b01bc9 and 6e60247c90, crucible-pc-1,
+ * 2026-10-12), and YuE2 was sent it as written. Index brackets, brackets, braces, quotes and
+ * backticks go; the words stay.
+ */
+export function cleanPhrase(phrase: string): string {
+  return phrase.replace(/\[\s*\d+\s*\]/g, ' ').replace(/[[\]{}"`“”]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 /** Index of `tag` in `tags`, ignoring case; -1 when absent. */
 export function indexOfTag(tags: readonly string[], tag: string): number {
   const wanted = tag.toLowerCase();
@@ -118,7 +128,7 @@ function fallbackMelody(tags: readonly string[]): string {
  * voice for a lead. Blank: null, and the tags' own lead stands (leadOf).
  */
 export function leadPhrase(lead: string, instrumental: boolean): string | null {
-  const said = lead.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+  const said = cleanPhrase(lead).replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
   if (said === '') return null;
   if (!instrumental) return said;
   if (isVoice(said)) return null;
