@@ -10,7 +10,7 @@ import { MiniPlayerComponent } from './components/mini-player/mini-player.compon
 import { NowPlayingComponent } from './components/now-playing/now-playing.component';
 import { PlayerBarComponent } from './components/player-bar/player-bar.component';
 import { WelcomeComponent } from './components/welcome/welcome.component';
-import { SINGLES_NAME, type Playlist } from '@shared/types';
+import { SINGLES_NAME, type Folder, type Playlist } from '@shared/types';
 
 import { albumProgress, type AlbumProgress } from './core/album-progress';
 import { HubService } from './core/hub.service';
@@ -201,14 +201,23 @@ interface Room {
     <!-- One level of the sidebar's list: its folders (each opening onto the next level), then its albums and playlists. -->
     <ng-template #sideShelf let-parent>
       @for (folder of library.foldersIn(parent); track folder.id) {
-        <div class="side-folder" draggable="true" [class.open]="folders.isOpen(folder.id)" [attr.data-drop]="folders.mark(edge(folder.id))"
+        <div class="side-folder" [attr.draggable]="renamingFolder() === folder.id ? null : 'true'" [class.open]="folders.isOpen(folder.id)" [attr.data-drop]="folders.mark(edge(folder.id))"
              (dragstart)="folders.dragStart($event, shelfFolder(folder.id))" (dragend)="folders.dragEnd()"
              (dragover)="folders.over($event, edge(folder.id))" (drop)="dropOn($event, edge(folder.id))">
-          <button type="button" class="side-folder-btn" [attr.aria-expanded]="folders.isOpen(folder.id)" (click)="folders.toggle(folder.id)">
-            <app-icon name="chevron" [size]="14" class="side-chev" />
-            <app-icon name="folder" [size]="18" class="side-folder-icon" />
-            <span class="side-name">{{ folder.name }}</span>
-          </button>
+          @if (renamingFolder() === folder.id) {
+            <!-- Renamed in place (Victoria, 2026-10-12): Enter or leaving the box keeps it, Escape does not. -->
+            <input type="text" class="side-rename" maxlength="120" aria-label="Folder name" [value]="folder.name"
+                   (keydown.enter)="renameFolder(folder, $any($event.target).value)"
+                   (keydown.escape)="renamingFolder.set(null)"
+                   (blur)="renameFolder(folder, $any($event.target).value)" />
+          } @else {
+            <button type="button" class="side-folder-btn" [attr.aria-expanded]="folders.isOpen(folder.id)" title="Right-click or double-click to rename"
+                    (click)="folders.toggle(folder.id)" (dblclick)="startRenaming($event, folder.id)" (contextmenu)="startRenaming($event, folder.id)">
+              <app-icon name="chevron" [size]="14" class="side-chev" />
+              <app-icon name="folder" [size]="18" class="side-folder-icon" />
+              <span class="side-name">{{ folder.name }}</span>
+            </button>
+          }
           <button type="button" class="side-play" aria-label="Play folder" title="Play folder: every album and playlist in it, in order" (click)="player.playFolder(folder.id)"><app-icon name="play" [size]="16" /></button>
         </div>
         @if (folders.isOpen(folder.id)) {
@@ -344,6 +353,7 @@ interface Room {
       .side-add:hover { background: var(--bg-hover); color: var(--accent); }
       .side-new { padding: 4px 8px; }
       .side-new input { width: 100%; }
+      .side-rename { flex: 1; min-width: 0; height: 32px; margin: 4px; padding: 0 8px; font-size: 13px; }
       .side-refusal { padding: 2px 12px; font-size: 12px; color: var(--error); }
       /* Folders (Victoria, 2026-10-11): a row that opens and shuts, its contents indented beneath it. */
       .side-folder { display: flex; align-items: center; border-radius: var(--radius-md); cursor: grab; }
@@ -397,6 +407,8 @@ export class App {
   protected readonly folders = inject(FoldersService);
   protected readonly namingFolder = signal(false);
   protected readonly folderRefusal = signal<string | null>(null);
+  /** The sidebar folder being renamed. */
+  protected readonly renamingFolder = signal<string | null>(null);
   protected readonly top: DropTarget = { kind: 'folder', id: null, edge: false };
 
   protected edge(id: string): DropTarget {
@@ -437,6 +449,21 @@ export class App {
     const made = await this.library.createFolder(name);
     this.folderRefusal.set('code' in made ? made.message : null);
     if (!('code' in made)) this.namingFolder.set(false);
+  }
+
+  /** Right-click or double-click a folder in the sidebar to rename it (a double-click's two clicks open and shut it again). */
+  protected startRenaming(event: MouseEvent, id: string): void {
+    event.preventDefault();
+    this.renamingFolder.set(id);
+    setTimeout(() => { const box = document.querySelector<HTMLInputElement>('.side-rename'); box?.focus(); box?.select(); });
+  }
+
+  protected async renameFolder(folder: Folder, name: string): Promise<void> {
+    if (this.renamingFolder() !== folder.id) return;
+    this.renamingFolder.set(null);
+    if (name.trim() === '' || name.trim() === folder.name) return;
+    const refused = await this.library.renameFolder(folder.id, name);
+    this.folderRefusal.set(refused?.message ?? null);
   }
 
   /** An album being made (and not interrupted): its progress, for the sidebar's bar. */

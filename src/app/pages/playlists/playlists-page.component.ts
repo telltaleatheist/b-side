@@ -378,7 +378,8 @@ const COVER_PX = 768;
         <section class="folder" [class.open]="folders.isOpen(folder.id)">
           <div class="folder-head" [attr.draggable]="hub.onPhone() || renamingFolder() === folder.id ? null : 'true'" [attr.data-drop]="folders.mark(edge(folder.id))"
                (dragstart)="folders.dragStart($event, shelfFolder(folder.id))" (dragend)="folders.dragEnd()"
-               (dragover)="folders.over($event, edge(folder.id))" (drop)="dropOn($event, edge(folder.id))">
+               (dragover)="folders.over($event, edge(folder.id))" (drop)="dropOn($event, edge(folder.id))"
+               (contextmenu)="$event.preventDefault(); folderMenu.set(folder.id)">
             @if (renamingFolder() === folder.id) {
               <input type="text" class="rename" maxlength="120" aria-label="Folder name" [value]="folder.name"
                      (keydown.enter)="renameFolder(folder, $any($event.target).value)"
