@@ -23,6 +23,8 @@ test('an instrumental on a server with a negative sends negative_tags, negative_
   expect(wire['planning_lyrics']).toBeDefined();
   // The person's own cfg wins.
   expect((songJob({ ...params, cfg: 1.3 }, 'mp3', 'k', undefined, false, true).params as Record<string, unknown>)['cfg']).toBe(1.3);
+  // ...but not cfg 1, where no negative branch runs and Crucible refuses the words.
+  expect((songJob({ ...params, cfg: 1 }, 'mp3', 'k', undefined, false, true).params as Record<string, unknown>)['cfg']).toBe(NEGATIVE_CFG);
 });
 
 test('no negative without the server, for a sung song, or for a listening test\'s exact lyrics', () => {

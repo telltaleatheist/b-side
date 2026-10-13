@@ -166,12 +166,14 @@ export function songJob(params: SongParams, format: SongFormat, key: string, mod
   if (params.cfg !== undefined) wire['cfg'] = params.cfg;
   if (params.seed !== undefined) wire['seed'] = params.seed;
   // An instrumental on a server that takes a negative (Owen, 2026-10-12: "lets just try to get it to
-  // hum"): the voice named as what to push away from, at NEGATIVE_CFG unless the person set a cfg.
+  // hum"): the voice named as what to push away from, at NEGATIVE_CFG unless the person set a cfg
+  // above 1. At cfg 1 no negative branch runs and Crucible refuses the words (2026-10-13: an album
+  // carried the form's server-default cfg 1 and every instrumental track was refused).
   if (negative && params.instrumental === true && params.tags !== undefined && params.experiment?.lyrics === undefined) {
     const against = negativeFor(params.tags, planningOf(params).lyrics);
     wire['negative_tags'] = against.tags;
     wire['negative_lyrics'] = against.lyrics;
-    if (params.cfg === undefined) wire['cfg'] = NEGATIVE_CFG;
+    if (params.cfg === undefined || params.cfg <= 1) wire['cfg'] = NEGATIVE_CFG;
   }
   // The score's header from the tags (shared/header.ts), on a server that takes it, once SEND_HEADER is on.
   if (header && SEND_HEADER && params.tags !== undefined) {
