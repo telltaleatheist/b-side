@@ -8,6 +8,12 @@
  * "3/4", "6/8" or "waltz" (a waltz is in three); "90 BPM". A bare "E" or "mode" words are not a key.
  */
 
+/**
+ * The first Crucible whose header forcing works: 2.0.13 lists the fields but its check refused every
+ * real install (crucible-pc-1, 2026-10-13); 2.0.14 passed a forced Em 3/4 76 on sung and instrumental.
+ */
+export const HEADER_FROM: readonly [number, number, number] = [2, 0, 14];
+
 /** The 30 keys YuE2's scores use: 15 major and 15 minor, as ABC spells them. */
 export const KEYS: readonly string[] = [
   'Cb', 'Gb', 'Db', 'Ab', 'Eb', 'Bb', 'F', 'C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#',

@@ -12,6 +12,8 @@ import { CrucibleClient, CrucibleRefused, type InstallingDetails, type ModelInfo
 import { Refusal } from './refusal';
 import type { StoredServer } from './servers';
 import { SONG_FIELD_WORDING, SONG_TAG_CONFLICTS, SONG_TAG_GROUPS } from '../song-tags';
+import { HEADER_FROM } from '../header';
+import { versionAtLeast } from './strip';
 import { SONG_MODEL, TAG_MODELS, type NumberField, type Preset, type ServerProbe, type SongPage } from '../types';
 
 /** The app's name; each install adds its own (`b-sides@<host>`), set by the hub that runs it. */
@@ -154,7 +156,7 @@ export function chooseTagModel(models: readonly ModelInfo[], cardBytes: number):
 
 export async function songPage(server: StoredServer): Promise<SongPage> {
   const client = clientFor(server);
-  const [pages, models, card] = await Promise.all([client.playground(), client.models(), client.capability({ timeoutMs: INFO_MS })]);
+  const [pages, models, card, info] = await Promise.all([client.playground(), client.models(), client.capability({ timeoutMs: INFO_MS }), client.info({ timeoutMs: INFO_MS })]);
   const tagModel = chooseTagModel(models, card.totalBytes - card.desktopAllowanceBytes);
   const page = pages.find((p) => p.id === SONG_MODEL && p.jobType === 'audio');
   if (page === undefined) {
@@ -188,7 +190,8 @@ export async function songPage(server: StoredServer): Promise<SongPage> {
     cfg: numberField(named('cfg')),
     seed: numberField(named('seed')),
     negative: named('negative_tags') !== undefined && named('negative_lyrics') !== undefined,
-    header: named('key') !== undefined && named('meter') !== undefined && named('bpm') !== undefined,
+    // 2.0.13 lists the three fields but refuses them (its check read the wrong function): the version floor too.
+    header: named('key') !== undefined && named('meter') !== undefined && named('bpm') !== undefined && versionAtLeast(info.server.version, HEADER_FROM),
     tagModel: tagModel.model,
     tagModelReason: tagModel.reason,
   };

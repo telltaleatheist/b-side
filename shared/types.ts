@@ -152,8 +152,9 @@ export interface SongPage {
    */
   readonly negative?: boolean;
   /**
-   * Whether this server's YuE2 takes `key`, `meter` and `bpm` (Crucible 2.0.13): the score's header
-   * forced from what the tags state (shared/header.ts). Absent: no.
+   * Whether this server's YuE2 takes `key`, `meter` and `bpm` (Crucible 2.0.14 or newer; 2.0.13 lists
+   * them but refuses them): the score's header forced from what the tags state (shared/header.ts).
+   * Absent: no.
    */
   readonly header?: boolean;
   /** The tag and lyrics model this server gets (chooseTagModel), or null when it can hold none of them. */

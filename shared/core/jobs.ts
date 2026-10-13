@@ -225,11 +225,12 @@ export const VOICE_TRIES = 3;
 
 /**
  * Whether a song's tags' key, meter and tempo are sent as Crucible 2.0.13's `key`, `meter` and
- * `bpm` (shared/header.ts; Victoria, 2026-10-13: minor tags came out major). Off until
- * crucible-pc-1's test render shows a forced 3/4 and a forced key come out as asked (a 4/4 body
- * under a 3/4 header would refuse an instrumental's transfer); wired so turning it on is one word.
+ * `bpm` (shared/header.ts; Victoria, 2026-10-13: minor tags came out major). On since 1.0.49:
+ * crucible-pc-1's test renders on 2.0.14 (jobs 97ba309b sung, dd1e3fbe instrumental) came out with
+ * the forced Em 3/4 76 in the score and the done record, and the instrumental's Vocal→Ins transfer
+ * passed under the forced 3/4. Only a server at HEADER_FROM or newer gets them (SongPage.header).
  */
-export const SEND_HEADER = false;
+export const SEND_HEADER = true;
 
 /**
  * Fetch a finished job's artifact into `file` and answer its size. A server that

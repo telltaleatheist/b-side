@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { settleSong, songJob, SEND_HEADER } from '../shared/core/jobs';
-import { headerOf, KEYS } from '../shared/header';
+import { headerOf, HEADER_FROM, KEYS } from '../shared/header';
+import { versionAtLeast } from '../shared/core/strip';
 
 test('the key, meter and tempo the tags state, as Crucible 2.0.13 takes them (Victoria, 2026-10-13)', () => {
   expect(headerOf('bassoon, pizzicato strings, A minor, waltz, 64 BPM')).toEqual({ key: 'Am', meter: '3/4', bpm: 64 });
@@ -31,4 +32,11 @@ test('an instrumental on a server with the header fields sends them only once SE
   }
   // Never without the server's fields.
   expect(songJob(params, 'mp3', 'k').params).not.toHaveProperty('key');
+});
+
+test('the header needs Crucible 2.0.14: 2.0.13 lists the fields but refuses them', () => {
+  expect(versionAtLeast('2.0.13', HEADER_FROM)).toBe(false);
+  expect(versionAtLeast('2.0.14', HEADER_FROM)).toBe(true);
+  expect(versionAtLeast('2.1.0', HEADER_FROM)).toBe(true);
+  expect(versionAtLeast('2.0.14.dev1', HEADER_FROM)).toBe(true);
 });
