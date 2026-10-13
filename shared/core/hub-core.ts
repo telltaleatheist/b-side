@@ -46,7 +46,7 @@ import { voiceCheck } from './voice-check';
 import type { Lyricist } from './lyricist';
 import { crucibleText, WRITERS, type TextModel, type Writer } from './text-model';
 import { join, type Disk } from './disk';
-import { JobRunner, type AudioFetcher } from './jobs';
+import { JobRunner, SCORE_MAX, type AudioFetcher } from './jobs';
 import { Library, type ImportedAlbum } from './library';
 import { PairingSessions } from './pairing';
 import { Refusal } from './refusal';
@@ -463,6 +463,8 @@ export class HubCore {
               ...(params.instrumental === true && params.planning_set !== undefined ? { planning_set: params.planning_set } : {}),
               ...(params.min_duration_s !== undefined ? { min_duration_s: params.min_duration_s } : {}),
               ...(params.max_duration_s !== undefined ? { max_duration_s: params.max_duration_s } : {}),
+              // The score it was rendered from (Victoria, 2026-10-13), kept with the song for whoever reads its header.
+              ...(params.score !== undefined ? { score: params.score } : {}),
             },
             server: { name: landed.server.name, url: landed.server.url },
             jobId: landed.job.jobId as string,
@@ -917,6 +919,36 @@ export class HubCore {
   async songFile(id: string): Promise<{ title: string; file: string }> {
     const song = await this.library.song(id);
     return { title: song.title, file: this.library.audioPath(song.file) };
+  }
+
+  /** An album's playlist and the song that is track `at`'s take now (by the plan track's name, as the album finds its songs). */
+  private async trackTake(id: string, at: number): Promise<{ playlist: Playlist | undefined; song: Song | undefined }> {
+    const view = await this.library.list();
+    const playlist = view.playlists.find((p) => p.id === id);
+    const title = playlist?.album?.plan?.tracks[at]?.title.toLowerCase();
+    const songs = new Map(view.songs.map((song) => [song.id, song]));
+    const song = title === undefined ? undefined
+      : playlist?.songs.map((songId) => songs.get(songId)).find((each) => each?.title.toLowerCase() === title);
+    return { playlist, song };
+  }
+
+  /**
+   * Replace an album track's take with audio made elsewhere (Victoria, 2026-10-13: her waltz rendered
+   * from her own score through Crucible directly): the song keeps its id, title, place and words; only
+   * its audio, length and size change. `file` is a copy the caller removes afterwards.
+   */
+  async replaceTrackAudio(id: string, at: number, file: string, facts: { readonly name: string; readonly durationS: number | null; readonly bytes: number }): Promise<LibraryView> {
+    if (!Number.isInteger(at) || at < 0) throw new Refusal('body_invalid', 'The track is its place in the album, from 0.');
+    const { playlist, song } = await this.trackTake(id, at);
+    if (playlist === undefined) throw new Refusal('album_missing', 'That album is gone.', 404);
+    const track = playlist.album?.plan?.tracks[at];
+    if (track === undefined) throw new Refusal('track_missing', 'That album has no such track.', 404);
+    if (song === undefined) throw new Refusal('track_unmade', `"${track.title}" has no take to replace; Make the missing tracks makes it.`, 409);
+    if ((playlist.album?.remakes ?? []).some((each) => each.at === at)) {
+      throw new Refusal('track_remaking', `"${track.title}" is being made again; replace it once that take is in.`, 409);
+    }
+    await this.library.replaceAudio(song.id, file, facts);
+    return this.libraryChanged();
   }
 
   /** Each server's song page as last read, for what its YuE2 takes when an album's track is sent. */
@@ -1398,13 +1430,14 @@ export class HubCore {
       if (tags !== undefined && tags.length > 600) throw new Refusal('track_tags_long', `The tags run ${tags.length} characters; a track's take at most 600.`);
       const lead = tags === undefined ? undefined : typeof body['lead'] === 'string' ? body['lead'].replace(/\s+/g, ' ').trim() : null;
       if (lead != null && lead.length > 80) throw new Refusal('plan_lead_long', `The lead is ${lead.length} characters; a lead is at most 80.`);
+      // A full score for the new take (Victoria, 2026-10-13): the ABC text, rendered as given. Its words
+      // must be the score's own sections, so the writer cannot be asked for new ones beside it.
+      const score = typeof body['score'] === 'string' ? body['score'].replace(/\r\n/g, '\n').trim() : undefined;
+      if (score !== undefined && score === '') throw new Refusal('body_invalid', 'score, when sent, is the ABC text of the score.');
+      if (score !== undefined && score.length > SCORE_MAX) throw new Refusal('score_long', `The score runs ${score.length} characters; a track's takes at most ${SCORE_MAX}.`);
+      if (score !== undefined && lyrics === 'new') throw new Refusal('body_invalid', 'A score sings its own sections: send lyrics keep or own with it, not new.');
       // Its take now: the album's song with its plan track's name, as the album finds its songs.
-      const view = await this.library.list();
-      const playlist = view.playlists.find((p) => p.id === id);
-      const title = playlist?.album?.plan?.tracks[at]?.title.toLowerCase();
-      const songs = new Map(view.songs.map((song) => [song.id, song]));
-      const song = title === undefined ? undefined
-        : playlist?.songs.map((songId) => songs.get(songId)).find((each) => each?.title.toLowerCase() === title);
+      const { song } = await this.trackTake(id, at);
       await this.albums.remake(id, at, {
         fresh: lyrics === 'new',
         song: song?.id ?? null,
@@ -1413,6 +1446,7 @@ export class HubCore {
         keep: words !== null ? words : song !== undefined && !song.params.instrumental ? song.params.lyrics : null,
         ...(words !== null ? { own: true } : {}),
         ...(tags !== undefined ? { tags, lead } : {}),
+        ...(score !== undefined ? { score } : {}),
       });
       return this.libraryChanged();
     });

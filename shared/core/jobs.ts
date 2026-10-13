@@ -44,6 +44,7 @@ import {
   type CrucibleClient,
   type DoneData,
   type InstallingDetails,
+  type JobInput,
   type JobRequest,
   type JobStatus,
 } from '@crucible/client';
@@ -158,9 +159,18 @@ export function settleSong(params: SongParams): SongParams {
  */
 export function songJob(params: SongParams, format: SongFormat, key: string, model: string = SONG_MODEL, hold = false, negative = false, header = false): JobRequest {
   const wire: Record<string, unknown> = { format };
+  const inputs: Record<string, JobInput> = {};
+  // A full score (Victoria, 2026-10-13): the ABC as the one named input, `score` naming it. Beside it
+  // Crucible refuses planning lyrics, a range and the header, and an instrumental's lyrics; a sung
+  // score's lyrics go as written (their section labels match the score's).
+  const scored = params.score !== undefined;
+  if (scored) {
+    wire['score'] = SCORE_INPUT;
+    inputs[SCORE_INPUT] = { inline: new TextEncoder().encode(params.score) };
+  }
   if (params.tags !== undefined) wire['tags'] = params.tags;
   if (params.instrumental === true && params.experiment?.lyrics !== undefined) wire['lyrics'] = params.experiment.lyrics;
-  else if (params.instrumental === true) wire['planning_lyrics'] = planningOf(params).lyrics;
+  else if (params.instrumental === true) { if (!scored) wire['planning_lyrics'] = planningOf(params).lyrics; }
   else if (params.lyrics !== undefined) wire['lyrics'] = params.lyrics;
   if (params.instrumental !== undefined) wire['instrumental'] = params.instrumental;
   if (params.cfg !== undefined) wire['cfg'] = params.cfg;
@@ -168,15 +178,16 @@ export function songJob(params: SongParams, format: SongFormat, key: string, mod
   // An instrumental on a server that takes a negative (Owen, 2026-10-12: "lets just try to get it to
   // hum"): the voice named as what to push away from, at NEGATIVE_CFG unless the person set a cfg
   // above 1. At cfg 1 no negative branch runs and Crucible refuses the words (2026-10-13: an album
-  // carried the form's server-default cfg 1 and every instrumental track was refused).
-  if (negative && params.instrumental === true && params.tags !== undefined && params.experiment?.lyrics === undefined) {
+  // carried the form's server-default cfg 1 and every instrumental track was refused). A scored
+  // instrumental has no planning lyrics to push away from, so it goes without.
+  if (negative && !scored && params.instrumental === true && params.tags !== undefined && params.experiment?.lyrics === undefined) {
     const against = negativeFor(params.tags, planningOf(params).lyrics);
     wire['negative_tags'] = against.tags;
     wire['negative_lyrics'] = against.lyrics;
     if (params.cfg === undefined || params.cfg <= 1) wire['cfg'] = NEGATIVE_CFG;
   }
   // The score's header from the tags (shared/header.ts), on a server that takes it, once SEND_HEADER is on.
-  if (header && SEND_HEADER && params.tags !== undefined) {
+  if (header && SEND_HEADER && !scored && params.tags !== undefined) {
     const stated = headerOf(params.tags);
     if (stated.key !== undefined) wire['key'] = stated.key;
     if (stated.meter !== undefined) wire['meter'] = stated.meter;
@@ -184,8 +195,13 @@ export function songJob(params: SongParams, format: SongFormat, key: string, mod
   }
   // Held: an instrumental to meter stays on the server until the separator has read it, and until
   // the render kept is fetched (VOICE_TRIES).
-  return { type: 'audio', model, params: wire, inputs: {}, clientRef: `b-sides:${key}`, ...(hold ? { hold: true } : {}) };
+  return { type: 'audio', model, params: wire, inputs, clientRef: `b-sides:${key}`, ...(hold ? { hold: true } : {}) };
 }
+
+/** The name a full score goes to Crucible under: `params.score` names it, and it is the one input (crucible-pc-1). */
+export const SCORE_INPUT = 'score.abc';
+/** The most ABC a score may run to: a 360 s two-voice score is well under it. */
+export const SCORE_MAX = 200_000;
 
 /** An instrumental's planning lyrics: its set (else the seed's; settleSong names one), sized to its aim. */
 function planningOf(params: SongParams): Planned {
@@ -385,7 +401,8 @@ export class JobRunner {
       // An instrumental's seed and set, settled now so the job shows them from the start.
       const settled = settleSong(asked);
       // Each instrumental its own key and tempo, from its seed (Owen, 2026-10-11); a listening test's exact tags stay exact.
-      const params = settled.instrumental === true && settled.tags !== undefined && settled.seed !== undefined && settled.experiment?.tags === undefined
+      // A scored one keeps its tags as given: the score's own header decides its key and tempo.
+      const params = settled.instrumental === true && settled.tags !== undefined && settled.seed !== undefined && settled.experiment?.tags === undefined && settled.score === undefined
         ? { ...settled, tags: varyInstrumental(settled.tags, settled.seed) }
         : settled;
       this.numbered += 1;

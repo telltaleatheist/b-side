@@ -229,7 +229,9 @@ export class HubService {
     }
     const address = this.address();
     if (address === null) return '';
-    return `${address.url}/api/${kind}/${encodeURIComponent(id)}/audio?key=${encodeURIComponent(address.key)}`;
+    // A song's file name rides along: replaced audio (a new file name) is never played from the cache of the old.
+    const file = kind === 'songs' ? this.library().songs.find((song) => song.id === id)?.file : undefined;
+    return `${address.url}/api/${kind}/${encodeURIComponent(id)}/audio?key=${encodeURIComponent(address.key)}${file === undefined ? '' : `&v=${encodeURIComponent(file)}`}`;
   }
 
   /** An album's painted cover; the stock cover while it waits for one; null (the drawn art) for a playlist. */

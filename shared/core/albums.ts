@@ -222,6 +222,8 @@ export interface AlbumTrackParams {
   readonly cfg?: number;
   /** The length every track aims for, in seconds. */
   readonly aim?: { readonly min: number; readonly max: number };
+  /** A full score the take renders (a remake's; SongParams.score): then no aim or planning set goes with it. */
+  readonly score?: string;
 }
 
 /**
@@ -236,8 +238,9 @@ export function trackSong(params: AlbumTrackParams, track: number, page: SongPag
     instrumental: params.instrumental,
     ...(params.lyrics !== undefined ? { lyrics: params.lyrics } : {}),
     ...(params.cfg !== undefined ? { cfg: params.cfg } : {}),
-    ...(params.aim !== undefined && page?.length === true ? { min_duration_s: params.aim.min, max_duration_s: params.aim.max } : {}),
-    ...(params.instrumental ? { planning_set: trackSet(track).id } : {}),
+    ...(params.score !== undefined ? { score: params.score } : {}),
+    ...(params.score === undefined && params.aim !== undefined && page?.length === true ? { min_duration_s: params.aim.min, max_duration_s: params.aim.max } : {}),
+    ...(params.instrumental && params.score === undefined ? { planning_set: trackSet(track).id } : {}),
   };
 }
 
@@ -575,6 +578,8 @@ export class AlbumMaker {
       /** The words the new take sings: the old take's, or the person's own (`own`; Victoria, 2026-10-13). */
       readonly keep: string | null; readonly own?: boolean;
       readonly tags?: string; readonly lead?: string | null;
+      /** A full score for the new take (Victoria, 2026-10-13): the ABC text, rendered as given. */
+      readonly score?: string;
     },
   ): Promise<AlbumMeta> {
     if (this.running.has(id)) throw new Refusal('album_writing', 'This album is still being written; make a track again once it is planned.', 409);
@@ -603,7 +608,7 @@ export class AlbumMaker {
     try {
       const lyrics = !sung ? null : ask.fresh ? await this.lyricsFor(meta, at) : (ask.keep ?? track.lyrics);
       const next = await this.edit(id, (now) => {
-        const remake: AlbumRemake = { at, song: ask.song, lyrics };
+        const remake: AlbumRemake = { at, song: ask.song, lyrics, ...(ask.score !== undefined ? { score: ask.score } : {}) };
         const finished = now.stage !== 'making' && now.stage !== 'planning' && now.stage !== 'cover';
         // New tags for the new take (Victoria, 2026-10-12: a 64 BPM lullaby YuE2 played at double time,
         // which "Same lyrics, new take" alone could never fix): the plan's track takes them, and its
@@ -1161,6 +1166,8 @@ export class AlbumMaker {
         ...(sung ? { lyrics: lyrics as string } : {}),
         ...(meta.ask.cfg != null ? { cfg: meta.ask.cfg } : {}),
         ...(aim !== null ? { aim: { min: aim.min, max: aim.max } } : {}),
+        // A remake from a full score (Victoria, 2026-10-13) renders it instead of a plan.
+        ...(remake?.score !== undefined ? { score: remake.score } : {}),
       });
       return {
         ...meta,

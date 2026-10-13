@@ -429,6 +429,27 @@ export class Hub {
     }, true);
     this.route('POST', '/api/import/albums', async (request) =>
       this.core.importAlbum((await request.body()) as unknown as ImportedAlbum));
+    // An album track's take replaced by audio made elsewhere (raw body; Victoria, 2026-10-13): the song
+    // keeps its title, place and words. ?name= names the file (its extension says the format), ?duration= its seconds.
+    this.route('PUT', '/api/albums/:id/tracks/:at/audio', async (request) => {
+      const name = path.basename(request.url.searchParams.get('name') ?? '');
+      const extension = path.extname(name).toLowerCase();
+      if (!/^\.(flac|wav|mp3)$/.test(extension)) {
+        throw new Refusal('song_format', `B-Sides keeps flac, wav or mp3 audio; ${name || 'that file'} is not one.`);
+      }
+      const duration = Number(request.url.searchParams.get('duration'));
+      const temporary = path.join(os.tmpdir(), `bsides-replace-${randomUUID()}${extension}`);
+      try {
+        await receiveFile(request.req, temporary);
+        const bytes = (await fsp.stat(temporary)).size;
+        const view = await this.core.replaceTrackAudio(request.params['id'] as string, Number(request.params['at']), temporary, {
+          name, durationS: Number.isFinite(duration) && duration > 0 ? duration : null, bytes,
+        });
+        sendJson(request.res, 200, view);
+      } finally {
+        await fsp.rm(temporary, { force: true });
+      }
+    }, true);
     this.route('GET', '/api/songs/:id/audio', async (request) => {
       const song = await this.core.songFile(request.params['id'] as string);
       await sendFile(request.req, request.res, song.file, 'private, max-age=86400');

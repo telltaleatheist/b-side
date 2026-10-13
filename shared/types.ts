@@ -209,6 +209,14 @@ export interface SongParams {
    */
   readonly planning_set?: string;
   /**
+   * A full score to render (Victoria, 2026-10-13: her own two-voice ABC for a waltz, through "Make
+   * this track again"): the ABC text, YuE2's own dialect. Sent as the named input `score.abc` with
+   * Crucible's `score` naming it (crucible-pc-1: works from 2.0.5). Beside a score Crucible refuses
+   * planning lyrics, a length range and the key/meter/bpm header, so none are sent; a sung score
+   * needs `lyrics` whose section labels match the score's, an instrumental one takes none.
+   */
+  readonly score?: string;
+  /**
    * A listening test's exact request (Owen, 2026-10-11: what stops an instrumental's voice): `tags`
    * sent as written, not through styleLine; `lyrics` sent as an instrumental's lyrics (section tags
    * only, YuE2's own empty-lyrics path) in place of planning lyrics. Never set by the app's pages.
@@ -467,6 +475,8 @@ export interface SongMade {
   /** The length it aimed for (SongParams), kept by B-Sides since 2026-10-11; before, only the server's record (`length`) had it. */
   readonly min_duration_s?: number;
   readonly max_duration_s?: number;
+  /** The full score it was rendered from (SongParams.score; Victoria, 2026-10-13), as sent; absent when planned. */
+  readonly score?: string;
 }
 
 /** What a take and a saved song both say about themselves. */
@@ -683,6 +693,8 @@ export interface AlbumRemake {
   readonly song: string | null;
   /** The words to sing: new ones, or the old take's own (corrected by hand, perhaps); null when instrumental. */
   readonly lyrics: string | null;
+  /** A full score the new take renders (SongParams.score), given with the ask; absent: planned as usual. */
+  readonly score?: string;
 }
 
 /** One step of an album before its tracks: a line to show and, when it counts, how far through. */

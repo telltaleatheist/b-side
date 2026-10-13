@@ -678,6 +678,36 @@ export class Library {
     });
   }
 
+  /**
+   * Replace a song's audio with a file made elsewhere (Victoria, 2026-10-13): under a new name beside
+   * the sidecar, so a player's cached copy of the old one is never played again; the old file goes once
+   * the sidecar names the new. The record keeps everything but the length, the size and where it came from.
+   */
+  async replaceAudio(id: string, from: string, facts: { readonly name: string; readonly durationS: number | null; readonly bytes: number }): Promise<Song> {
+    return this.serial(async () => {
+      const sidecar = await this.readSidecar(id);
+      const fromName = basename(from);
+      const extension = fromName.slice(fromName.lastIndexOf('.') + 1).toLowerCase();
+      if (!AUDIO_FILE.test(`.${extension}`)) {
+        throw new Refusal('song_format', `B-Sides keeps flac, wav or mp3 audio, not .${extension}.`);
+      }
+      let file = `${id}-r1.${extension}`;
+      for (let n = 2; await this.disk.exists(this.audioPath(file)); n += 1) file = `${id}-r${n}.${extension}`;
+      await this.disk.copy(from, this.audioPath(file));
+      const effective = typeof sidecar.effective === 'object' && sidecar.effective !== null ? sidecar.effective : {};
+      const next: Sidecar = {
+        ...sidecar,
+        file,
+        durationS: facts.durationS ?? sidecar.durationS,
+        bytes: facts.bytes,
+        effective: { ...effective, replacedFrom: facts.name, replacedAt: new Date().toISOString() },
+      };
+      await this.disk.writeText(this.sidecarPath(id), `${JSON.stringify(next, null, 2)}\n`);
+      if (sidecar.file !== file) await this.disk.remove(this.audioPath(sidecar.file)).catch(() => undefined);
+      return songOf(next);
+    });
+  }
+
   async rename(id: string, title: string): Promise<Song> {
     return this.serial(async () => {
       const trimmed = title.trim();

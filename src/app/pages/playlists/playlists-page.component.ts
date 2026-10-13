@@ -228,11 +228,13 @@ const COVER_PX = 768;
                         <textarea [id]="'retag-tags-' + song.id" rows="3" spellcheck="false" [value]="retagTags()" (input)="retagTags.set($any($event.target).value)"></textarea>
                         <label class="label" [for]="'retag-lead-' + song.id">Lead</label>
                         <input [id]="'retag-lead-' + song.id" type="text" [value]="retagLead()" placeholder="optional: the singer, or the instrument carrying the melody" (input)="retagLead.set($any($event.target).value)" />
+                        <label class="label" [for]="'retag-score-' + song.id">Score (optional): a full ABC score, rendered as written. Needs Crucible 2.0.5 or newer; with your own words, their section labels must match the score</label>
+                        <textarea [id]="'retag-score-' + song.id" rows="4" spellcheck="false" [value]="retagScore()" placeholder="X:1&#10;T:...&#10;M:3/4&#10;L:1/16&#10;Q:1/4=76&#10;V:Vocal&#10;V:Ins&#10;K:Em&#10;% verse&#10;..." (input)="retagScore.set($any($event.target).value)"></textarea>
                         @if (retagMode() === 'lyrics') {
-                          <button type="button" class="ghost small" [disabled]="retagTags().trim() === '' || retagWords().trim() === ''" (click)="remake(playlist, song, 'own', { tags: retagTags(), lead: retagLead(), words: retagWords() })">Make it with these words</button>
+                          <button type="button" class="ghost small" [disabled]="retagTags().trim() === '' || retagWords().trim() === ''" (click)="remake(playlist, song, 'own', { tags: retagTags(), lead: retagLead(), words: retagWords(), score: retagScore() })">Make it with these words</button>
                           <span class="hint">Sung exactly as written: nothing is rewritten, shortened or cut. The track keeps these words and tags from now on: a later "Make this track again" starts from them.</span>
                         } @else {
-                          <button type="button" class="ghost small" [disabled]="retagTags().trim() === ''" (click)="remake(playlist, song, 'keep', { tags: retagTags(), lead: retagLead() })">Make it with these tags</button>
+                          <button type="button" class="ghost small" [disabled]="retagTags().trim() === ''" (click)="remake(playlist, song, 'keep', { tags: retagTags(), lead: retagLead(), score: retagScore() })">Make it with these tags</button>
                           <span class="hint">The track keeps these tags from now on: a later "Make this track again" starts from them. A lead goes first; for an instrumental, singers are left out.</span>
                         }
                       </div>
@@ -1132,6 +1134,8 @@ export class PlaylistsPageComponent {
   protected readonly retagTags = signal('');
   protected readonly retagLead = signal('');
   protected readonly retagWords = signal('');
+  /** A full ABC score for the new take (Victoria, 2026-10-13); blank: planned as usual. */
+  protected readonly retagScore = signal('');
 
   /** Open the form filled with the track's tags and lead as the plan has them now, and its words as sung. */
   protected openRetag(playlist: Playlist, song: Song, mode: 'tags' | 'lyrics'): void {
@@ -1147,11 +1151,12 @@ export class PlaylistsPageComponent {
     this.retagLead.set(lead);
     // The words as the take sings them (corrected by hand, perhaps), else the plan's.
     this.retagWords.set(song.params.lyrics ?? track?.lyrics ?? '');
+    this.retagScore.set(song.params.score ?? '');
     this.retagMode.set(mode);
     this.retagging.set(song.id);
   }
 
-  protected async remake(playlist: Playlist, song: Song, lyrics: 'keep' | 'new' | 'own', retag?: { readonly tags: string; readonly lead: string; readonly words?: string }): Promise<void> {
+  protected async remake(playlist: Playlist, song: Song, lyrics: 'keep' | 'new' | 'own', retag?: { readonly tags: string; readonly lead: string; readonly words?: string; readonly score?: string }): Promise<void> {
     const at = this.trackPlace(playlist, song.title);
     this.remakeMenu.set(null);
     this.retagging.set(null);
@@ -1159,6 +1164,7 @@ export class PlaylistsPageComponent {
     this.asking.set({ key: `${playlist.id}:${at}`, fresh: lyrics === 'new' });
     const outcome = await this.hub.call<unknown>('POST', `/api/albums/${encodeURIComponent(playlist.id)}/tracks/${at}/remake`, {
       lyrics, ...(retag ? { tags: retag.tags, lead: retag.lead } : {}), ...(lyrics === 'own' ? { words: retag?.words ?? '' } : {}),
+      ...(retag?.score !== undefined && retag.score.trim() !== '' ? { score: retag.score } : {}),
     });
     this.asking.set(null);
     this.refusal.set(outcome.ok ? null : outcome.refusal);

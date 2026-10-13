@@ -324,6 +324,26 @@ test('new tags for the new take (Victoria, 2026-10-12): the plan track takes the
   expect(album.meta().plan!.tracks[0]!.tags).not.toContain('bassoon');
 });
 
+test('a full score for the new take (Victoria, 2026-10-13): sent with the take, kept on the remake, gone once it lands', async () => {
+  const server = fakeServer();
+  const album = fakeAlbum({ description: 'x', tags: [], minutes: 30, sung: true }, server);
+  album.maker.start('hs');
+  await settle(album.maker, 'hs');
+  album.set({ stage: 'done', sent: 15, madeS: 1800, redo: [] });
+  album.flight.flying = 0;
+  const score = 'X:1\nT:Waltz\nM:3/4\nL:1/16\nQ:1/4=76\nV:Vocal\nV:Ins\nK:Em\n% chorus\nV:Vocal\nE4 |\nV:Ins\nZ4 |\n';
+  await album.maker.remake('hs', 1, { fresh: false, song: 'old-take', keep: '[Chorus]\nla', score });
+  expect(album.meta().remakes).toEqual([{ at: 1, song: 'old-take', lyrics: '[Chorus]\nla', score }]);
+  const sent = album.rendered.at(-1)!.params;
+  expect(sent.score).toBe(score);
+  expect(sent.lyrics).toBe('[Chorus]\nla');
+  await album.maker.landed('hs', 200, { at: 1, replacedS: 150 });
+  expect(album.meta().remakes).toEqual([]);
+  // A track made again without one is planned as usual.
+  await album.maker.remake('hs', 2, { fresh: false, song: 'old-take', keep: '[Chorus]\nla' });
+  expect(album.rendered.at(-1)!.params).not.toHaveProperty('score');
+});
+
 test('own words for the new take (Victoria, 2026-10-13): sung exactly as given, and the plan takes them once it lands', async () => {
   const server = fakeServer();
   const album = fakeAlbum({ description: 'x', tags: [], minutes: 30, sung: true }, server);

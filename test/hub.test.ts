@@ -365,6 +365,26 @@ test('Make this track again: refused by name; asked for, the album makes it; fai
     expect([unplanned.status, await code(unplanned)]).toEqual([409, 'album_writing']);
     const nowhere = await remake('thousand-ships', '5', 'keep');
     expect([nowhere.status, await code(nowhere)]).toEqual([404, 'track_missing']);
+    // A score (Victoria, 2026-10-13) is the ABC text, and sings its own sections: never with new words.
+    const scored = (body: Record<string, unknown>) => api('/api/albums/thousand-ships/tracks/0/remake', { method: 'POST', body: JSON.stringify(body) });
+    expect(await code(await scored({ lyrics: 'keep', score: '  ' }))).toBe('body_invalid');
+    expect(await code(await scored({ lyrics: 'new', score: 'X:1\nK:Em\n' }))).toBe('body_invalid');
+    expect(await code(await scored({ lyrics: 'keep', score: 'x'.repeat(200_001) }))).toBe('score_long');
+    // Replacing a take's audio (Victoria, 2026-10-13): the track must have one, and be a real place.
+    const replace = (album: string, at: string, name: string) =>
+      api(`/api/albums/${album}/tracks/${at}/audio?name=${name}&duration=120`, { method: 'PUT', body: new Uint8Array([1, 2, 3]) });
+    expect(await code(await replace('thousand-ships', '0', 'take.txt'))).toBe('song_format');
+    const noAlbum = await replace('no-such-album', '0', 'take.mp3');
+    expect([noAlbum.status, await code(noAlbum)]).toEqual([404, 'album_missing']);
+    const noTrack = await replace('thousand-ships', '5', 'take.mp3');
+    expect([noTrack.status, await code(noTrack)]).toEqual([404, 'track_missing']);
+    const replaced = await replace('thousand-ships', '1', 'take.mp3');
+    expect(replaced.status).toBe(200);
+    const swapped = ((await replaced.json()) as LibraryView).songs.find((song) => song.id === other)!;
+    expect(swapped.file).toMatch(/-r1\.mp3$/);
+    expect(swapped.bytes).toBe(3);
+    expect(swapped.durationS).toBe(120);
+    expect(swapped.title).toBe('Hector');
 
     // The same words, as they stand on the old take (corrected by hand).
     const asked = await remake('thousand-ships', '0', 'keep');
