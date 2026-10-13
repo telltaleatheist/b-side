@@ -1083,8 +1083,9 @@ export class PlaylistsPageComponent {
   protected canRemake(playlist: Playlist, song: Song): boolean {
     const album = playlist.album;
     if (!this.canRewrite(playlist) || album == null || album.stage === 'planning' || album.stage === 'cover') return false;
-    const at = this.trackPlace(playlist, song.title);
-    return at !== null && at < album.sent;
+    // The row is the take: a plan track with a song is made, whatever `sent` says (Victoria,
+    // 2026-10-12: a track that landed before the one ahead of it had no button).
+    return this.trackPlace(playlist, song.title) !== null;
   }
 
   /** The track is sung: it can have its words written again. */

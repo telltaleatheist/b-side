@@ -726,7 +726,30 @@ export class HubCore {
     }
     await this.takes.remove(takeId, take.client);
     const replacedS = remake === null ? null : await this.replaceTake(albumId, remake.song, song);
+    // In its plan's order (Victoria, 2026-10-12: track 10 landed before track 9, which then went to the end).
+    if (remake === null) await this.placeInPlan(albumId, song.id, track);
     await this.albums.landed(albumId, take.durationS, remake === null ? undefined : { at: track, replacedS });
+  }
+
+  /**
+   * Put a landed track before the first of the album's songs whose plan place is past its own, so
+   * tracks sit in plan order however they finish. A song that is no plan track (copied in, 1.0.41)
+   * has no place and is passed over; nothing moves when the track already belongs at the end.
+   */
+  private async placeInPlan(albumId: string, songId: string, track: number): Promise<void> {
+    const view = await this.library.list();
+    const playlist = view.playlists.find((p) => p.id === albumId);
+    const titles = playlist?.album?.plan?.tracks.map((each) => each.title.toLowerCase()) ?? [];
+    if (playlist === undefined || !playlist.songs.includes(songId)) return;
+    const songs = new Map(view.songs.map((song) => [song.id, song]));
+    const rest = playlist.songs.filter((each) => each !== songId);
+    const before = rest.findIndex((each) => {
+      const place = titles.indexOf(songs.get(each)?.title.toLowerCase() ?? '');
+      return place > track;
+    });
+    if (before < 0) return;
+    await this.library.reorder(albumId, [...rest.slice(0, before), songId, ...rest.slice(before)])
+      .catch((err: unknown) => console.error(`[albums] could not place track ${track + 1} in its plan's order:`, err));
   }
 
   /**

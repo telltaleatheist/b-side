@@ -21,6 +21,8 @@ function fakeServer(ids: string[], albums: AlbumOrder = 'one', singles: SinglesO
   const queue: string[] = [];
   /** Every track sent, in order. */
   const sent: string[] = [];
+  /** The songs filed in the albums, by title (hooks.made); none unless a test files some. */
+  const titlesMade: string[] = [];
   const state = { albums, singles, waiting: 0 };
   const hooks: AlbumHooks = {
     meta: async (id) => stored.get(id) ?? null,
@@ -34,7 +36,7 @@ function fakeServer(ids: string[], albums: AlbumOrder = 'one', singles: SinglesO
     inFlight: (id) => queue.filter((job) => job.startsWith(id)).length,
     retitle: async () => undefined,
     cancelInFlight: async () => undefined,
-    made: async () => [],
+    made: async () => titlesMade.map((title) => ({ title, durationS: 100 })),
     flyingTracks: (id) => queue.filter((job) => job.startsWith(id)).map((job) => Number(job.slice(-1))),
     renameSong: async () => undefined,
     makingOn: async () => albumLine(
@@ -62,8 +64,30 @@ function fakeServer(ids: string[], albums: AlbumOrder = 'one', singles: SinglesO
     for (let i = 0; i < 40 && queue.length > 0; i += 1) await land();
   };
   const set = (id: string, change: Partial<AlbumMeta>): void => { stored.set(id, { ...(stored.get(id) as AlbumMeta & { createdAt: string }), ...change }); };
-  return { maker, queue, sent, state, land, drain, set, meta: (id: string) => stored.get(id) as AlbumMeta };
+  return { maker, queue, sent, state, land, drain, set, titlesMade, meta: (id: string) => stored.get(id) as AlbumMeta };
 }
+
+test('`sent` short of a track already made is healed on recovery, and a landing never sets it back (Victoria, 2026-10-12)', async () => {
+  const server = fakeServer(['a']);
+  // Track 4 ("Four") is filed while `sent` says only one track went: a stale write set it back.
+  server.titlesMade.push('Four');
+  server.set('a', { sent: 1 });
+  await server.maker.resume('a');
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(server.meta('a').sent).toBe(4);
+  // The tracks with no song are made again, in order; "Four" is never sent over.
+  expect(server.sent.slice(0, 2)).toEqual(['a0', 'a1']);
+  await server.drain();
+  expect(server.sent).toEqual(['a0', 'a1', 'a2']);
+  expect(server.meta('a').stage).toBe('done');
+  // A landing reads and writes the album in the same edit line as a send: the two cannot cross.
+  const again = fakeServer(['b']);
+  await again.maker.next('pc');
+  const before = again.meta('b').sent;
+  await Promise.all([again.land(), again.maker.next('pc')]);
+  expect(again.meta('b').sent).toBeGreaterThanOrEqual(before);
+  expect(new Set(again.sent).size).toBe(again.sent.length);
+});
 
 test('one album at a time: the first album keeps two tracks on the server and finishes before the next begins', async () => {
   const server = fakeServer(['a', 'b']);
@@ -242,7 +266,9 @@ test('a remake refuses by name: a track already being made again, being made, no
   await server.land();
   // a1 and a2 are on the server; a3 is not sent yet.
   await expect(server.maker.remake('a', 1, keep)).rejects.toMatchObject({ code: 'track_making' });
-  await expect(server.maker.remake('a', 3, keep)).rejects.toMatchObject({ code: 'track_missing' });
+  // Not sent yet means no take (the hub finds a track's take by its title); a place past the plan is missing.
+  await expect(server.maker.remake('a', 3, { ...keep, song: null })).rejects.toMatchObject({ code: 'track_unmade' });
+  await expect(server.maker.remake('a', 99, keep)).rejects.toMatchObject({ code: 'track_missing' });
   await expect(server.maker.remake('a', 0, { ...keep, song: null })).rejects.toMatchObject({ code: 'track_unmade' });
   await expect(server.maker.remake('a', 0, { ...keep, fresh: true })).rejects.toMatchObject({ code: 'track_instrumental' });
   await server.maker.remake('a', 0, keep);
