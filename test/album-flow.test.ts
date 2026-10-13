@@ -305,6 +305,25 @@ test("the same lyrics, new take: the old take's words as they stand on its song 
   expect(album.rendered.at(-1)!.params.lyrics).toBe('[Chorus]\nfixed by hand');
 });
 
+test('new tags for the new take (Victoria, 2026-10-12): the plan track takes them and its lead, and the take is sent with them', async () => {
+  const server = fakeServer();
+  const album = fakeAlbum({ description: 'x', tags: [], minutes: 30, sung: true }, server);
+  album.maker.start('h2');
+  await settle(album.maker, 'h2');
+  album.set({ stage: 'done', sent: 15, madeS: 1800, redo: [] });
+  album.flight.flying = 0;
+  await album.maker.remake('h2', 1, { fresh: false, song: 'old-take', keep: '[Chorus]\nla', tags: 'bassoon, pizzicato strings, clarinet, playful, 64 BPM', lead: 'soft female voice' });
+  const sent = album.rendered.at(-1)!.params;
+  expect(sent.tags).toBe('soft female voice, bassoon, pizzicato strings, clarinet, playful, 64 BPM');
+  expect(sent.lead).toBe('soft female voice');
+  expect(sent.lyrics).toBe('[Chorus]\nla');
+  const track = album.meta().plan!.tracks[1]!;
+  expect(track.tags).toBe('soft female voice, bassoon, pizzicato strings, clarinet, playful, 64 BPM');
+  expect(track.lead).toBe('soft female voice');
+  // The other tracks keep their own.
+  expect(album.meta().plan!.tracks[0]!.tags).not.toContain('bassoon');
+});
+
 test("new lyrics with no Claude (a phone): the server's model writes them, as in the album's own lyrics loop", async () => {
   const server = fakeServer();
   const album = fakeAlbum({ description: 'sad songs about bananas', tags: [], minutes: 30, sung: true }, server);

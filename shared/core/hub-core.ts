@@ -1354,8 +1354,15 @@ export class HubCore {
       const id = request.params['id'] as string;
       const at = Number(request.params['at']);
       if (!Number.isInteger(at) || at < 0) throw new Refusal('body_invalid', 'The track is its place in the album, from 0.');
-      const lyrics = (await request.body())['lyrics'];
+      const body = await request.body();
+      const lyrics = body['lyrics'];
       if (lyrics !== 'keep' && lyrics !== 'new') throw new Refusal('body_invalid', 'lyrics is keep or new.');
+      // New tags for the new take (Victoria, 2026-10-12), and its lead; absent, the track's own stay.
+      const tags = typeof body['tags'] === 'string' ? body['tags'].replace(/\s+/g, ' ').trim() : undefined;
+      if (tags !== undefined && tags === '') throw new Refusal('body_invalid', 'tags, when sent, name at least one tag.');
+      if (tags !== undefined && tags.length > 600) throw new Refusal('track_tags_long', `The tags run ${tags.length} characters; a track's take at most 600.`);
+      const lead = tags === undefined ? undefined : typeof body['lead'] === 'string' ? body['lead'].replace(/\s+/g, ' ').trim() : null;
+      if (lead != null && lead.length > 80) throw new Refusal('plan_lead_long', `The lead is ${lead.length} characters; a lead is at most 80.`);
       // Its take now: the album's song with its plan track's name, as the album finds its songs.
       const view = await this.library.list();
       const playlist = view.playlists.find((p) => p.id === id);
@@ -1368,6 +1375,7 @@ export class HubCore {
         song: song?.id ?? null,
         // Same words: as they stand on the old take, so a chorus corrected by hand is sung corrected.
         keep: song !== undefined && !song.params.instrumental ? song.params.lyrics : null,
+        ...(tags !== undefined ? { tags, lead } : {}),
       });
       return this.libraryChanged();
     });

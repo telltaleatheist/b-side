@@ -561,7 +561,10 @@ export class AlbumMaker {
    * any track, sent before its next new one; a finished or stopped album makes only it, then goes
    * back to as it was. The old take (`song`) stays until the new one lands in its place.
    */
-  async remake(id: string, at: number, ask: { readonly fresh: boolean; readonly song: string | null; readonly keep: string | null }): Promise<AlbumMeta> {
+  async remake(
+    id: string, at: number,
+    ask: { readonly fresh: boolean; readonly song: string | null; readonly keep: string | null; readonly tags?: string; readonly lead?: string | null },
+  ): Promise<AlbumMeta> {
     if (this.running.has(id)) throw new Refusal('album_writing', 'This album is still being written; make a track again once it is planned.', 409);
     const meta = await this.hooks.meta(id);
     if (meta === null) throw new Refusal('album_missing', 'That album is gone.', 404);
@@ -588,8 +591,24 @@ export class AlbumMaker {
       if (now === null) throw new Refusal('album_missing', 'That album is gone.', 404);
       const remake: AlbumRemake = { at, song: ask.song, lyrics };
       const finished = now.stage !== 'making' && now.stage !== 'planning' && now.stage !== 'cover';
+      // New tags for the new take (Victoria, 2026-10-12: a 64 BPM lullaby YuE2 played at double time,
+      // which "Same lyrics, new take" alone could never fix): the plan's track takes them, and its
+      // lead, so the take keeps its place and every later remake starts from them. The lead given
+      // goes first in the tags as the plan writes it (trackTags); none given, the track has none.
+      const retagged = ask.tags === undefined ? now.plan : {
+        ...(now.plan as AlbumPlan),
+        tracks: (now.plan as AlbumPlan).tracks.map((each, i) => {
+          if (i !== at) return each;
+          const lead = ask.lead == null || ask.lead.trim() === '' ? null : ask.lead.trim();
+          const phrase = lead === null ? null : leadPhrase(lead, !sung);
+          const { lead: _was, ...rest } = each;
+          const retrack: AlbumTrack = { ...rest, tags: trackTags(ask.tags as string, '', sung, true, lead), ...(phrase !== null ? { lead: phrase } : {}) };
+          return retrack;
+        }),
+      };
       const next: AlbumMeta = {
         ...now,
+        plan: retagged,
         remakes: [...(now.remakes ?? []), remake],
         redo: [...(now.redo ?? []), at],
         remakeRefusal: null,
