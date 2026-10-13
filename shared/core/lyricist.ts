@@ -14,6 +14,7 @@
  * track to track (SONG_SHAPES) with no section under 4 lines, which keeps every section sung.
  */
 
+import type { LyricsLength } from '../types';
 import { YUE2_LYRICS_GUIDE } from './yue2-style';
 
 /** Who writes the lyrics; a hub preference. */
@@ -39,6 +40,8 @@ export interface SongToWrite {
    * Penelope): names and uncommon words are written as they sound, so YuE2 sings them right.
    */
   readonly phonetic?: boolean;
+  /** Make's "Lyrics length" (Owen, 2026-10-12): how many lines in all; absent, normal (the shapes as they are). */
+  readonly length?: LyricsLength;
   /** Worn words and a spark for its name (fresh-names.ts); only when it names the song. */
   readonly fresh?: string;
   /** For an album's track: the record around it. */
@@ -126,8 +129,34 @@ export function claudeLyricsUser(song: SongToWrite): string {
   if (song.phonetic === true) lines.push(PHONETIC);
   lines.push(`Syllables: at most ${syllableBudget(song.tags)} per line.`);
   const shapes = song.preChorus === true ? SONG_SHAPES : CLAUDE_SHAPES;
-  lines.push(`Shape: ${shapes[(song.album?.at ?? Math.floor(Math.random() * shapes.length)) % shapes.length]}`);
+  lines.push(`Shape: ${shapeFor(song.length ?? 'normal', shapes[(song.album?.at ?? Math.floor(Math.random() * shapes.length)) % shapes.length] as string)}`);
   return lines.join('\n');
+}
+
+/**
+ * The shape line for a lyrics length (Owen, 2026-10-12): the song's own shape at normal; one 4-line
+ * verse at very short; a verse and a chorus at short; at long, the shape with 8-line verses and
+ * one more verse and chorus before its bridge (with none, after its last chorus, before any outro).
+ * Sections stay 4 or 8 lines, the phrases YuE2 plans in (misshapenSections).
+ */
+export function shapeFor(length: LyricsLength, shape: string): string {
+  switch (length) {
+    case 'very-short':
+      return 'verse (4 lines) only. The whole song is these 4 lines: no chorus, no bridge, no intro or outro.';
+    case 'short':
+      return 'verse (4 lines), chorus (4 lines). The whole song is these 8 lines: no bridge, no intro or outro.';
+    case 'long': {
+      const parts = shape.split(', ');
+      const bridge = parts.indexOf('bridge');
+      const outro = parts.findIndex((part) => part.startsWith('outro'));
+      // Before the bridge; with none, after the last chorus (before an outro).
+      const at = bridge >= 0 ? bridge : outro >= 0 ? outro : parts.length;
+      const more = parts.includes('pre-chorus') ? ['verse', 'pre-chorus', 'chorus'] : ['verse', 'chorus'];
+      return `${[...parts.slice(0, at), ...more, ...parts.slice(at)].join(', ')}; every verse 8 lines.`;
+    }
+    default:
+      return shape;
+  }
 }
 
 /**

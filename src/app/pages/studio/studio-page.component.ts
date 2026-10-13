@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, u
 import { Router, RouterLink } from '@angular/router';
 
 import { MAX_BATCH } from '@shared/batch';
-import { ALBUM_MINUTES, albumBytes, DESCRIPTION_MAX, ENDED_PHASES, LENGTH_AIMS, SINGLES_NAME, type HubPreferences, type Playlist, type RefusalView } from '@shared/types';
+import { ALBUM_MINUTES, albumBytes, DESCRIPTION_MAX, ENDED_PHASES, LENGTH_AIMS, LYRICS_LENGTHS, SINGLES_NAME, type HubPreferences, type LyricsLength, type Playlist, type RefusalView } from '@shared/types';
 import { styleLine, undeclaredLanguage } from '@shared/tags';
 
 import { AlbumPlanComponent } from '../../components/album-plan/album-plan.component';
@@ -21,7 +21,7 @@ import { JobsService } from '../../core/jobs.service';
 import { PlayerService } from '../../core/player.service';
 import { RememberHeightDirective } from '../../core/remember-height.directive';
 import { LibraryService } from '../../core/library.service';
-import { ADD_SECTIONS_KEY, PHONETIC_KEY, StudioService, keepChoice, keepPreChorus, type FormSnapshot } from '../../core/studio.service';
+import { ADD_SECTIONS_KEY, PHONETIC_KEY, StudioService, keepChoice, keepLyricsLength, keepPreChorus, type FormSnapshot } from '../../core/studio.service';
 import { ownTracks } from '@shared/own-words';
 import { RefusalComponent } from '../../components/refusal/refusal.component';
 
@@ -244,6 +244,17 @@ const UNDO_MS = 15_000;
             }
             @if (studio.preChorus()) {
               <p class="hint warn">YuE2 often leaves a pre-chorus out of the melody (in 38 of 67 of Victoria's songs it dropped at least one), and its lines are then squeezed into the verse or chorus. Unticked, the verses build into the chorus instead.</p>
+            }
+            <div class="opt">
+              <span class="opt-name">Lyrics length</span>
+              <div class="opt-chips">
+                @for (length of lyricsLengths; track length.key) {
+                  <button type="button" class="chip" [class.on]="studio.lyricsLength() === length.key" [title]="length.hint" (click)="setLyricsLength(length.key)">{{ length.label }}</button>
+                }
+              </div>
+            </div>
+            @if (studio.lyricsLength() !== 'normal') {
+              <p class="hint">{{ lyricsLengthHint() }} Words you give yourself are never touched.</p>
             }
             }
             <p class="hint">{{ planning() ? 'Lyrics you give are sung exactly as written; these choices shape only the songs written for you. Section tags change no word.' : mode() === 'album' && studio.ownWords() ? 'The sound, the names and the cover are still written for you, from the description and tags.' : mode() === 'album' ? "Every track's lyrics are written to this, and the titles fit it. Blank: the album's description leads." : 'Fill in the tags writes the lyrics to this. With the Lyrics box empty, Make writes them first.' }}</p>
@@ -515,6 +526,14 @@ export class StudioPageComponent {
     this.studio.phonetic.set(on);
     keepChoice(PHONETIC_KEY, on);
   }
+  protected readonly lyricsLengths = LYRICS_LENGTHS;
+  protected setLyricsLength(length: LyricsLength): void {
+    this.studio.lyricsLength.set(length);
+    keepLyricsLength(length);
+  }
+  protected lyricsLengthHint(): string {
+    return LYRICS_LENGTHS.find((length) => length.key === this.studio.lyricsLength())?.hint ?? '';
+  }
   protected setAddSections(on: boolean): void {
     this.studio.addSections.set(on);
     keepChoice(ADD_SECTIONS_KEY, on);
@@ -656,6 +675,7 @@ export class StudioPageComponent {
       this.albumLength.set(ALBUM_MINUTES.includes(remake.ask.minutes) ? remake.ask.minutes : 60);
       this.albumSung.set(remake.ask.sung);
       this.albumExact.set(remake.ask.exactTags === true);
+      if (remake.ask.lyricsLength !== undefined) this.studio.lyricsLength.set(remake.ask.lyricsLength);
       this.pickedServer.set(remake.server);
     }
     // Vocals switched (or Songs and Album, which keep their own): a lead that no longer fits is cleared.
@@ -710,6 +730,7 @@ export class StudioPageComponent {
       ...(!planning && this.albumSung() && this.studio.ownWords() ? { ownWords: this.studio.ownText(), addSections: this.studio.addSections() } : {}),
       preChorus: this.wordsHere() && this.studio.preChorus(),
       phonetic: this.wordsHere() && this.studio.phonetic(),
+      ...(this.wordsHere() ? { lyricsLength: this.studio.lyricsLength() } : {}),
       ...(this.studio.name().trim() !== '' ? { title: this.studio.name().trim() } : {}),
     });
     this.albumSending.set(false);

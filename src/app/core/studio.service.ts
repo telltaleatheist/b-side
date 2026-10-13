@@ -4,7 +4,7 @@ import { Router } from '@angular/router';
 import { batchCount } from '@shared/batch';
 import { addTags, clashesWith, joinTags, leadFits, splitTags, toggleTag, withoutVoice } from '@shared/tags';
 import {
-  ALBUM_TAG_MODES, LENGTH_AIMS, type AlbumAsk, type AlbumTagMode, type AlbumTemplate, type AlbumTemplateSummary, type PlannedTrack, type DescribeResult, type Preset, type RefusalView, type SongForm, type SongPage, type SongParams } from '@shared/types';
+  ALBUM_TAG_MODES, LENGTH_AIMS, lyricsLengthOf, type LyricsLength, type AlbumAsk, type AlbumTagMode, type AlbumTemplate, type AlbumTemplateSummary, type PlannedTrack, type DescribeResult, type Preset, type RefusalView, type SongForm, type SongPage, type SongParams } from '@shared/types';
 
 import { HubService } from './hub.service';
 import { JobsService } from './jobs.service';
@@ -59,6 +59,8 @@ export class StudioService {
   readonly preChorus = signal(readPreChorus());
   /** "Pronounce phonetically" (Owen, 2026-10-11): as last left on this device. */
   readonly phonetic = signal(readChoice(PHONETIC_KEY));
+  /** Make's "Lyrics length" (Owen, 2026-10-12): how many lines the lyricist writes; as last left on this device. */
+  readonly lyricsLength = signal<LyricsLength>(readLyricsLength());
   /** A sung album in the person's own words (Owen, 2026-10-11): on, the words box replaces the brief. */
   readonly ownWords = signal(false);
   readonly ownText = signal('');
@@ -358,7 +360,7 @@ export class StudioService {
     const lyrics = instrumental || forAlbum ? '' : this.lyricsBrief().trim();
     const name = this.name().trim();
     const outcome = await this.hub.call<DescribeResult>('POST', '/api/describe', {
-      text, instrumental, lyrics, preChorus: this.preChorus(), phonetic: this.phonetic(), ...(name !== '' && !forAlbum ? { title: name } : {}),
+      text, instrumental, lyrics, preChorus: this.preChorus(), phonetic: this.phonetic(), lyricsLength: this.lyricsLength(), ...(name !== '' && !forAlbum ? { title: name } : {}),
     });
     clearInterval(ticker);
     this.describing.set(false);
@@ -654,4 +656,24 @@ export function keepChoice(key: string, on: boolean): void {
 /** Keep the pre-chorus choice for next time. */
 export function keepPreChorus(on: boolean): void {
   keepChoice(PRE_CHORUS_KEY, on);
+}
+
+export const LYRICS_LENGTH_KEY = 'b-sides.lyricsLength';
+
+/** The lyrics length last chosen on this device; normal until one is. */
+function readLyricsLength(): LyricsLength {
+  try {
+    return lyricsLengthOf(localStorage.getItem(LYRICS_LENGTH_KEY)) ?? 'normal';
+  } catch {
+    return 'normal';
+  }
+}
+
+/** Keep the lyrics length for next time (as the checkboxes are kept). */
+export function keepLyricsLength(length: LyricsLength): void {
+  try {
+    localStorage.setItem(LYRICS_LENGTH_KEY, length);
+  } catch {
+    // A private window: it is only forgotten.
+  }
 }

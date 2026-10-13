@@ -685,6 +685,22 @@ export interface AlbumStep {
   readonly detail?: string;
 }
 
+/**
+ * How many lines a lyricist writes a song (Owen, 2026-10-12: "very short (4 lines?), short (8
+ * lines?), normal (chorus, verses, the normal amount of lyrics), long"). Normal is the shapes as
+ * they were (lyricist.ts SONG_SHAPES). Words the person gives are never touched by it.
+ */
+export type LyricsLength = 'very-short' | 'short' | 'normal' | 'long';
+export const LYRICS_LENGTHS: readonly { readonly key: LyricsLength; readonly label: string; readonly hint: string }[] = [
+  { key: 'very-short', label: 'Very short', hint: '4 lines in all: one verse, nothing else.' },
+  { key: 'short', label: 'Short', hint: '8 lines: a verse and a chorus.' },
+  { key: 'normal', label: 'Normal', hint: 'Verses, choruses and a bridge, the shape changing from track to track.' },
+  { key: 'long', label: 'Long', hint: '8-line verses, and a verse and chorus more than normal.' },
+];
+export function lyricsLengthOf(value: unknown): LyricsLength | null {
+  return LYRICS_LENGTHS.some((length) => length.key === value) ? value as LyricsLength : null;
+}
+
 /** Make → Album: what the person picks. */
 export interface AlbumAsk {
   readonly description: string;
@@ -709,6 +725,8 @@ export interface AlbumAsk {
   readonly preChorus?: boolean;
   /** Sung: names and rare words written as they sound (Make's "Pronounce phonetically", Owen 2026-10-11). */
   readonly phonetic?: boolean;
+  /** Sung: how many lines the lyricist writes a track (Make's "Lyrics length", Owen 2026-10-12); absent: normal. */
+  readonly lyricsLength?: LyricsLength;
   readonly exactTags?: boolean;
   /**
    * Make's Lead (Owen, 2026-10-11): every track's lead, the singer or the instrument carrying the

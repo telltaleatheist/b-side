@@ -153,6 +153,7 @@ async function writeTrackLyrics(
       ...(track.idea ? { idea: track.idea } : {}),
       ...(ask.preChorus === true ? { preChorus: true } : {}),
       ...(ask.phonetic === true ? { phonetic: true } : {}),
+      ...(ask.lyricsLength !== undefined ? { length: ask.lyricsLength } : {}),
       album: { title: concept.title, artist: concept.artist, blurb: concept.blurb, tracks: tracks.map((t) => t.title), at },
     });
   return layLyrics(written);
