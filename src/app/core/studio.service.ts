@@ -2,7 +2,7 @@ import { computed, effect, inject, Injectable, signal, untracked } from '@angula
 import { Router } from '@angular/router';
 
 import { batchCount } from '@shared/batch';
-import { addTags, clashesWith, joinTags, leadFits, splitTags, toggleTag, withoutVoice } from '@shared/tags';
+import { addTags, clashesWith, cleanPhrase, joinTags, leadFits, splitTags, toggleTag, withoutVoice } from '@shared/tags';
 import {
   ALBUM_TAG_MODES, LENGTH_AIMS, lyricsLengthOf, type LyricsLength, type AlbumAsk, type AlbumTagMode, type AlbumTemplate, type AlbumTemplateSummary, type PlannedTrack, type DescribeResult, type Preset, type RefusalView, type SongForm, type SongPage, type SongParams } from '@shared/types';
 
@@ -210,7 +210,7 @@ export class StudioService {
       briefOpen: track.brief !== undefined,
       tags: track.tags !== undefined ? joinTags(track.tags) : plan.tagMode === 'per-song' ? joinTags(this.tags()) : '',
       sung: track.sung ?? sung,
-      lead: track.lead ?? '',
+      lead: cleanPhrase(track.lead ?? ''),
     })));
     this.albumWay.set('plan');
   }
@@ -239,7 +239,7 @@ export class StudioService {
     const template = outcome.value;
     this.description.set(template.description);
     this.tags.set([...template.tags]);
-    this.lead.set(template.lead);
+    this.lead.set(cleanPhrase(template.lead));
     this.fillPlan(template.plan, template.sung);
     return template;
   }
@@ -255,7 +255,7 @@ export class StudioService {
   remakeAlbum(ask: AlbumAsk, server: string): void {
     this.description.set(ask.description);
     this.tags.set([...ask.tags]);
-    this.lead.set(ask.lead ?? '');
+    this.lead.set(cleanPhrase(ask.lead ?? ''));
     this.lyricsBrief.set(ask.lyrics ?? '');
     if (ask.plan !== undefined) this.fillPlan(ask.plan, ask.sung);
     else this.albumWay.set('generate');
@@ -370,7 +370,7 @@ export class StudioService {
     }
     // The lead it picked fills Lead, and is not a chip as well (Owen, 2026-10-11). Not an instrumental
     // album's: a lead in the box is every track's, and each track names its own melody instrument.
-    const lead = forAlbum && outcome.value.instrumental ? '' : outcome.value.lead ?? '';
+    const lead = forAlbum && outcome.value.instrumental ? '' : cleanPhrase(outcome.value.lead ?? '');
     this.lead.set(lead);
     this.tags.set(outcome.value.tags.filter((tag) => tag.toLowerCase() !== lead.toLowerCase()));
     // An album's tracks follow its own Vocals choice: the song's switch and Lyrics box are not the album's.
@@ -450,7 +450,8 @@ export class StudioService {
     if (typeof params['lyrics'] === 'string') this.lyrics.set(params['lyrics']);
     if (typeof params['instrumental'] === 'boolean') this.instrumental.set(params['instrumental']);
     if (typeof params['cfg'] === 'number') this.cfg.set(String(params['cfg']));
-    this.lead.set(typeof params['lead'] === 'string' ? params['lead'] : '');
+    // A lead saved as the text model wrote it, as code (`["searing lead guitar melody"][0]`), is its words.
+    this.lead.set(typeof params['lead'] === 'string' ? cleanPhrase(params['lead']) : '');
   }
 
   /** A lead that no longer fits after Vocals changed (a singer on an instrumental, an instrument on a sung song) is cleared. */

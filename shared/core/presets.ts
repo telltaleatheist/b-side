@@ -10,6 +10,7 @@
 import { join, type Disk } from './disk';
 import type { StoredServer } from './servers';
 import type { Preset, SongForm } from '../types';
+import { cleanPhrase } from '../tags';
 
 interface Document {
   presets: Preset[];
@@ -32,7 +33,9 @@ export function presetParams(form: SongForm): Record<string, string | number | b
   if (!form.instrumental && form.lyrics.trim() !== '') params['lyrics'] = form.lyrics;
   if (form.cfg !== null) params['cfg'] = form.cfg;
   // The lead is its own param (Owen, 2026-10-11); a preset from before has none.
-  if (typeof form.lead === 'string' && form.lead.trim() !== '') params['lead'] = form.lead.trim();
+  // Kept as words, never as the code the text model once wrote it in (`["searing lead guitar melody"][0]`).
+  const lead = typeof form.lead === 'string' ? cleanPhrase(form.lead) : '';
+  if (lead !== '') params['lead'] = lead;
   return params;
 }
 
