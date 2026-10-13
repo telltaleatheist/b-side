@@ -321,9 +321,9 @@ export class StudioService {
     if (outcome.ok) {
       this.page.set(outcome.value);
       this.pageRefusal.set(null);
-      // The server's default guidance, until somebody types their own.
-      const cfg = outcome.value.cfg?.default;
-      if (this.cfg() === '' && cfg !== null && cfg !== undefined) this.cfg.set(String(cfg));
+      // The server's default guidance is shown as the box's placeholder, never written into it: an
+      // empty box means the server's choice, and what goes out carries no cfg of the person's own
+      // (2026-10-13: the filled-in default 1 was saved on albums and blocked the instrumental negative).
     } else {
       this.page.set(null);
       this.pageRefusal.set(outcome.refusal);

@@ -390,6 +390,7 @@ const UNDO_MS = 15_000;
               <span class="label">Guidance (cfg)</span>
               <input type="number" inputmode="decimal"
                      [min]="studio.page()?.cfg?.min ?? 0" [max]="studio.page()?.cfg?.max ?? null" [step]="studio.page()?.cfg?.step ?? 0.1"
+                     [placeholder]="studio.page()?.cfg?.default ?? ''"
                      [value]="studio.cfg()" (input)="studio.cfg.set($any($event.target).value)" />
               @if (studio.page()?.cfg?.max; as max) { <span class="hint">up to {{ max }}; above 1 follows the tags and lyrics harder</span> }
             </label>
