@@ -32,7 +32,8 @@ test('a song moves between playlists only: never into an album, never out of one
   const playlist = (id: string, album = false) => ({ id, album: album ? {} : null }) as unknown as Playlist;
   expect(SongDragService.allows(playlist('p'), playlist('q'))).toBe(true);
   expect(SongDragService.allows(playlist('p'), playlist('p'))).toBe(false);
-  expect(SongDragService.allows(playlist('p'), playlist('a', true))).toBe(false);
+  // Into an album: yes (Victoria, 2026-10-12); out of one by a drag: no.
+  expect(SongDragService.allows(playlist('p'), playlist('a', true))).toBe(true);
   expect(SongDragService.allows(playlist('a', true), playlist('q'))).toBe(false);
   expect(SongDragService.allows(playlist('p'), null)).toBe(false);
 });

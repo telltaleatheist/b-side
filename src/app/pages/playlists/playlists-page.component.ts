@@ -216,12 +216,15 @@ const COVER_PX = 768;
                   </div>
                 }
                 @if (moving() === song.id) {
+                  <!-- Victoria, 2026-10-12: a song she loves as the last track of a new album, kept in the old one too: Copy; albums are targets. -->
                   <div class="move-menu">
-                    <span class="kicker">Move to</span>
+                    <button type="button" class="chip" [class.on]="moveMode() === 'copy'" title="It stays here too" (click)="moveMode.set('copy')">Copy to</button>
+                    <button type="button" class="chip" [class.on]="moveMode() === 'move'" title="It leaves this playlist" (click)="moveMode.set('move')">Move to</button>
                     @for (target of moveTargets(playlist); track target.id) {
-                      <button type="button" class="ghost small" (click)="moveSong(playlist, song, target)">{{ target.name }}</button>
+                      <button type="button" class="ghost small" (click)="moveSong(playlist, song, target)">{{ target.name }}{{ target.album ? ' (album)' : '' }}</button>
                     }
                     <button type="button" class="ghost small" (click)="moving.set(null)">Cancel</button>
+                    <span class="hint">{{ moveMode() === 'copy' ? 'The same recording, words, tags and name, listed there too; it goes at the end, to drag into place.' : 'It leaves this playlist and goes at the end there, to drag into place.' }}</span>
                   </div>
                 }
               </div>
@@ -240,8 +243,8 @@ const COVER_PX = 768;
                 @if (canRemake(playlist, song)) {
                   <button type="button" class="icon-btn narrow-keep" aria-label="Make this track again" title="Make this track again: a new take in this one's place" [attr.aria-expanded]="remakeMenu() === song.id" [disabled]="remakeState(playlist, song) !== null || hub.needsCrucible()" (click)="remakeMenu.set(remakeMenu() === song.id ? null : song.id)"><app-icon name="make" [size]="17" /></button>
                 }
-                @if (!playlist.album && moveTargets(playlist).length > 0) {
-                  <button type="button" class="icon-btn" aria-label="Move to another playlist" title="Move to another playlist" (click)="moving.set(moving() === song.id ? null : song.id)"><app-icon name="library" [size]="17" /></button>
+                @if (moveTargets(playlist).length > 0) {
+                  <button type="button" class="icon-btn" aria-label="Copy or move to another playlist or album" title="Copy or move to another playlist or album" (click)="moving.set(moving() === song.id ? null : song.id)"><app-icon name="library" [size]="17" /></button>
                 }
                 @if (isDesktop) {
                   <button type="button" class="icon-btn" aria-label="Save a copy" title="Save a copy…" (click)="saveCopy(song)"><app-icon name="save" [size]="18" /></button>
@@ -855,14 +858,21 @@ export class PlaylistsPageComponent {
     void this.router.navigate(['/library', id]);
   }
 
-  /** Where a song can move: every other playlist that is not an album. */
+  /**
+   * Where a song can go: every other playlist, albums included (Victoria, 2026-10-12: a song she
+   * loves as the last track of a new album). An album's own rows are tied to its plan by title, so
+   * a song from elsewhere is a plain row there: played and ordered with the rest, never remade.
+   */
   protected moveTargets(from: Playlist): Playlist[] {
-    return this.library.playlists().filter((playlist) => playlist.id !== from.id && playlist.album == null);
+    return this.library.playlists().filter((playlist) => playlist.id !== from.id);
   }
+
+  /** Copy (it stays here too) or move (it leaves): as last picked in the menu. */
+  protected readonly moveMode = signal<'copy' | 'move'>('copy');
 
   protected async moveSong(from: Playlist, song: Song, to: Playlist): Promise<void> {
     this.moving.set(null);
-    this.refusal.set(await this.songDrag.move(song.id, from.id, to.id));
+    this.refusal.set(this.moveMode() === 'copy' ? await this.library.addSong(to.id, song.id) : await this.songDrag.move(song.id, from.id, to.id));
   }
 
   /** A song dropped on a row of this playlist: its new place, by the reorder route (Owen, 2026-10-11). */

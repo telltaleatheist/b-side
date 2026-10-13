@@ -71,9 +71,13 @@ export class SongDragService {
     this.pointerY = event.clientY;
   };
 
-  /** Whether a song may move from its playlist to this one: never into an album, never from one. */
+  /**
+   * Whether a song may be dragged from its playlist to this one: into any other, albums included
+   * (Victoria, 2026-10-12; the row's Copy or move menu does the same), never out of an album by a
+   * drag, which is too easy to do by accident; the row's menu moves a track out on purpose.
+   */
   static allows(from: Playlist | null, to: Playlist | null): boolean {
-    return from !== null && to !== null && from.id !== to.id && from.album == null && to.album == null;
+    return from !== null && to !== null && from.id !== to.id && from.album == null;
   }
 
   mark(key: string): SongMark | null {
