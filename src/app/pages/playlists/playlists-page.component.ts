@@ -945,7 +945,9 @@ export class PlaylistsPageComponent {
   }
 
   protected play(playlist: Playlist, song: Song, event: MouseEvent): void {
-    if ((event.target as HTMLElement).closest('button, input')) return;
+    // A click on the row plays; one inside its controls or its menus (the remake forms' text boxes:
+    // Victoria, 2026-10-13, a click in the tags box started the song over) does not.
+    if ((event.target as HTMLElement).closest('button, input, textarea, select, label, [contenteditable], .move-menu, .retag')) return;
     if (this.isPeer()) this.player.playPeer(this.peerKey(), playlist.id, song);
     else if (this.isCloud()) this.player.playCloud(playlist.id, song);
     else this.player.playPlaylist(playlist.id, song);
