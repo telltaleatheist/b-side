@@ -212,16 +212,29 @@ const COVER_PX = 768;
                       <button type="button" class="ghost small" title="The lyricist writes this track's words again, then it is made with them" (click)="remake(playlist, song, 'new')">New lyrics too</button>
                     }
                     <!-- Victoria, 2026-10-12: a 64 BPM lullaby YuE2 played at double time; new tags for the new take, its place kept. -->
-                    <button type="button" class="ghost small" [class.on]="retagging() === song.id" title="Change the tags (and the lead) for the new take; it keeps its place in the album" (click)="openRetag(playlist, song)">{{ sungTrack(playlist, song) ? 'Same lyrics, new tags' : 'New tags' }}</button>
+                    <button type="button" class="ghost small" [class.on]="retagging() === song.id && retagMode() === 'tags'" title="Change the tags (and the lead) for the new take; it keeps its place in the album" (click)="openRetag(playlist, song, 'tags')">{{ sungTrack(playlist, song) ? 'Same lyrics, new tags' : 'New tags' }}</button>
+                    @if (sungTrack(playlist, song)) {
+                      <!-- Victoria, 2026-10-13: a track whose words need an edit (sections reordered), not a rewrite. -->
+                      <button type="button" class="ghost small" [class.on]="retagging() === song.id && retagMode() === 'lyrics'" title="Edit this track's words yourself for the new take; tags and lead too. It keeps its place in the album" (click)="openRetag(playlist, song, 'lyrics')">Your own lyrics</button>
+                    }
                     <button type="button" class="ghost small" (click)="remakeMenu.set(null); retagging.set(null)">Cancel</button>
                     @if (retagging() === song.id) {
                       <div class="retag">
+                        @if (retagMode() === 'lyrics') {
+                          <label class="label" [for]="'retag-words-' + song.id">Words for the new take, sung exactly as written</label>
+                          <textarea [id]="'retag-words-' + song.id" rows="12" spellcheck="true" [value]="retagWords()" (input)="retagWords.set($any($event.target).value)"></textarea>
+                        }
                         <label class="label" [for]="'retag-tags-' + song.id">Tags for the new take</label>
                         <textarea [id]="'retag-tags-' + song.id" rows="3" spellcheck="false" [value]="retagTags()" (input)="retagTags.set($any($event.target).value)"></textarea>
                         <label class="label" [for]="'retag-lead-' + song.id">Lead</label>
                         <input [id]="'retag-lead-' + song.id" type="text" [value]="retagLead()" placeholder="optional: the singer, or the instrument carrying the melody" (input)="retagLead.set($any($event.target).value)" />
-                        <button type="button" class="ghost small" [disabled]="retagTags().trim() === ''" (click)="remake(playlist, song, 'keep', { tags: retagTags(), lead: retagLead() })">Make it with these tags</button>
-                        <span class="hint">The track keeps these tags from now on: a later "Make this track again" starts from them. A lead goes first; for an instrumental, singers are left out.</span>
+                        @if (retagMode() === 'lyrics') {
+                          <button type="button" class="ghost small" [disabled]="retagTags().trim() === '' || retagWords().trim() === ''" (click)="remake(playlist, song, 'own', { tags: retagTags(), lead: retagLead(), words: retagWords() })">Make it with these words</button>
+                          <span class="hint">Sung exactly as written: nothing is rewritten, shortened or cut. The track keeps these words and tags from now on: a later "Make this track again" starts from them.</span>
+                        } @else {
+                          <button type="button" class="ghost small" [disabled]="retagTags().trim() === ''" (click)="remake(playlist, song, 'keep', { tags: retagTags(), lead: retagLead() })">Make it with these tags</button>
+                          <span class="hint">The track keeps these tags from now on: a later "Make this track again" starts from them. A lead goes first; for an instrumental, singers are left out.</span>
+                        }
                       </div>
                     } @else {
                       <span class="hint">This take plays until the new one is in. Then the new one takes its place, and this one moves to {{ singlesName }}.</span>
@@ -1112,12 +1125,15 @@ export class PlaylistsPageComponent {
 
   /** The song whose remake menu shows the new-tags form (Victoria, 2026-10-12), and the form's fields. */
   protected readonly retagging = signal<string | null>(null);
+  /** The form's kind: new tags only, or the person's own words too (Victoria, 2026-10-13). */
+  protected readonly retagMode = signal<'tags' | 'lyrics'>('tags');
   protected readonly retagTags = signal('');
   protected readonly retagLead = signal('');
+  protected readonly retagWords = signal('');
 
-  /** Open the new-tags form filled with the track's tags and lead as the plan has them now. */
-  protected openRetag(playlist: Playlist, song: Song): void {
-    if (this.retagging() === song.id) {
+  /** Open the form filled with the track's tags and lead as the plan has them now, and its words as sung. */
+  protected openRetag(playlist: Playlist, song: Song, mode: 'tags' | 'lyrics'): void {
+    if (this.retagging() === song.id && this.retagMode() === mode) {
       this.retagging.set(null);
       return;
     }
@@ -1127,16 +1143,21 @@ export class PlaylistsPageComponent {
     // The tags without the lead's own phrase, which goes in its box.
     this.retagTags.set((track?.tags ?? song.params.tags ?? '').split(',').map((t) => t.trim()).filter((t) => t !== '' && t.toLowerCase() !== lead.toLowerCase()).join(', '));
     this.retagLead.set(lead);
+    // The words as the take sings them (corrected by hand, perhaps), else the plan's.
+    this.retagWords.set(song.params.lyrics ?? track?.lyrics ?? '');
+    this.retagMode.set(mode);
     this.retagging.set(song.id);
   }
 
-  protected async remake(playlist: Playlist, song: Song, lyrics: 'keep' | 'new', retag?: { readonly tags: string; readonly lead: string }): Promise<void> {
+  protected async remake(playlist: Playlist, song: Song, lyrics: 'keep' | 'new' | 'own', retag?: { readonly tags: string; readonly lead: string; readonly words?: string }): Promise<void> {
     const at = this.trackPlace(playlist, song.title);
     this.remakeMenu.set(null);
     this.retagging.set(null);
     if (at === null) return;
     this.asking.set({ key: `${playlist.id}:${at}`, fresh: lyrics === 'new' });
-    const outcome = await this.hub.call<unknown>('POST', `/api/albums/${encodeURIComponent(playlist.id)}/tracks/${at}/remake`, { lyrics, ...(retag ? { tags: retag.tags, lead: retag.lead } : {}) });
+    const outcome = await this.hub.call<unknown>('POST', `/api/albums/${encodeURIComponent(playlist.id)}/tracks/${at}/remake`, {
+      lyrics, ...(retag ? { tags: retag.tags, lead: retag.lead } : {}), ...(lyrics === 'own' ? { words: retag?.words ?? '' } : {}),
+    });
     this.asking.set(null);
     this.refusal.set(outcome.ok ? null : outcome.refusal);
   }

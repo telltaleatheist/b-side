@@ -570,7 +570,12 @@ export class AlbumMaker {
    */
   async remake(
     id: string, at: number,
-    ask: { readonly fresh: boolean; readonly song: string | null; readonly keep: string | null; readonly tags?: string; readonly lead?: string | null },
+    ask: {
+      readonly fresh: boolean; readonly song: string | null;
+      /** The words the new take sings: the old take's, or the person's own (`own`; Victoria, 2026-10-13). */
+      readonly keep: string | null; readonly own?: boolean;
+      readonly tags?: string; readonly lead?: string | null;
+    },
   ): Promise<AlbumMeta> {
     if (this.running.has(id)) throw new Refusal('album_writing', 'This album is still being written; make a track again once it is planned.', 409);
     const meta = await this.hooks.meta(id);
@@ -593,6 +598,7 @@ export class AlbumMaker {
     if (ask.song === null) throw new Refusal('track_unmade', `"${track.title}" has no take to replace; Make the missing tracks makes it.`, 409);
     const sung = trackSung(meta.ask, at) && track.lyrics !== null;
     if (ask.fresh && !sung) throw new Refusal('track_instrumental', `"${track.title}" is instrumental: it has no words to write again.`, 409);
+    if (ask.own === true && !sung) throw new Refusal('track_instrumental', `"${track.title}" is instrumental: it sings no words. Make it as a sung single instead.`, 409);
     this.rewriting.add(key);
     try {
       const lyrics = !sung ? null : ask.fresh ? await this.lyricsFor(meta, at) : (ask.keep ?? track.lyrics);

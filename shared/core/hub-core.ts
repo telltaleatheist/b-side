@@ -1387,7 +1387,11 @@ export class HubCore {
       if (!Number.isInteger(at) || at < 0) throw new Refusal('body_invalid', 'The track is its place in the album, from 0.');
       const body = await request.body();
       const lyrics = body['lyrics'];
-      if (lyrics !== 'keep' && lyrics !== 'new') throw new Refusal('body_invalid', 'lyrics is keep or new.');
+      if (lyrics !== 'keep' && lyrics !== 'new' && lyrics !== 'own') throw new Refusal('body_invalid', 'lyrics is keep, new or own.');
+      // Their own words for the new take (Victoria, 2026-10-13: sections reordered by hand), sung exactly as given.
+      const words = lyrics === 'own' ? (typeof body['words'] === 'string' ? body['words'].replace(/\r\n/g, '\n').trim() : '') : null;
+      if (words !== null && words === '') throw new Refusal('body_invalid', 'Write the words for the new take first.');
+      if (words !== null && words.length > OWN_WORDS_MAX) throw new Refusal('own_words_long', `The words run ${words.length} characters; a track takes at most ${OWN_WORDS_MAX}.`);
       // New tags for the new take (Victoria, 2026-10-12), and its lead; absent, the track's own stay.
       const tags = typeof body['tags'] === 'string' ? body['tags'].replace(/\s+/g, ' ').trim() : undefined;
       if (tags !== undefined && tags === '') throw new Refusal('body_invalid', 'tags, when sent, name at least one tag.');
@@ -1404,8 +1408,10 @@ export class HubCore {
       await this.albums.remake(id, at, {
         fresh: lyrics === 'new',
         song: song?.id ?? null,
-        // Same words: as they stand on the old take, so a chorus corrected by hand is sung corrected.
-        keep: song !== undefined && !song.params.instrumental ? song.params.lyrics : null,
+        // Same words: as they stand on the old take, so a chorus corrected by hand is sung corrected;
+        // or the person's own, written for this take.
+        keep: words !== null ? words : song !== undefined && !song.params.instrumental ? song.params.lyrics : null,
+        ...(words !== null ? { own: true } : {}),
         ...(tags !== undefined ? { tags, lead } : {}),
       });
       return this.libraryChanged();

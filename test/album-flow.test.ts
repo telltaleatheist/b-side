@@ -324,6 +324,26 @@ test('new tags for the new take (Victoria, 2026-10-12): the plan track takes the
   expect(album.meta().plan!.tracks[0]!.tags).not.toContain('bassoon');
 });
 
+test('own words for the new take (Victoria, 2026-10-13): sung exactly as given, and the plan takes them once it lands', async () => {
+  const server = fakeServer();
+  const album = fakeAlbum({ description: 'x', tags: [], minutes: 30, sung: true }, server);
+  album.maker.start('h3');
+  await settle(album.maker, 'h3');
+  album.set({ stage: 'done', sent: 15, madeS: 1800, redo: [] });
+  album.flight.flying = 0;
+  const words = '[Verse]\nThe tin was never cookies\n\n[Chorus]\nButtons, thread and one lost key\n\n[Bridge]\nShe kept it anyway';
+  await album.maker.remake('h3', 2, { fresh: false, own: true, song: 'old-take', keep: words });
+  expect(album.rendered.at(-1)!.params.lyrics).toBe(words);
+  await album.maker.landed('h3', 200, { at: 2, replacedS: 150 });
+  expect(album.meta().plan!.tracks[2]!.lyrics).toBe(words);
+  // An instrumental track sings nothing: own words are refused by name.
+  const inst = fakeAlbum({ description: 'x', tags: [], minutes: 30, sung: false }, fakeServer());
+  inst.maker.start('h4');
+  await settle(inst.maker, 'h4');
+  inst.set({ stage: 'done', sent: 15, madeS: 1800, redo: [] });
+  await expect(inst.maker.remake('h4', 0, { fresh: false, own: true, song: 'old-take', keep: words })).rejects.toMatchObject({ code: 'track_instrumental' });
+});
+
 test("new lyrics with no Claude (a phone): the server's model writes them, as in the album's own lyrics loop", async () => {
   const server = fakeServer();
   const album = fakeAlbum({ description: 'sad songs about bananas', tags: [], minutes: 30, sung: true }, server);
