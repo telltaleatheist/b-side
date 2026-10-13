@@ -188,6 +188,7 @@ export async function songPage(server: StoredServer): Promise<SongPage> {
     cfg: numberField(named('cfg')),
     seed: numberField(named('seed')),
     negative: named('negative_tags') !== undefined && named('negative_lyrics') !== undefined,
+    header: named('key') !== undefined && named('meter') !== undefined && named('bpm') !== undefined,
     tagModel: tagModel.model,
     tagModelReason: tagModel.reason,
   };

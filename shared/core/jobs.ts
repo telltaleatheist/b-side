@@ -54,6 +54,7 @@ import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { denoiseJob, inputNameOf, runStrip, runVoiceCheck, voiceCheckJob, VOICED_S, type StripWatch } from './strip';
 import { batchSeeds } from '../batch';
+import { headerOf } from '../header';
 import { NEGATIVE_CFG, negativeFor } from '../negative';
 import { namedSet, pickSet, planningLyrics, type Planned } from '../planning-sets';
 import { styleLine, varyInstrumental } from '../tags';
@@ -155,7 +156,7 @@ export function settleSong(params: SongParams): SongParams {
  * A sung song sends no range either: Crucible only recorded it against the score, and the library
  * works that out from the score's length itself (library.ts aimOf).
  */
-export function songJob(params: SongParams, format: SongFormat, key: string, model: string = SONG_MODEL, hold = false, negative = false): JobRequest {
+export function songJob(params: SongParams, format: SongFormat, key: string, model: string = SONG_MODEL, hold = false, negative = false, header = false): JobRequest {
   const wire: Record<string, unknown> = { format };
   if (params.tags !== undefined) wire['tags'] = params.tags;
   if (params.instrumental === true && params.experiment?.lyrics !== undefined) wire['lyrics'] = params.experiment.lyrics;
@@ -171,6 +172,13 @@ export function songJob(params: SongParams, format: SongFormat, key: string, mod
     wire['negative_tags'] = against.tags;
     wire['negative_lyrics'] = against.lyrics;
     if (params.cfg === undefined) wire['cfg'] = NEGATIVE_CFG;
+  }
+  // The score's header from the tags (shared/header.ts), on a server that takes it, once SEND_HEADER is on.
+  if (header && SEND_HEADER && params.tags !== undefined) {
+    const stated = headerOf(params.tags);
+    if (stated.key !== undefined) wire['key'] = stated.key;
+    if (stated.meter !== undefined) wire['meter'] = stated.meter;
+    if (stated.bpm !== undefined) wire['bpm'] = stated.bpm;
   }
   // Held: an instrumental to meter stays on the server until the separator has read it, and until
   // the render kept is fetched (VOICE_TRIES).
@@ -214,6 +222,14 @@ const RETRY_CODES: readonly string[] = ['worker_failed'];
 export const VOICE_TRIES = 3;
 
 /**
+ * Whether a song's tags' key, meter and tempo are sent as Crucible 2.0.13's `key`, `meter` and
+ * `bpm` (shared/header.ts; Victoria, 2026-10-13: minor tags came out major). Off until
+ * crucible-pc-1's test render shows a forced 3/4 and a forced key come out as asked (a 4/4 body
+ * under a 3/4 header would refuse an instrumental's transfer); wired so turning it on is one word.
+ */
+export const SEND_HEADER = false;
+
+/**
  * Fetch a finished job's artifact into `file` and answer its size. A server that
  * cannot be reached is `CrucibleUnreachable`, which the runner retries.
  */
@@ -254,6 +270,8 @@ export interface JobHooks {
    * instrumental then names the voice it is pushed away from (shared/negative.ts). Absent: never.
    */
   negative?(server: StoredServer): Promise<boolean>;
+  /** Whether this server's YuE2 takes `key`, `meter` and `bpm` (SongPage.header). Absent: never. */
+  header?(server: StoredServer): Promise<boolean>;
 }
 
 interface PendingEntry {
@@ -622,6 +640,8 @@ export class JobRunner {
     // (shared/negative.ts). Asked once per send; a server that cannot say is taken as not.
     const negative = job.view.params.instrumental === true && this.hooks.negative !== undefined
       && await this.hooks.negative(job.server).catch(() => false);
+    // The score's header from the tags, on a server that takes it (SEND_HEADER decides whether it goes).
+    const header = SEND_HEADER && this.hooks.header !== undefined && await this.hooks.header(job.server).catch(() => false);
     let jobId: string | null = null;
     for (let round = 0; jobId === null; round += 1) {
       if (job.gone) return;
@@ -630,7 +650,7 @@ export class JobRunner {
         // retry, a job resumed from pending.json, the phone's hub): an instrumental goes with its set.
         job.view.params = settleSong(job.view.params);
         if (job.view.params.seed !== undefined) job.view.seed = job.view.params.seed;
-        jobId = await client.submit(songJob(job.view.params, job.format, job.view.key, job.view.model, job.view.tries !== undefined, negative));
+        jobId = await client.submit(songJob(job.view.params, job.format, job.view.key, job.view.model, job.view.tries !== undefined, negative, header));
       } catch (error) {
         if (job.gone) return;
         if (!isInstalling(error) || round >= INSTALL_ROUNDS) {

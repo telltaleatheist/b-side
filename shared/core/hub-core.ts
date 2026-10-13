@@ -498,6 +498,8 @@ export class HubCore {
         },
         // An instrumental is pushed away from a named voice on a YuE2 that takes a negative (shared/negative.ts).
         negative: async (server) => (await this.songPageOf(server)).negative === true,
+        // The score's key, meter and tempo from the tags, on a YuE2 that takes them (shared/header.ts; jobs.ts SEND_HEADER).
+        header: async (server) => (await this.songPageOf(server)).header === true,
       },
       options.disk,
       join(options.dataDir, 'pending.json'),
