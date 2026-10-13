@@ -276,6 +276,12 @@ export function plannedAlbum(value: unknown, sung: boolean, addSections: boolean
     const tagsGiven = track['tags'] ?? [];
     if (!Array.isArray(tagsGiven) || !tagsGiven.every((tag) => typeof tag === 'string')) throw new Refusal('body_invalid', `Song ${n}'s tags must be a list of text.`);
     const tags = (tagsGiven as string[]).map((tag) => tag.trim()).filter((tag) => tag !== '');
+    // A full score (Victoria, 2026-10-13): rendered as given. A sung one sings its own sections, so its
+    // words come with it and nobody is asked to write them.
+    const score = said('score').replace(/\r\n/g, '\n').trim();
+    if (score.length > SCORE_MAX) throw new Refusal('plan_score_long', `Song ${n}'s score runs ${score.length} characters; one takes at most ${SCORE_MAX}.`);
+    if (score !== '' && brief !== '') throw new Refusal('plan_score_and_brief', `Song ${n} has a score and what it is about; a score is rendered as given, so keep one.`);
+    if (score !== '' && (own ?? sung) && lyrics.trim() === '') throw new Refusal('plan_score_needs_lyrics', `Song ${n} is sung from a score: give its lyrics too, their section labels the score's.`);
     return {
       ...(title !== '' ? { title } : {}),
       ...(lyrics.trim() !== '' ? { lyrics: addSections ? withSections(lyrics) : lyrics } : {}),
@@ -283,6 +289,7 @@ export function plannedAlbum(value: unknown, sung: boolean, addSections: boolean
       ...(tagMode === 'per-song' && tags.length > 0 ? { tags } : {}),
       ...(own !== undefined && own !== sung ? { sung: own } : {}),
       ...(lead !== '' ? { lead } : {}),
+      ...(score !== '' ? { score } : {}),
     };
   });
   return { tagMode, tracks };
@@ -1284,7 +1291,13 @@ export class HubCore {
 
     // ── albums ────────────────────────────────────────────────────────────────
     this.route('POST', '/api/albums', async (request) => {
-      const body = await request.body();
+      const given = await request.body();
+      // From a saved template by name (Victoria, 2026-10-13: whole albums without the form): its plan,
+      // tags, description, lead and sung stand where the body says nothing of its own.
+      const template = typeof given['template'] === 'string' && given['template'].trim() !== '' ? await this.templates.get(given['template']) : null;
+      const body: Record<string, unknown> = template === null ? given : {
+        tags: template.tags, description: template.description, lead: template.lead, sung: template.sung, plan: template.plan, ...given,
+      };
       const tags = body['tags'];
       // Planned song by song (Victoria, 2026-10-12): its length is its tracks, so no minutes are asked.
       const plan = body['plan'] === undefined || body['plan'] === null

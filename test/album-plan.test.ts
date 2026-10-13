@@ -133,7 +133,31 @@ test('a plan keeps lyrics exactly, tags only per song, and a track\'s own sung a
   expect(plannedAlbum({ tagMode: 'vibe', tracks: [{ lyrics: 'one\n\ntwo' }] }, true, true, false).tracks[0]!.lyrics).toBe('[Verse]\none\n\n[Verse]\ntwo');
 });
 
+test('a planned track keeps its full score (Victoria, 2026-10-13); sung, it needs its lyrics; never beside a brief', () => {
+  const score = 'X:1\r\nM:3/4\r\nK:Em\r\n% verse\r\nV:Vocal\r\nE4 |\r\n';
+  const plan = plannedAlbum({ tagMode: 'vibe', tracks: [{ title: 'Waltz', lyrics: '[Verse]\nla', score }, { sung: false, score }] }, true, false, false);
+  expect(plan.tracks).toEqual([{ title: 'Waltz', lyrics: '[Verse]\nla', score: 'X:1\nM:3/4\nK:Em\n% verse\nV:Vocal\nE4 |' }, { sung: false, score: 'X:1\nM:3/4\nK:Em\n% verse\nV:Vocal\nE4 |' }]);
+  expect(() => plannedAlbum({ tracks: [{ score }] }, true, false, false)).toThrow(expect.objectContaining({ code: 'plan_score_needs_lyrics' }));
+  expect(() => plannedAlbum({ tracks: [{ score, brief: 'a storm', sung: false }] }, true, false, false)).toThrow(expect.objectContaining({ code: 'plan_score_and_brief' }));
+  expect(() => plannedAlbum({ tracks: [{ score: 'x'.repeat(200_001), sung: false }] }, true, false, false)).toThrow(expect.objectContaining({ code: 'plan_score_long' }));
+});
+
 // ── the album ────────────────────────────────────────────────────────────────
+
+test('a scored track is sent with its score on every take, and its words cannot be written anew', async () => {
+  const score = 'X:1\nM:3/4\nK:Em\n% verse\nV:Vocal\nE4 |\n';
+  const { album } = await make(ask({ tagMode: 'vibe', tracks: [{ title: 'Waltz', lyrics: poem, score }, { sung: false, score }, { lyrics: poem }] }));
+  expect(album.meta().plan!.tracks.map((track) => track.score)).toEqual([score, score, undefined]);
+  await album.finish();
+  expect(album.rendered.map((each) => each.params.score)).toEqual([score, score, undefined]);
+  expect(album.rendered[0]!.params.lyrics).toBe(poem);
+  expect(album.rendered[1]!.params.instrumental).toBe(true);
+  // A remake keeps the planned score; fresh words are refused by name.
+  album.flight.flying = 0;
+  await expect(album.maker.remake('a', 0, { fresh: true, song: 'old', keep: null })).rejects.toMatchObject({ code: 'track_scored' });
+  await album.maker.remake('a', 0, { fresh: false, song: 'old', keep: poem });
+  expect(album.rendered.at(-1)!.params.score).toBe(score);
+});
 
 test('exact lyrics are sent verbatim, titles kept, and an all-exact album asks no lyricist', async () => {
   const lyricist: Lyricist = { name: 'claude', write: async () => { throw new Error('never asked'); } };

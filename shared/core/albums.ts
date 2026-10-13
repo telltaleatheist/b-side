@@ -603,6 +603,7 @@ export class AlbumMaker {
     if (ask.song === null) throw new Refusal('track_unmade', `"${track.title}" has no take to replace; Make the missing tracks makes it.`, 409);
     const sung = trackSung(meta.ask, at) && track.lyrics !== null;
     if (ask.fresh && !sung) throw new Refusal('track_instrumental', `"${track.title}" is instrumental: it has no words to write again.`, 409);
+    if (ask.fresh && track.score !== undefined) throw new Refusal('track_scored', `"${track.title}" is made from a score: its words are the score's sections, so new ones cannot be written for it.`, 409);
     if (ask.own === true && !sung) throw new Refusal('track_instrumental', `"${track.title}" is instrumental: it sings no words. Make it as a sung single instead.`, 409);
     this.rewriting.add(key);
     try {
@@ -916,6 +917,8 @@ export class AlbumMaker {
             );
             track = { title: idea?.title ?? `Track ${at + 1}`, ...(idea?.idea ? { idea: idea.idea } : {}), tags: '', lyrics: null };
           }
+          // Its full score (Victoria, 2026-10-13): every take of it renders this.
+          if (given.score !== undefined) track = { ...track, score: given.score };
           plan = { ...plan, tracks: [...plan.tracks, track] };
           meta = { ...(await this.hooks.meta(id) ?? meta), plan, ...(given.lyrics !== undefined ? { lyricsBy: 'you' } : {}) };
           await this.hooks.update(id, meta);
@@ -1166,8 +1169,8 @@ export class AlbumMaker {
         ...(sung ? { lyrics: lyrics as string } : {}),
         ...(meta.ask.cfg != null ? { cfg: meta.ask.cfg } : {}),
         ...(aim !== null ? { aim: { min: aim.min, max: aim.max } } : {}),
-        // A remake from a full score (Victoria, 2026-10-13) renders it instead of a plan.
-        ...(remake?.score !== undefined ? { score: remake.score } : {}),
+        // A full score (Victoria, 2026-10-13), the remake's or the planned track's own, renders instead of a plan.
+        ...((remake?.score ?? track.score) !== undefined ? { score: (remake?.score ?? track.score) as string } : {}),
       });
       return {
         ...meta,

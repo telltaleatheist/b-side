@@ -595,6 +595,8 @@ export interface AlbumTrack {
   readonly idea?: string;
   /** A planned track's brief, in the person's words (AlbumAsk.plan); its lyrics are written to it. */
   readonly brief?: string;
+  /** A planned track's full score (PlannedTrack.score): every take of it renders this, not a plan. */
+  readonly score?: string;
 }
 
 /** What the chat model planned in its one call. */
@@ -802,6 +804,11 @@ export interface PlannedTrack {
   readonly sung?: boolean;
   /** Its own lead (Victoria: "Album lead by default, changeable per track"); absent, the album's, else the writer's. */
   readonly lead?: string;
+  /**
+   * A full score to render it from (Victoria, 2026-10-13: an album made entirely from her scores; the
+   * ABC text, SongParams.score). A sung track with one gives its lyrics too, their sections the score's.
+   */
+  readonly score?: string;
 }
 
 /**

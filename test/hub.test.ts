@@ -478,6 +478,20 @@ test('album templates: saved, listed, loaded and deleted over the API; a bad pla
   expect(loaded.tags).toEqual(['folk']);
   const bad = await api('/api/album-templates/Big', { method: 'PUT', body: JSON.stringify({ sung: true, plan: { tagMode: 'vibe', tracks: Array.from({ length: 46 }, () => ({})) } }) });
   expect(((await bad.json()) as { error: { code: string } }).error.code).toBe('plan_many');
+  // An album started from the template by name (Victoria, 2026-10-13): its plan, tags and sung stand; the body's own words win.
+  expect((await api('/api/servers', { method: 'POST', body: JSON.stringify({ name: 'nowhere', url: 'http://127.0.0.1:9', token: 't' }) })).status).toBe(200);
+  try {
+    const missing = await api('/api/albums', { method: 'POST', body: JSON.stringify({ template: 'Nope' }) });
+    expect([missing.status, ((await missing.json()) as { error: { code: string } }).error.code]).toEqual([404, 'template_missing']);
+    const started = await api('/api/albums', { method: 'POST', body: JSON.stringify({ template: 'Poems', description: 'from the template' }) });
+    expect(started.status).toBe(200);
+    const { id } = (await started.json()) as { id: string };
+    const album = ((await (await api('/api/library')).json()) as LibraryView).playlists.find((p) => p.id === id)?.album;
+    expect(album?.ask).toMatchObject({ plan, tags: ['folk'], sung: true, description: 'from the template' });
+    await api(`/api/playlists/${id}`, { method: 'DELETE' });
+  } finally {
+    await api('/api/servers/nowhere', { method: 'DELETE' });
+  }
   expect(await (await api('/api/album-templates/Poems', { method: 'DELETE' })).json()).toEqual([]);
   expect((await api('/api/album-templates/Poems')).status).toBe(404);
 });
