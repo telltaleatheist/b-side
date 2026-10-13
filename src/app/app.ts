@@ -16,6 +16,8 @@ import { albumProgress, type AlbumProgress } from './core/album-progress';
 import { HubService } from './core/hub.service';
 import { ImportService } from './core/import.service';
 import { SwipeDirective, type Swipe } from './core/swipe.directive';
+import { CloudService } from './core/cloud.service';
+import { PULL_REFRESH_PX, PullRefreshDirective } from './core/pull-refresh.directive';
 import { LibraryService } from './core/library.service';
 import { PeersService, peerId } from './core/peers.service';
 import { PlayerService } from './core/player.service';
@@ -53,7 +55,7 @@ interface Room {
   },
   imports: [
     NgTemplateOutlet, RouterOutlet, RouterLink, RouterLinkActive, ConfirmDialogComponent, HubPickerComponent, CoverComponent,
-    IconComponent, MiniPlayerComponent, NowPlayingComponent, PlayerBarComponent, SwipeDirective, WelcomeComponent,
+    IconComponent, MiniPlayerComponent, NowPlayingComponent, PlayerBarComponent, SwipeDirective, PullRefreshDirective, WelcomeComponent,
   ],
   template: `
     <div class="shell">
@@ -123,8 +125,14 @@ interface Room {
       </header>
 
       <main class="room" appSwipe="x" [swipeEdge]="30" (swipeMove)="edgeMove($event)" (swipeEnd)="edgeEnd($event)" (swipeCancel)="edgePull.set(0)"
+            appPullRefresh #pull="pullRefresh" [pullEdge]="30" (pullRefresh)="refreshAll()"
             [class.edge-moving]="edgeHeld()" [style.transform]="edgePull() !== 0 ? 'translateX(' + edgePull() + 'px)' : null"
             [style.opacity]="edgePull() !== 0 ? 1 - Math.min(0.5, Math.abs(edgePull()) / innerWidthPx) : null">
+        @if (pull.distance() > 0 || refreshing()) {
+          <div class="pull-hint" [style.height.px]="refreshing() ? 40 : pull.distance()">
+            {{ refreshing() ? 'Refreshing…' : pull.distance() >= pullAt ? 'Let go to refresh' : 'Pull to refresh' }}
+          </div>
+        }
         @if (hub.state() === 'key' || hub.state() === 'no-hub') {
           <div class="gate">
             <div class="card">
@@ -292,6 +300,10 @@ interface Room {
       padding: calc(env(safe-area-inset-top) + 8px) 20px 8px;
     }
     .room { grid-area: room; min-height: 0; overflow-y: auto; position: relative; }
+    .pull-hint {
+      display: flex; align-items: flex-end; justify-content: center; overflow: hidden; padding-bottom: 8px;
+      font-size: 12px; color: var(--text-tertiary);
+    }
     .phone-bottom { grid-area: bottom; display: flex; flex-direction: column; gap: 6px; padding-top: 6px; background: var(--bg-base); }
     .tabs {
       display: flex; justify-content: space-around;
@@ -398,6 +410,9 @@ export class App {
   protected readonly hub = inject(HubService);
   protected readonly library = inject(LibraryService);
   protected readonly peers = inject(PeersService);
+  private readonly cloud = inject(CloudService);
+  protected readonly pullAt = PULL_REFRESH_PX;
+  protected readonly refreshing = signal(false);
   protected readonly peerId = peerId;
   protected readonly ui = inject(UiService);
   // Built with the shell, so a song that lands while another room is open still plays.
@@ -547,6 +562,20 @@ export class App {
     this.router.events.subscribe((event) => {
       if (event instanceof NavigationEnd) this.visited += 1;
     });
+  }
+
+  /** Pulled down: everything read again (the hub's snapshot, the other libraries, the cloud). */
+  protected async refreshAll(): Promise<void> {
+    if (this.refreshing()) return;
+    this.refreshing.set(true);
+    this.hub.refresh();
+    await Promise.all([
+      this.peers.lookAll(),
+      this.cloud.linked() ? this.cloud.refresh() : Promise.resolve(),
+      // Long enough to be seen.
+      new Promise((done) => setTimeout(done, 600)),
+    ]);
+    this.refreshing.set(false);
   }
 
   protected edgeMove(swipe: Swipe): void {

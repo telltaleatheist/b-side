@@ -62,6 +62,13 @@ const STORED_KEY = 'bside.key';
 const STORED_CLIENT = 'bside.client';
 const BACKOFF_FIRST_MS = 1000;
 const BACKOFF_MOST_MS = 30_000;
+/**
+ * The hub writes a keep-alive every 25 s (electron/hub/clients.ts). Nothing heard for this long and
+ * the stream is dead without having said so (Owen, 2026-10-12: a song done on the desktop still said
+ * "making" on the phone): it is closed and opened again, and the fresh snapshot brings what was missed.
+ */
+const QUIET_MOST_MS = 60_000;
+const QUIET = 'quiet';
 
 /** Browser storage can be missing or throw (private windows, blocked site data): a convenience, never relied on. */
 function stored(storage: () => Storage, name: string): string | null {
@@ -331,10 +338,15 @@ export class HubService {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let heard = Date.now();
+    const watch = setInterval(() => {
+      if (Date.now() - heard > QUIET_MOST_MS) controller.abort(QUIET);
+    }, QUIET_MOST_MS / 4);
     try {
       for (;;) {
         const { value, done } = await reader.read();
         if (done) return 'the hub closed the stream';
+        heard = Date.now();
         buffer += decoder.decode(value, { stream: true });
         let end = buffer.indexOf('\n\n');
         while (end >= 0) {
@@ -346,7 +358,10 @@ export class HubService {
         }
       }
     } catch {
+      if (controller.signal.reason === QUIET) return 'the hub went quiet';
       return controller.signal.aborted ? 'aborted' : 'the connection to the hub dropped';
+    } finally {
+      clearInterval(watch);
     }
   }
 
@@ -457,6 +472,11 @@ export class HubService {
       this.retry = null;
     }
     this.state.set('paused');
+  }
+
+  /** Read everything again now (pulled down to refresh): a fresh stream, so a fresh snapshot. The phone's own hub is never stale. */
+  refresh(): void {
+    if (!this.onPhone()) this.reconnectNow();
   }
 
   private reconnectNow(): void {
