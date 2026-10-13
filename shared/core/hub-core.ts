@@ -496,13 +496,19 @@ export class HubCore {
         fetching: (job) => {
           if (job.album == null) this.singleLeft(job.server);
         },
+        // An instrumental is pushed away from a named voice on a YuE2 that takes a negative (shared/negative.ts).
+        negative: async (server) => (await this.songPageOf(server)).negative === true,
       },
       options.disk,
       join(options.dataDir, 'pending.json'),
       options.fetchAudio,
       clientFor,
       {
-        meter: (server, client) => this.strips.can(server, client),
+        // No voice meter on renders since 1.0.43 (Owen, 2026-10-12 night: "it probably shouldnt reroll
+        // if it detects vocals anymore because that didnt seem to work, and humming is detected as
+        // vocals. it often produces worse results. lets just try to get it to hum"). An instrumental
+        // is one render, landed as made (jobs.ts keeps VOICE_TRIES for a hub that wires `meter`
+        // again; the separator still makes instrumental VERSIONS, strip.ts).
         refuse: (server, why) => this.strips.refuse(server, why),
         // Its own client name, as an album's: a session counts every job sent under its name as its
         // own, and a song made meanwhile under the hub's name must not join it (hub-core, albums).

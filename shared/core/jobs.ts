@@ -54,6 +54,7 @@ import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { denoiseJob, inputNameOf, runStrip, runVoiceCheck, voiceCheckJob, VOICED_S, type StripWatch } from './strip';
 import { batchSeeds } from '../batch';
+import { NEGATIVE_CFG, negativeFor } from '../negative';
 import { namedSet, pickSet, planningLyrics, type Planned } from '../planning-sets';
 import { styleLine, varyInstrumental } from '../tags';
 import {
@@ -154,7 +155,7 @@ export function settleSong(params: SongParams): SongParams {
  * A sung song sends no range either: Crucible only recorded it against the score, and the library
  * works that out from the score's length itself (library.ts aimOf).
  */
-export function songJob(params: SongParams, format: SongFormat, key: string, model: string = SONG_MODEL, hold = false): JobRequest {
+export function songJob(params: SongParams, format: SongFormat, key: string, model: string = SONG_MODEL, hold = false, negative = false): JobRequest {
   const wire: Record<string, unknown> = { format };
   if (params.tags !== undefined) wire['tags'] = params.tags;
   if (params.instrumental === true && params.experiment?.lyrics !== undefined) wire['lyrics'] = params.experiment.lyrics;
@@ -163,6 +164,14 @@ export function songJob(params: SongParams, format: SongFormat, key: string, mod
   if (params.instrumental !== undefined) wire['instrumental'] = params.instrumental;
   if (params.cfg !== undefined) wire['cfg'] = params.cfg;
   if (params.seed !== undefined) wire['seed'] = params.seed;
+  // An instrumental on a server that takes a negative (Owen, 2026-10-12: "lets just try to get it to
+  // hum"): the voice named as what to push away from, at NEGATIVE_CFG unless the person set a cfg.
+  if (negative && params.instrumental === true && params.tags !== undefined && params.experiment?.lyrics === undefined) {
+    const against = negativeFor(params.tags, planningOf(params).lyrics);
+    wire['negative_tags'] = against.tags;
+    wire['negative_lyrics'] = against.lyrics;
+    if (params.cfg === undefined) wire['cfg'] = NEGATIVE_CFG;
+  }
   // Held: an instrumental to meter stays on the server until the separator has read it, and until
   // the render kept is fetched (VOICE_TRIES).
   return { type: 'audio', model, params: wire, inputs: {}, clientRef: `b-sides:${key}`, ...(hold ? { hold: true } : {}) };
@@ -240,6 +249,11 @@ export interface JobHooks {
   land(landed: Landed): Promise<{ readonly take: Take; readonly songId: string | null }>;
   /** Find a server again by name (to resume a pending job after a restart). */
   server(name: string): StoredServer;
+  /**
+   * Whether this server's YuE2 takes `negative_tags` and `negative_lyrics` (SongPage.negative): an
+   * instrumental then names the voice it is pushed away from (shared/negative.ts). Absent: never.
+   */
+  negative?(server: StoredServer): Promise<boolean>;
 }
 
 interface PendingEntry {
@@ -604,6 +618,10 @@ export class JobRunner {
       && await this.strips.meter(job.server, client).catch(() => false)) {
       job.view.tries = [];
     }
+    // An instrumental names the voice it is pushed away from, on a server that takes a negative
+    // (shared/negative.ts). Asked once per send; a server that cannot say is taken as not.
+    const negative = job.view.params.instrumental === true && this.hooks.negative !== undefined
+      && await this.hooks.negative(job.server).catch(() => false);
     let jobId: string | null = null;
     for (let round = 0; jobId === null; round += 1) {
       if (job.gone) return;
@@ -612,7 +630,7 @@ export class JobRunner {
         // retry, a job resumed from pending.json, the phone's hub): an instrumental goes with its set.
         job.view.params = settleSong(job.view.params);
         if (job.view.params.seed !== undefined) job.view.seed = job.view.params.seed;
-        jobId = await client.submit(songJob(job.view.params, job.format, job.view.key, job.view.model, job.view.tries !== undefined));
+        jobId = await client.submit(songJob(job.view.params, job.format, job.view.key, job.view.model, job.view.tries !== undefined, negative));
       } catch (error) {
         if (job.gone) return;
         if (!isInstalling(error) || round >= INSTALL_ROUNDS) {

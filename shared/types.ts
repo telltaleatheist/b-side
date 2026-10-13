@@ -146,6 +146,11 @@ export interface SongPage {
   readonly length?: boolean;
   readonly cfg: NumberField | null;
   readonly seed: NumberField | null;
+  /**
+   * Whether this server's YuE2 takes `negative_tags` and `negative_lyrics` (Crucible, 2026-10-12):
+   * the guidance branch an instrumental is pushed away from (shared/negative.ts). Absent: no.
+   */
+  readonly negative?: boolean;
   /** The tag and lyrics model this server gets (chooseTagModel), or null when it can hold none of them. */
   readonly tagModel: string | null;
   /** Why there is no tag model on this server, in a sentence; null when there is one. */
