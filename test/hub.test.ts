@@ -399,6 +399,15 @@ test('Make this track again: refused by name; asked for, the album makes it; fai
     expect(album.songs).toEqual([ships, other]);
     const again = await remake('thousand-ships', '0', 'new');
     expect([again.status, await code(again)]).toEqual([409, 'track_remaking']);
+    // A remake called off (Victoria, 2026-10-13): gone from the line, the old take stays; nothing to call off is said so.
+    expect((await remake('thousand-ships', '1', 'keep')).status).toBe(200);
+    const calledOff = await api('/api/albums/thousand-ships/tracks/1/remake', { method: 'DELETE' });
+    expect(calledOff.status).toBe(200);
+    const left = ((await calledOff.json()) as LibraryView).playlists.find((p) => p.id === 'thousand-ships')!;
+    expect(left.album?.remakes?.map((each) => each.at)).toEqual([0]);
+    expect(left.songs).toEqual([ships, other]);
+    const nothing = await api('/api/albums/thousand-ships/tracks/1/remake', { method: 'DELETE' });
+    expect([nothing.status, await code(nothing)]).toEqual([409, 'track_not_remaking']);
 
     // The server refuses it: the new take fails, the old one stays where it was.
     let after = (await libraryNow()).playlists.find((p) => p.id === 'thousand-ships')!;

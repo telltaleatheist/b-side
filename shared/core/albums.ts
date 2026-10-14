@@ -272,6 +272,8 @@ export interface AlbumHooks {
   retitle(id: string, titles: readonly string[]): Promise<void>;
   /** Cancel this album's tracks still on the server. */
   cancelInFlight(id: string): Promise<void>;
+  /** Cancel the jobs of one of the album's tracks on the server (a remake called off); absent: none are. */
+  cancelTrack?(id: string, at: number): Promise<void>;
   /** The album's songs as filed: each one's title (its plan track's) and length. */
   made(id: string): Promise<readonly { readonly title: string; readonly durationS: number | null }[]>;
   /** Which of the album's tracks (plan places) are on the server now. */
@@ -403,6 +405,23 @@ export class AlbumMaker {
     }
     // Whichever album's turn it is sends the next track (not always this one).
     await this.next(meta.server);
+  }
+
+  /**
+   * Call off a remake (Victoria, 2026-10-13: twelve scored remakes queued, then better scores): one
+   * still waiting leaves the line; one on the server is cancelled there. The old take stays, and the
+   * track can be asked for again at once with a new score.
+   */
+  async unremake(id: string, at: number): Promise<AlbumMeta> {
+    const meta = await this.hooks.meta(id);
+    if (meta === null) throw new Refusal('album_missing', 'That album is gone.', 404);
+    const title = meta.plan?.tracks[at]?.title ?? `track ${at + 1}`;
+    if (!(meta.remakes ?? []).some((each) => each.at === at)) throw new Refusal('track_not_remaking', `"${title}" is not being made again.`, 409);
+    if (this.hooks.flyingTracks(id).includes(at)) await this.hooks.cancelTrack?.(id, at);
+    await this.remakeLost(id, at, null);
+    const now = await this.hooks.meta(id);
+    if (now === null) throw new Refusal('album_missing', 'That album is gone.', 404);
+    return now;
   }
 
   /** A track's job was cancelled (Stop, or the album deleted): a remake of it is dropped, the old take stays. */

@@ -591,6 +591,11 @@ export class HubCore {
           await this.jobs.cancel(job.key).catch((err: unknown) => console.error(`[albums] could not cancel ${job.key}:`, err));
         }
       },
+      cancelTrack: async (id, at) => {
+        for (const job of this.jobs.list(albumClient(id)).filter((j) => !ENDED_PHASES.includes(j.phase) && j.album?.id === id && j.album.track === at)) {
+          await this.jobs.cancel(job.key).catch((err: unknown) => console.error(`[albums] could not cancel ${job.key}:`, err));
+        }
+      },
     });
     this.defineRoutes();
   }
@@ -1461,6 +1466,14 @@ export class HubCore {
         ...(tags !== undefined ? { tags, lead } : {}),
         ...(score !== undefined ? { score } : {}),
       });
+      return this.libraryChanged();
+    });
+
+    // A remake called off (Victoria, 2026-10-13): waiting, it leaves the line; on the server, it is cancelled there.
+    this.route('DELETE', '/api/albums/:id/tracks/:at/remake', async (request) => {
+      const at = Number(request.params['at']);
+      if (!Number.isInteger(at) || at < 0) throw new Refusal('body_invalid', 'The track is its place in the album, from 0.');
+      await this.albums.unremake(request.params['id'] as string, at);
       return this.libraryChanged();
     });
 

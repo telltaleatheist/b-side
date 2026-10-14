@@ -344,6 +344,26 @@ test('a full score for the new take (Victoria, 2026-10-13): sent with the take, 
   expect(album.rendered.at(-1)!.params).not.toHaveProperty('score');
 });
 
+test('a remake called off (Victoria, 2026-10-13): it leaves the line, the old take stays, and the track can be asked for again', async () => {
+  const server = fakeServer();
+  const album = fakeAlbum({ description: 'x', tags: [], minutes: 30, sung: true }, server);
+  album.maker.start('hu');
+  await settle(album.maker, 'hu');
+  album.set({ stage: 'done', sent: 15, madeS: 1800, redo: [] });
+  album.flight.flying = 0;
+  await album.maker.remake('hu', 1, { fresh: false, song: 'old-take', keep: '[Chorus]\nla', score: 'X:1\nK:Em\n' });
+  await album.maker.remake('hu', 2, { fresh: false, song: 'old-take', keep: '[Chorus]\nla', score: 'X:1\nK:Em\n' });
+  expect(album.meta().remakes!.map((each) => each.at)).toEqual([1, 2]);
+  await expect(album.maker.unremake('hu', 3)).rejects.toMatchObject({ code: 'track_not_remaking' });
+  await album.maker.unremake('hu', 2);
+  expect(album.meta().remakes!.map((each) => each.at)).toEqual([1]);
+  expect(album.meta().redo).not.toContain(2);
+  expect(album.meta().remakeRefusal ?? null).toBeNull();
+  // Asked for again at once, with a better score.
+  await album.maker.remake('hu', 2, { fresh: false, song: 'old-take', keep: '[Chorus]\nla', score: 'X:1\nK:Gm\n' });
+  expect(album.meta().remakes!.find((each) => each.at === 2)?.score).toBe('X:1\nK:Gm\n');
+});
+
 test('own words for the new take (Victoria, 2026-10-13): sung exactly as given, and the plan takes them once it lands', async () => {
   const server = fakeServer();
   const album = fakeAlbum({ description: 'x', tags: [], minutes: 30, sung: true }, server);
