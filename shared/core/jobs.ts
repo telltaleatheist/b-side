@@ -55,7 +55,7 @@ import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { denoiseJob, inputNameOf, runStrip, runVoiceCheck, voiceCheckJob, VOICED_S, type StripWatch } from './strip';
 import { batchSeeds } from '../batch';
-import { headerOf } from '../header';
+import { headerOf, keyUnread } from '../header';
 import { NEGATIVE_CFG, negativeFor } from '../negative';
 import { namedSet, pickSet, planningLyrics, type Planned } from '../planning-sets';
 import { styleLine, varyInstrumental } from '../tags';
@@ -189,6 +189,9 @@ export function songJob(params: SongParams, format: SongFormat, key: string, mod
   // The score's header from the tags (shared/header.ts), on a server that takes it, once SEND_HEADER is on.
   if (header && SEND_HEADER && !scored && params.tags !== undefined) {
     const stated = headerOf(params.tags);
+    // A key stated in words B-Sides cannot read goes unforced: said in the log (Victoria, 2026-10-13).
+    const unread = keyUnread(params.tags);
+    if (unread !== null) console.warn(`[header] ${key}: the tags say "${unread}", which is no key B-Sides can force; the song goes without one.`);
     if (stated.key !== undefined) wire['key'] = stated.key;
     if (stated.meter !== undefined) wire['meter'] = stated.meter;
     if (stated.bpm !== undefined) wire['bpm'] = stated.bpm;

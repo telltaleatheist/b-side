@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { settleSong, songJob, SEND_HEADER } from '../shared/core/jobs';
-import { headerOf, HEADER_FROM, KEYS } from '../shared/header';
+import { headerOf, HEADER_FROM, KEYS, keyUnread } from '../shared/header';
 import { versionAtLeast } from '../shared/core/strip';
 
 test('the key, meter and tempo the tags state, as Crucible 2.0.13 takes them (Victoria, 2026-10-13)', () => {
@@ -10,6 +10,14 @@ test('the key, meter and tempo the tags state, as Crucible 2.0.13 takes them (Vi
   expect(headerOf('key of E minor, 90bpm')).toEqual({ key: 'Em', bpm: 90 });
   expect(headerOf('C sharp minor')).toEqual({ key: 'C#m' });
   expect(headerOf('E flat major')).toEqual({ key: 'Eb' });
+  // Spelled-out accidentals joined by a hyphen (Victoria, 2026-10-13: "F-sharp minor" went out with no key).
+  expect(headerOf('English, smooth male crooner vocal, waltz, 3/4 time, F-sharp minor, vintage, 1950s')).toEqual({ key: 'F#m', meter: '3/4' });
+  expect(headerOf('B-flat major, 72 BPM')).toEqual({ key: 'Bb', bpm: 72 });
+  expect(headerOf('F sharp minor')).toEqual({ key: 'F#m' });
+  // A key said in words B-Sides cannot read is named for the log; a read one, or none, is not.
+  expect(keyUnread('folk, H minor, waltz')).toBe('H minor');
+  expect(keyUnread('folk, F-sharp minor, waltz')).toBeNull();
+  expect(keyUnread('folk, waltz')).toBeNull();
 });
 
 test('nothing the tags do not say outright, and nothing YuE2 cannot take', () => {

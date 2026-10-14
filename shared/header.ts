@@ -26,7 +26,9 @@ export interface SongHeader {
   readonly bpm?: number;
 }
 
-const KEY = /\b(?:key of\s+)?([A-G])\s*(#|♯|b|♭|sharp|flat)?\s*(minor|major|min|maj)\b/i;
+// The accidental may be a symbol or a word, joined by nothing, a space or a hyphen ("F-sharp minor";
+// Victoria, 2026-10-13: hers went out with no key and came back major).
+const KEY = /\b(?:key of\s+)?([A-G])[\s-]*(#|♯|b|♭|sharp|flat)?[\s-]*(minor|major|min|maj)\b/i;
 const METER = /\b([1-9]|1[0-6])\s*\/\s*(2|4|8|16)\b/;
 const BPM = /\b(\d{2,3})\s*bpm\b/i;
 
@@ -54,4 +56,14 @@ export function headerOf(tags: string): SongHeader {
     if (n >= 40 && n <= 240) header.bpm = n;
   }
   return header;
+}
+
+/**
+ * A key the tags seem to state but headerOf could not read (a mode word with no readable key before
+ * it), for a warning in the log; null when the key was read, or none is stated.
+ */
+export function keyUnread(tags: string): string | null {
+  if (headerOf(tags).key !== undefined) return null;
+  const said = /[^,]*\b(minor|major)\b[^,]*/i.exec(tags);
+  return said === null ? null : said[0].trim();
 }
