@@ -386,6 +386,11 @@ test('Make this track again: refused by name; asked for, the album makes it; fai
     expect(swapped.durationS).toBe(120);
     expect(swapped.title).toBe('Hector');
 
+    // A take renamed by hand (Victoria, 2026-10-13) is still its track's take: the plan track follows the name.
+    const renamed = await api(`/api/songs/${ships}`, { method: 'PATCH', body: JSON.stringify({ title: 'Where the Faded Things Go' }) });
+    expect(renamed.status).toBe(200);
+    const renamedAlbum = ((await renamed.json()) as LibraryView).playlists.find((p) => p.id === 'thousand-ships')!;
+    expect(renamedAlbum.album?.plan?.tracks.map((track) => track.title)).toEqual(['Where the Faded Things Go', 'Hector']);
     // The same words, as they stand on the old take (corrected by hand).
     const asked = await remake('thousand-ships', '0', 'keep');
     expect(asked.status).toBe(200);
@@ -402,7 +407,7 @@ test('Make this track again: refused by name; asked for, the album makes it; fai
       after = (await libraryNow()).playlists.find((p) => p.id === 'thousand-ships')!;
     }
     expect(after.album).toMatchObject({ stage: 'done', remakeOnly: null, remakes: [], madeS: 300 });
-    expect(after.album?.remakeRefusal?.message).toStartWith('The new take of "A Thousand Ships" did not work, so the old one stays.');
+    expect(after.album?.remakeRefusal?.message).toStartWith('The new take of "Where the Faded Things Go" did not work, so the old one stays.');
     expect(after.album?.plan?.tracks[0]?.lyrics).toBe('[Chorus]\nA Thousand Ships');
     expect(after.songs).toEqual([ships, other]);
   } finally {

@@ -764,6 +764,18 @@ export class AlbumMaker {
    * finished after it, so the line sent its next track twice over and the one made showed no
    * "Make this track again". `change` answers null to leave the album as it is; a gone album is null.
    */
+  /**
+   * A take renamed by hand (Victoria, 2026-10-13: renamed, her waltz's first track read as "missing",
+   * since a track's take is the album's song with its name): the plan track follows the rename, so
+   * it stays that track's take. A remake under way keeps its place by number, so nothing else moves.
+   */
+  async retitleTrack(id: string, at: number, title: string): Promise<void> {
+    await this.edit(id, (meta) => {
+      if (meta.plan === null || meta.plan.tracks[at] === undefined) return null;
+      return { ...meta, plan: { ...meta.plan, tracks: meta.plan.tracks.map((track, i) => (i === at ? { ...track, title } : track)) } };
+    });
+  }
+
   private edit(id: string, change: (meta: AlbumMeta) => AlbumMeta | null | Promise<AlbumMeta | null>): Promise<AlbumMeta | null> {
     const run = async (): Promise<AlbumMeta | null> => {
       const meta = await this.hooks.meta(id);

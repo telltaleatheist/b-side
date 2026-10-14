@@ -1568,7 +1568,20 @@ export class HubCore {
       const id = request.params['id'] as string;
       const body = await request.body();
       if (body['title'] === undefined && body['lyrics'] === undefined) throw new Refusal('body_invalid', 'A song change is {title} and/or {lyrics}.');
-      if (body['title'] !== undefined) await this.library.rename(id, text(body['title'], 'title'));
+      if (body['title'] !== undefined) {
+        const title = text(body['title'], 'title').trim();
+        if (title === '') throw new Refusal('song_title_missing', 'A song needs a title.');
+        // An album's song is its plan track's take by name (Victoria, 2026-10-13: renamed, her waltz's
+        // first track read as "missing"): the plan track follows the rename, in every album the song is on.
+        const was = await this.library.song(id);
+        const view = await this.library.list();
+        for (const playlist of view.playlists) {
+          if (!playlist.songs.includes(id)) continue;
+          const at = playlist.album?.plan?.tracks.findIndex((track) => track.title.toLowerCase() === was.title.toLowerCase()) ?? -1;
+          if (at >= 0) await this.albums.retitleTrack(playlist.id, at, title);
+        }
+        await this.library.rename(id, title);
+      }
       if (body['lyrics'] !== undefined) {
         if (typeof body['lyrics'] !== 'string') throw new Refusal('body_invalid', 'lyrics must be text.');
         await this.library.setLyrics(id, body['lyrics']);
