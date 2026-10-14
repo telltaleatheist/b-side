@@ -1,5 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, HostListener, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, HostListener, inject, type OnDestroy, signal, untracked } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
@@ -22,7 +22,7 @@ import { StudioService } from '../../core/studio.service';
 import { OfflineService } from '../../core/offline.service';
 import { jobCancellable, jobEnded, jobShare, jobStatus, jobTitle } from '../../core/job-status';
 import { JobsService } from '../../core/jobs.service';
-import { PeersService, peerId } from '../../core/peers.service';
+import { PeersService, peerId, type Peer } from '../../core/peers.service';
 import { PlayerService } from '../../core/player.service';
 import { RefusalComponent } from '../../components/refusal/refusal.component';
 
@@ -34,6 +34,9 @@ import { RefusalComponent } from '../../components/refusal/refusal.component';
  */
 /** The largest cover kept from the person's own image, in pixels square. */
 const COVER_PX = 768;
+
+/** Where the library grid was scrolled to when an album was opened from it, to come back to (Victoria, 2026-10-14). */
+let gridScroll: number | null = null;
 
 @Component({
   selector: 'app-playlists-page',
@@ -351,21 +354,10 @@ const COVER_PX = 768;
             <span class="mono hint">{{ peer.library?.songs?.length ?? 0 }} songs · on the network</span>
           </div>
           @if (libraryOpen('peer:' + peerId(peer))) {
-          <div class="grid">
-            @for (playlist of peer.library?.playlists ?? []; track playlist.id) {
-              <a class="tile" [routerLink]="['/peer', peerId(peer), playlist.id]">
-                <app-cover class="tile-art" [key]="playlist.id" [src]="peers.coverUrl(peerId(peer), playlist)" />
-                <span class="tile-name">{{ playlist.name }}</span>
-                @if (playlist.album; as album) {
-                  <span class="tile-sub" [class.amber]="busy(album.stage) && !interrupted(album)">{{ album.artist || 'Album' }}{{ interrupted(album) ? ' · interrupted' : busy(album.stage) ? ' · ' + stageWords(album.stage) : '' }}</span>
-                  @if (busy(album.stage) && !interrupted(album)) {
-                    <div class="bar tile-bar album-bar" [class.indeterminate]="albumProgress(album).waiting"><span [style.width.%]="albumProgress(album).waiting ? null : albumProgress(album).share * 100"></span></div>
-                  }
-                } @else {
-                  <span class="tile-sub">{{ playlist.songs.length }} {{ playlist.songs.length === 1 ? 'song' : 'songs' }}</span>
-                }
-              </a>
-            } @empty {
+          <!-- Its folders as that library keeps them (Victoria, 2026-10-14: a long scroll on the phone without them), read-only. -->
+          <div class="shelf">
+            <ng-container *ngTemplateOutlet="peerShelf; context: { $implicit: null, peer: peer }" />
+            @if ((peer.library?.playlists ?? []).length === 0 && (peer.library?.folders ?? []).length === 0) {
               <p class="hint">Nothing in it yet.</p>
             }
           </div>
@@ -408,6 +400,48 @@ const COVER_PX = 768;
         <app-refusal [refusal]="refused" />
       }
     </div>
+
+    <!-- One level of another library's shelf: its folders (open or shut as here), then its albums and playlists, read and played from there. -->
+    <ng-template #peerShelf let-parent let-peer="peer">
+      @for (folder of peerFoldersIn(peer, parent); track folder.id) {
+        <section class="folder" [class.open]="folders.isOpen(folder.id)">
+          <div class="folder-head">
+            <button type="button" class="folder-toggle" [attr.aria-expanded]="folders.isOpen(folder.id)" [title]="folders.isOpen(folder.id) ? 'Close the folder' : 'Open the folder'" (click)="folders.toggle(folder.id)">
+              <app-icon name="chevron" [size]="16" class="chev" />
+              <app-icon name="folder" [size]="18" class="folder-icon" />
+              <span class="folder-name">{{ folder.name }}</span>
+              <span class="folder-count">{{ peerCountText(peer, folder.id) }}</span>
+            </button>
+          </div>
+          @if (folders.isOpen(folder.id)) {
+            <div class="folder-body">
+              <ng-container *ngTemplateOutlet="peerShelf; context: { $implicit: folder.id, peer: peer }" />
+              @if (peerFoldersIn(peer, folder.id).length === 0 && peerPlaylistsIn(peer, folder.id).length === 0) {
+                <p class="hint">Nothing in it yet.</p>
+              }
+            </div>
+          }
+        </section>
+      }
+      @if (peerPlaylistsIn(peer, parent).length > 0) {
+        <div class="grid">
+          @for (playlist of peerPlaylistsIn(peer, parent); track playlist.id) {
+            <a class="tile" [routerLink]="['/peer', peerId(peer), playlist.id]">
+              <app-cover class="tile-art" [key]="playlist.id" [src]="peers.coverUrl(peerId(peer), playlist)" />
+              <span class="tile-name">{{ playlist.name }}</span>
+              @if (playlist.album; as album) {
+                <span class="tile-sub" [class.amber]="busy(album.stage) && !interrupted(album)">{{ album.artist || 'Album' }}{{ interrupted(album) ? ' · interrupted' : busy(album.stage) ? ' · ' + stageWords(album.stage) : '' }}</span>
+                @if (busy(album.stage) && !interrupted(album)) {
+                  <div class="bar tile-bar album-bar" [class.indeterminate]="albumProgress(album).waiting"><span [style.width.%]="albumProgress(album).waiting ? null : albumProgress(album).share * 100"></span></div>
+                }
+              } @else {
+                <span class="tile-sub">{{ playlist.songs.length }} {{ playlist.songs.length === 1 ? 'song' : 'songs' }}</span>
+              }
+            </a>
+          }
+        </div>
+      }
+    </ng-template>
 
     <!-- One level of the shelf: its folders (each holding the next level), then its albums and playlists. -->
     <ng-template #shelf let-parent>
@@ -612,8 +646,26 @@ const COVER_PX = 768;
     @media (min-width: 960px) { .page { padding: 32px 40px; } .head-art { width: 232px; } .head-title { font-size: 64px; } }
   `],
 })
-export class PlaylistsPageComponent {
+export class PlaylistsPageComponent implements OnDestroy {
   protected readonly library = inject(LibraryService);
+
+  constructor() {
+    // Back from an album to the grid (Victoria, 2026-10-14: the phone put her at the top of a long
+    // library): the grid goes back to where it was, once the lists it is made of are there. The
+    // room clamps a scroll past its end, so it is tried again as each library arrives.
+    effect(() => {
+      if (gridScroll === null || this.chosen() !== null) return;
+      const ready = this.library.playlists().length > 0 || this.library.folders().length > 0 || this.peers.present().length > 0;
+      if (!ready) return;
+      const kept = gridScroll;
+      untracked(() => requestAnimationFrame(() => {
+        const room = this.room();
+        if (room === null) return;
+        room.scrollTop = kept;
+        if (room.scrollTop >= kept - 1) gridScroll = null;
+      }));
+    });
+  }
   protected readonly jobs = inject(JobsService);
   protected readonly player = inject(PlayerService);
   protected readonly offline = inject(OfflineService);
@@ -688,6 +740,40 @@ export class PlaylistsPageComponent {
   }
 
   /** "3 albums, 1 playlist": what a folder holds, the folders inside it included. */
+  /** Another library's folders directly inside `parent` (null: its top), as it keeps them. */
+  protected peerFoldersIn(peer: Peer, parent: string | null): Folder[] {
+    return (peer.library?.folders ?? []).filter((folder) => folder.parent === parent);
+  }
+
+  /** Another library's albums and playlists directly inside `folder` (null: its top). */
+  protected peerPlaylistsIn(peer: Peer, folder: string | null): Playlist[] {
+    return (peer.library?.playlists ?? []).filter((playlist) => (playlist.folder ?? null) === folder);
+  }
+
+  protected peerCountText(peer: Peer, id: string): string {
+    const under = (walk: string): Playlist[] => [...this.peerFoldersIn(peer, walk).flatMap((folder) => under(folder.id)), ...this.peerPlaylistsIn(peer, walk)];
+    const all = under(id);
+    const albums = all.filter((playlist) => playlist.album != null).length;
+    const playlists = all.length - albums;
+    const parts = [
+      ...(albums > 0 ? [`${albums} ${albums === 1 ? 'album' : 'albums'}`] : []),
+      ...(playlists > 0 ? [`${playlists} ${playlists === 1 ? 'playlist' : 'playlists'}`] : []),
+    ];
+    return parts.length === 0 ? 'empty' : parts.join(', ');
+  }
+
+  /** The page's scrolling box (the app's room), or null outside the app shell. */
+  private room(): HTMLElement | null {
+    return document.querySelector('.room');
+  }
+
+  /** Leaving the grid for an album: where it was scrolled to is kept for coming back. */
+  ngOnDestroy(): void {
+    if (this.chosen() !== null) return;
+    const room = this.room();
+    if (room !== null) gridScroll = room.scrollTop;
+  }
+
   protected countText(id: string): string {
     const under = this.library.playlistsUnder(id);
     const albums = under.filter((playlist) => playlist.album != null).length;
