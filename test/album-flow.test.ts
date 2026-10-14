@@ -362,6 +362,11 @@ test('a remake called off (Victoria, 2026-10-13): it leaves the line, the old ta
   // Asked for again at once, with a better score.
   await album.maker.remake('hu', 2, { fresh: false, song: 'old-take', keep: '[Chorus]\nla', score: 'X:1\nK:Gm\n' });
   expect(album.meta().remakes!.find((each) => each.at === 2)?.score).toBe('X:1\nK:Gm\n');
+  // A plain make the album put up itself (a track read as missing) is called off the same way.
+  album.set({ redo: [...(album.meta().redo ?? []), 7] });
+  await album.maker.unremake('hu', 7);
+  expect(album.meta().redo).not.toContain(7);
+  expect(album.meta().remakes!.map((each) => each.at).sort()).toEqual([1, 2]);
 });
 
 test('own words for the new take (Victoria, 2026-10-13): sung exactly as given, and the plan takes them once it lands', async () => {

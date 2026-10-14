@@ -416,8 +416,13 @@ export class AlbumMaker {
     const meta = await this.hooks.meta(id);
     if (meta === null) throw new Refusal('album_missing', 'That album is gone.', 404);
     const title = meta.plan?.tracks[at]?.title ?? `track ${at + 1}`;
-    if (!(meta.remakes ?? []).some((each) => each.at === at)) throw new Refusal('track_not_remaking', `"${title}" is not being made again.`, 409);
-    if (this.hooks.flyingTracks(id).includes(at)) await this.hooks.cancelTrack?.(id, at);
+    // A remake, or a make the album put up itself (a track it read as missing, say after a rename
+    // before 1.0.52; Victoria's helper, 2026-10-13): waiting in the line or on the server, either is called off.
+    const flying = this.hooks.flyingTracks(id).includes(at);
+    if (!(meta.remakes ?? []).some((each) => each.at === at) && !(meta.redo ?? []).includes(at) && !flying) {
+      throw new Refusal('track_not_remaking', `"${title}" is not being made now.`, 409);
+    }
+    if (flying) await this.hooks.cancelTrack?.(id, at);
     await this.remakeLost(id, at, null);
     const now = await this.hooks.meta(id);
     if (now === null) throw new Refusal('album_missing', 'That album is gone.', 404);
