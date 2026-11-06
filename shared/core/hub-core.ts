@@ -168,6 +168,9 @@ function albumClient(id: string): string {
 }
 
 /** MP3 unless the person chose lossless: about an eighth the size, the same sound on a phone. */
+/** The current `textSplit` (types.ts). A file written before 3 has not had the switch to Claude applied. */
+const TEXT_SPLIT = 3;
+
 const DEFAULT_PREFERENCES: HubPreferences = { songFormat: 'mp3', albumSpaceGb: 2, writer: 'bside', lyricist: 'bside', albumOrder: 'one', singles: 'turn' };
 
 
@@ -387,11 +390,11 @@ export class HubCore {
 
   constructor(private readonly options: HubCoreOptions) {
     this.sink = options.sink;
-    // A computer with Claude Code writes everything through it until B-Sides' model is ready (Owen,
-    // 2026-10-11: "just keep every call as claude -p"); the phone, without it, keeps B-Sides' model.
-    // On a computer with Claude Code, Claude writes the words and the server's model the sound
-    // (Owen, 2026-10-11); a phone, without it, has the server's model write both.
-    if (options.claude !== undefined) this.preferences = { ...DEFAULT_PREFERENCES, writer: 'bside', lyricist: 'claude', textSplit: 2 };
+    // A computer with Claude Code writes everything through it, so nothing there loads a server text
+    // model (Owen, 2026-11-06: "we should switch fully over to claude -p for now until i retrain the
+    // model"; this supersedes his 2026-10-11 split, where the server's model wrote the sound). A phone,
+    // without Claude Code, has the server's model write both. The radios stay for after the retrain.
+    if (options.claude !== undefined) this.preferences = { ...DEFAULT_PREFERENCES, writer: 'claude', lyricist: 'claude', textSplit: TEXT_SPLIT };
     this.registry = new ServerRegistry(options.vault);
     setClientName(options.clientName);
     this.pairing = new PairingSessions(options.clientName, async (pairing) => {
@@ -1106,9 +1109,10 @@ export class HubCore {
   private async readPreferences(): Promise<void> {
     const text = await this.options.disk.readText(this.preferencesFile);
     if (text === null) return;
+    let moved: { from: string } | null = null;
     try {
       const stored = JSON.parse(text) as Partial<HubPreferences>;
-      const split = stored.textSplit === 2;
+      const split = typeof stored.textSplit === 'number' && stored.textSplit >= 2;
       // Before 0.1.38 `writer` wrote names as well as tags. Owen, 2026-10-11: the server's model
       // writes the sound and Claude the words; so on moving over, that is what each hub starts with.
       const writer = !split
@@ -1121,12 +1125,26 @@ export class HubCore {
         // 0.1.10 stored the same choice as `lyricsWriter` (lyrics only); it carries over.
         writer,
         lyricist: !split || !WRITERS.includes(stored.lyricist as never) ? this.preferences.lyricist : (stored.lyricist as Writer),
-        textSplit: 2,
+        textSplit: TEXT_SPLIT,
         albumOrder: ALBUM_ORDERS.includes(stored.albumOrder as never) ? (stored.albumOrder as AlbumOrder) : DEFAULT_PREFERENCES.albumOrder,
         singles: SINGLES_ORDERS.includes(stored.singles as never) ? (stored.singles as SinglesOrder) : DEFAULT_PREFERENCES.singles,
       };
+      // Owen, 2026-11-06: fully over to `claude -p` until the model is retrained. Applied to a
+      // choice saved before that, once: the file then says 3, and someone who picks the server's
+      // model again afterwards keeps it.
+      if (this.options.claude !== undefined && stored.textSplit !== TEXT_SPLIT
+        && (this.preferences.writer !== 'claude' || this.preferences.lyricist !== 'claude')) {
+        moved = { from: `${this.preferences.writer}/${this.preferences.lyricist}` };
+        this.preferences = { ...this.preferences, writer: 'claude', lyricist: 'claude' };
+      }
     } catch (err) {
       console.error(`[hub] ${this.preferencesFile} could not be read; using the defaults:`, err);
+      return;
+    }
+    if (moved !== null) {
+      console.log(`[hub] Writing moved to Claude Code, sound and words, from ${moved.from}: nothing here loads a server text model until it is switched back in Settings.`);
+      await this.options.disk.writeText(this.preferencesFile, `${JSON.stringify(this.preferences, null, 2)}
+`);
     }
   }
 

@@ -268,7 +268,10 @@ export interface HubPreferences {
    * artist, the liner note, track titles). `claude` on a desktop; the server's model otherwise.
    */
   readonly lyricist: 'bside' | 'claude';
-  /** 2: the choices above mean sound and words (0.1.38); before that, `writer` wrote names too. */
+  /**
+   * 2: the choices above mean sound and words (0.1.38); before that, `writer` wrote names too.
+   * 3: the switch to Claude Code on a computer has been applied (Owen, 2026-11-06), once.
+   */
   readonly textSplit?: number;
   /**
    * How albums on the same server share it (Victoria, 2026-10-11: "In some cases, it's nice to
