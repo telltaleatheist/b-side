@@ -2,6 +2,8 @@ import { expect, test } from 'bun:test';
 import { CrucibleRefused, type CrucibleClient } from '@crucible/client';
 
 import { installModel } from '../shared/core/crucible';
+import { Refusal } from '../shared/core/refusal';
+import { crucibleText } from '../shared/core/text-model';
 
 /** A stand-in client: only what each function under test calls. */
 function fake(parts: Record<string, unknown>): CrucibleClient {
@@ -91,4 +93,12 @@ test('a failed writer load is tried once more, and a second try that works carri
   });
   await loadWriter(flaky, 'w', async () => undefined, 0);
   expect(loads).toBe(2);
+});
+
+test('a chat answered with tool calls and no text is refused by name', async () => {
+  const client = fake({ chat: async () => ({ content: null, toolCalls: [{ id: 'c1' }], finishReason: 'tool_calls', usage: null }) });
+  const writer = crucibleText(client, 'w');
+  const asked = writer.ask({ tag: '[describe]', name: 'n', system: 's', user: 'u', schema: {}, temperature: 0, maxTokens: 1 });
+  await expect(asked).rejects.toBeInstanceOf(Refusal);
+  await expect(asked).rejects.toMatchObject({ code: 'text_no_content' });
 });

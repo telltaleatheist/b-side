@@ -17,7 +17,7 @@
  * environment, which is installed as the `rvc` job type (`denoise` is not an
  * installable type of its own).
  *
- * B_SIDES_MODULE is Crucible's generated `modules/b-sides.module.json` (Crucible 2.0.4,
+ * B_SIDES_MODULE is Crucible's generated `modules/b-sides.module.json` (Crucible 2.0.35,
  * from modules/b-sides.toml; crucible-pc-1, 2026-10-11: `rvc` is right, denoise shares
  * its environment). Its `backends` are the generator's field (both rows exist on cuda-linux and
  * mlx-darwin only, so a Windows-native engine is asked for nothing) and are
@@ -42,7 +42,7 @@ interface ModuleRow {
  */
 export const B_SIDES_MODULE = {
   name: 'b-sides',
-  version: '2.0.4+1e1458912f77',
+  version: '2.0.35+1e1458912f77',
   job_types: [{ type: 'rvc', backends: ['cuda-linux', 'mlx-darwin'] }, { type: 'audio', backends: ['cuda-linux', 'mlx-darwin'] }],
   needs: [],
   subjects: [

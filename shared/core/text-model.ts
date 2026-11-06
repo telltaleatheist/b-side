@@ -69,6 +69,11 @@ export function crucibleText(client: CrucibleClient, model: string): TextModel {
         });
         // Each call said, so a failed album can be read afterwards (crucible-pc-1, 2026-10-11).
         console.log(`[text] ${model} ${request.tag}: ${answer.usage?.promptTokens ?? '?'} tokens in, ${answer.usage?.completionTokens ?? '?'} out of ${request.maxTokens}, ${answer.finishReason}, ${Date.now() - started} ms`);
+        // Null only when the model called tools and wrote no text. This chat offers none, so it is
+        // the server breaking its own contract, refused by name rather than read as an empty answer.
+        if (answer.content === null) {
+          throw new Refusal('text_no_content', `${model} answered ${request.tag} with tool calls and no text (${answer.toolCalls.length} call(s)).`);
+        }
         return { content: answer.content, truncated: answer.finishReason === 'length' };
       } catch (error) {
         console.error(`[text] ${model} ${request.tag}: refused after ${Date.now() - started} ms:`, error instanceof Error ? error.message : error);
