@@ -167,10 +167,10 @@ function albumClient(id: string): string {
   return `album-${id}`;
 }
 
-/** MP3 unless the person chose lossless: about an eighth the size, the same sound on a phone. */
 /** The current `textSplit` (types.ts). A file written before 3 has not had the switch to Claude applied. */
 const TEXT_SPLIT = 3;
 
+/** MP3 unless the person chose lossless: about an eighth the size, the same sound on a phone. */
 const DEFAULT_PREFERENCES: HubPreferences = { songFormat: 'mp3', albumSpaceGb: 2, writer: 'bside', lyricist: 'bside', albumOrder: 'one', singles: 'turn' };
 
 
@@ -391,7 +391,7 @@ export class HubCore {
   constructor(private readonly options: HubCoreOptions) {
     this.sink = options.sink;
     // A computer with Claude Code writes everything through it, so nothing there loads a server text
-    // model (Owen, 2026-11-06: "we should switch fully over to claude -p for now until i retrain the
+    // model (Owen, 2026-11-05: "we should switch fully over to claude -p for now until i retrain the
     // model"; this supersedes his 2026-10-11 split, where the server's model wrote the sound). A phone,
     // without Claude Code, has the server's model write both. The radios stay for after the retrain.
     if (options.claude !== undefined) this.preferences = { ...DEFAULT_PREFERENCES, writer: 'claude', lyricist: 'claude', textSplit: TEXT_SPLIT };
@@ -1129,7 +1129,7 @@ export class HubCore {
         albumOrder: ALBUM_ORDERS.includes(stored.albumOrder as never) ? (stored.albumOrder as AlbumOrder) : DEFAULT_PREFERENCES.albumOrder,
         singles: SINGLES_ORDERS.includes(stored.singles as never) ? (stored.singles as SinglesOrder) : DEFAULT_PREFERENCES.singles,
       };
-      // Owen, 2026-11-06: fully over to `claude -p` until the model is retrained. Applied to a
+      // Owen, 2026-11-05: fully over to `claude -p` until the model is retrained. Applied to a
       // choice saved before that, once: the file then says 3, and someone who picks the server's
       // model again afterwards keeps it.
       if (this.options.claude !== undefined && stored.textSplit !== TEXT_SPLIT
@@ -1143,8 +1143,13 @@ export class HubCore {
     }
     if (moved !== null) {
       console.log(`[hub] Writing moved to Claude Code, sound and words, from ${moved.from}: nothing here loads a server text model until it is switched back in Settings.`);
-      await this.options.disk.writeText(this.preferencesFile, `${JSON.stringify(this.preferences, null, 2)}
+      // Optional: the choice is already in force, and a file left old simply moves again next start.
+      try {
+        await this.options.disk.writeText(this.preferencesFile, `${JSON.stringify(this.preferences, null, 2)}
 `);
+      } catch (err) {
+        console.error(`[hub] ${this.preferencesFile} could not be rewritten after moving Writing to Claude Code; it moves again next start:`, err);
+      }
     }
   }
 

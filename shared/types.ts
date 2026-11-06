@@ -270,7 +270,7 @@ export interface HubPreferences {
   readonly lyricist: 'bside' | 'claude';
   /**
    * 2: the choices above mean sound and words (0.1.38); before that, `writer` wrote names too.
-   * 3: the switch to Claude Code on a computer has been applied (Owen, 2026-11-06), once.
+   * 3: the switch to Claude Code on a computer has been applied (Owen, 2026-11-05), once.
    */
   readonly textSplit?: number;
   /**

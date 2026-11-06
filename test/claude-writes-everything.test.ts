@@ -12,7 +12,7 @@ import * as textModel from '../shared/core/text-model';
 import type { TextModel } from '../shared/core/text-model';
 import type { AlbumMeta, HubPreferences, SongPage } from '../shared/types';
 
-// Owen, 2026-11-06: "we should switch fully over to claude -p for now until i retrain the model".
+// Owen, 2026-11-05: "we should switch fully over to claude -p for now until i retrain the model".
 // A computer with Claude Code writes the sound and the words through it, so nothing there loads a
 // server text model; a phone, without it, is as it was. These drive the hub's real routes with a
 // fake Claude and a fake Crucible; `claude -p` itself is only exercised on a real computer.
@@ -156,6 +156,26 @@ test('a desktop with the old choice saved moves to Claude once, with one log lin
 
   await hub('desktop');
   expect(movedLines().length).toBe(1);
+});
+
+test('a file that cannot be rewritten still moves, says so by name, the hub opens, and it moves again next start', async () => {
+  store({ writer: 'bside', lyricist: 'bside', textSplit: 2 });
+  const before = fs.readFileSync(preferencesFile(), 'utf8');
+  const errors: string[] = [];
+  spyOn(console, 'error').mockImplementation((line: unknown) => { errors.push(String(line)); });
+  const write = nodeDisk.writeText;
+  const denied = (file: string, text: string): Promise<void> => {
+    if (file === preferencesFile()) return Promise.reject(new Error('disk full'));
+    return write.call(nodeDisk, file, text);
+  };
+  spyOn(nodeDisk, 'writeText').mockImplementation(denied);
+  const prefs = await preferences(await hub('desktop'));
+  expect([prefs.writer, prefs.lyricist]).toEqual(['claude', 'claude']);
+  expect(errors.filter((line) => line.includes('could not be rewritten')).length).toBe(1);
+  expect(errors.some((line) => line.includes('preferences.json'))).toBe(true);
+  expect(fs.readFileSync(preferencesFile(), 'utf8')).toBe(before);
+  await hub('desktop');
+  expect(movedLines().length).toBe(2);
 });
 
 test('a saved lyricist on the server moves too, so nothing there loads a text model', async () => {
