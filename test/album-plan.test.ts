@@ -7,6 +7,7 @@ import { nodeDisk } from '../electron/node-disk';
 import { TemplateStore } from '../shared/core/album-templates';
 import { AlbumMaker, trackSong, type AlbumHooks, type AlbumTrackParams } from '../shared/core/albums';
 import { plannedAlbum } from '../shared/core/hub-core';
+import type { TextModel } from '../shared/core/text-model';
 import type { Lyricist, SongToWrite } from '../shared/core/lyricist';
 import type { AlbumAsk, AlbumMeta, AlbumTrackPlan, SongPage } from '../shared/types';
 
@@ -52,6 +53,17 @@ function fakeLyricist() {
 }
 
 function fakeAlbum(ask: AlbumAsk, server: ReturnType<typeof fakeServer>, lyricist: Lyricist | null = null) {
+  const stand: TextModel = {
+    name: MODEL,
+    ask: async (request) => {
+      const answer = await server.client.chat({
+        responseFormat: { json_schema: { schema: request.schema } },
+        messages: [{ content: request.system }, { content: `${request.tag}
+${request.user}` }],
+      });
+      return { content: answer.content, truncated: false };
+    },
+  };
   let stored: AlbumMeta = { artist: '', blurb: '', cover: null, ask, plan: null, stage: 'planning', sent: 0, madeS: 0, refusal: null, server: 'pc', writer: null };
   const rendered: { track: number; params: AlbumTrackParams }[] = [];
   const flight = { flying: 0 };
@@ -71,7 +83,9 @@ function fakeAlbum(ask: AlbumAsk, server: ReturnType<typeof fakeServer>, lyricis
     flyingTracks: () => [],
     renameSong: async () => undefined,
     makingOn: async () => ['a'],
-    claude: () => (lyricist === null ? null : { text: null, words: null, lyricist }),
+    // B-Sides' own model is off (bsideModelOff): the fake server's answers arrive as a stand-in
+    // writer on the Claude side, under its name, still recorded in `server.sent`.
+    claude: () => ({ text: stand, words: stand, lyricist }),
   };
   const maker = new AlbumMaker(hooks);
   return {

@@ -95,10 +95,12 @@ test('a failed writer load is tried once more, and a second try that works carri
   expect(loads).toBe(2);
 });
 
-test('a chat answered with tool calls and no text is refused by name', async () => {
-  const client = fake({ chat: async () => ({ content: null, toolCalls: [{ id: 'c1' }], finishReason: 'tool_calls', usage: null }) });
-  const writer = crucibleText(client, 'w');
-  const asked = writer.ask({ tag: '[describe]', name: 'n', system: 's', user: 'u', schema: {}, temperature: 0, maxTokens: 1 });
-  await expect(asked).rejects.toBeInstanceOf(Refusal);
-  await expect(asked).rejects.toMatchObject({ code: 'text_no_content' });
+test("B-Sides' own model is off while it is retrained: crucibleText refuses by name and never chats", () => {
+  let chats = 0;
+  const client = fake({ chat: async () => { chats += 1; return { content: '{}', toolCalls: [], finishReason: 'stop', usage: null }; } });
+  expect(() => crucibleText(client, 'w')).toThrow(Refusal);
+  let code: string | null = null;
+  try { crucibleText(client, 'w'); } catch (error) { code = (error as Refusal).code; }
+  expect(code).toBe('bside_model_off');
+  expect(chats).toBe(0);
 });

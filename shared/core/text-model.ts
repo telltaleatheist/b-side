@@ -2,7 +2,8 @@
  * text-model — who answers B-Sides' text calls (describe's tags, an album's concept, track
  * list and regenerated pieces): one interface, two writers.
  *
- *   bside    B-Sides' own model (qwen3.5-4b-bside) on the Crucible server: crucibleText().
+ *   bside    B-Sides' own model (qwen3.5-4b-bside) on the Crucible server: OFF while it is
+ *            retrained (bsideModelOff); crucibleText() is a stub that refuses.
  *   claude   Claude Sonnet 5.5 through Claude Code on this computer (electron/claude-writer.ts),
  *            standing in for everything the B-Sides model does while it is retrained (Owen,
  *            2026-10-10: "until b-sides model is fully retrained lets make it so everything it
@@ -12,9 +13,8 @@
  * The task tag (album-text.ts, "[album]" ...) is part of B-Sides' model's contract: crucibleText
  * puts it on the user message's first line, a writer that was never trained on it may leave it off.
  */
-import { CrucibleRefused, type CrucibleClient } from '@crucible/client';
+import type { CrucibleClient } from '@crucible/client';
 
-import { chatSeed } from './crucible';
 import { Refusal } from './refusal';
 
 /** Who writes; a hub preference. */
@@ -47,42 +47,21 @@ export interface TextModel {
   ask(request: TextRequest): Promise<TextAnswer>;
 }
 
-/** B-Sides' own model on a Crucible server; `client` may be an album's session. */
-export function crucibleText(client: CrucibleClient, model: string): TextModel {
-  return {
-    name: model,
-    async ask(request) {
-      const started = Date.now();
-      try {
-        const answer = await client.chat({
-          model,
-          thinking: false,
-          temperature: request.temperature,
-          seed: chatSeed(),
-          maxTokens: request.maxTokens,
-          act: 'generate',
-          responseFormat: { type: 'json_schema', json_schema: { name: request.name, schema: request.schema as Record<string, unknown>, strict: true } },
-          messages: [
-            { role: 'system', content: request.system },
-            { role: 'user', content: `${request.tag}\n${request.user}` },
-          ],
-        });
-        // Each call said, so a failed album can be read afterwards (crucible-pc-1, 2026-10-11).
-        console.log(`[text] ${model} ${request.tag}: ${answer.usage?.promptTokens ?? '?'} tokens in, ${answer.usage?.completionTokens ?? '?'} out of ${request.maxTokens}, ${answer.finishReason}, ${Date.now() - started} ms`);
-        // Null only when the model called tools and wrote no text. This chat offers none, so it is
-        // the server breaking its own contract, refused by name rather than read as an empty answer.
-        if (answer.content === null) {
-          throw new Refusal('text_no_content', `${model} answered ${request.tag} with tool calls and no text (${answer.toolCalls.length} call(s)).`);
-        }
-        return { content: answer.content, truncated: answer.finishReason === 'length' };
-      } catch (error) {
-        console.error(`[text] ${model} ${request.tag}: refused after ${Date.now() - started} ms:`, error instanceof Error ? error.message : error);
-        if (error instanceof CrucibleRefused && error.code === 'installing') {
-          // The model's first use: the server is downloading it. Say how far along, in its words.
-          throw new Refusal('model_installing', `${model} is being set up on the server first: ${error.serverMessage}`, 409);
-        }
-        throw error;
-      }
-    },
-  };
+/**
+ * B-Sides' own model is off while it is retrained (Owen, 2026-11-06: "we want to remove and stub
+ * calls to a local model"): nothing installs, loads or chats with it. Every place that would have
+ * asked it refuses by name instead, before touching the server. Claude Code writes in its place.
+ */
+export function bsideModelOff(): never {
+  throw new Refusal(
+    'bside_model_off',
+    "B-Sides' own writing model is off while it is retrained, so Claude Code on a B-Sides computer writes everything. "
+      + 'Install Claude Code there and sign in (`claude auth login`).',
+    503,
+  );
+}
+
+/** Stubbed: B-Sides' own model is off (bsideModelOff); the server is never asked. */
+export function crucibleText(_client: CrucibleClient, _model: string): TextModel {
+  return bsideModelOff();
 }

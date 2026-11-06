@@ -26,9 +26,8 @@ import type { CrucibleClient, CrucibleSession } from '@crucible/client';
 import {
   aboutOf, batches, BPM, newAlbumTitle, newArtist, newTrackTitles, writeSongLyrics, type AlbumConcept,
 } from './album-text';
-import { installModel, startInstall } from './crucible';
 import type { Lyricist } from './lyricist';
-import { crucibleText, type TextModel } from './text-model';
+import { bsideModelOff, type TextModel } from './text-model';
 import { Refusal, refusalOf } from './refusal';
 import type { StoredServer } from './servers';
 import { layLyrics } from './describe';
@@ -681,16 +680,9 @@ export class AlbumMaker {
     return writeTrackLyrics(words, lyricist, meta.ask, concept, plan.tracks, at);
   }
 
-  /** The server's text model, for one call outside a writing session (a piece written again). */
-  private async serverText(server: StoredServer): Promise<TextModel> {
-    const client = this.hooks.client(server, true);
-    const page = await this.hooks.page(server);
-    if (page === null) throw new Refusal('page_unreadable', `Could not read ${server.name}'s song page, so B-Sides cannot tell which model writes.`);
-    if (page.tagModel === null) throw new Refusal('no_tag_model', page.tagModelReason ?? 'This server has no model to write with.');
-    // A chat never installs a model: a server without it starts installing and says so.
-    const installing = await startInstall(client, page.tagModel);
-    if (installing !== null) throw new Refusal('model_installing', `The writing model is being set up on the server first: ${installing.message}`, 409);
-    return crucibleText(client, page.tagModel);
+  /** The server's text model: off while it is retrained (bsideModelOff); the server is never asked. */
+  private async serverText(_server: StoredServer): Promise<TextModel> {
+    return bsideModelOff();
   }
 
   /**
@@ -866,12 +858,10 @@ export class AlbumMaker {
     // nothing of the server is held while Claude writes.
     const claude = this.hooks.claude();
     let session: CrucibleSession | null = null;
-    let serverWriter: TextModel | null = null;
     const release = async (): Promise<void> => {
       if (session === null) return;
       const closing = session;
       session = null;
-      serverWriter = null;
       this.sessions.delete(id);
       await closing.close().catch((err: unknown) => console.error(`[albums] could not close the session for ${id}:`, err));
       const now = await this.hooks.meta(id);
@@ -888,28 +878,8 @@ export class AlbumMaker {
         meta = { ...(await this.hooks.meta(id) ?? meta), step };
         await this.hooks.update(id, meta);
       };
-      const onServer = async (): Promise<TextModel> => {
-        if (serverWriter !== null) return serverWriter;
-        // The calls ride one session, so the text model stays loaded between them. Its own client
-        // name: Crucible counts every request from the session's name as one of its items, and
-        // removes the ones still waiting when it closes; under the install's own name, a song made
-        // meanwhile would join the album's session and be dropped with it.
-        if (page === null) throw new Refusal('page_unreadable', `Could not read ${server.name}'s song page, so B-Sides cannot tell which model writes.`);
-        if (page.tagModel === null) throw new Refusal('no_tag_model', page.tagModelReason ?? 'This server has no tag model to write an album with.');
-        const leave = new AbortController();
-        this.waiting.add(leave);
-        const opened = await this.hooks.client(server, true).session({ act: 'generate', idleS: SESSION_IDLE_S, signal: leave.signal })
-          .finally(() => this.waiting.delete(leave));
-        session = opened;
-        this.sessions.set(id, opened);
-        meta = { ...(await this.hooks.meta(id) ?? meta), session: opened.id };
-        await this.hooks.update(id, meta);
-        const model = page.tagModel;
-        await installModel(opened, model, (detail) => show({ kind: 'install', done: 0, of: 0, detail }));
-        await loadWriter(opened, model, () => show({ kind: 'load', done: 0, of: 0, detail: model }));
-        serverWriter = crucibleText(opened, model);
-        return serverWriter;
-      };
+      // B-Sides' own model is off while it is retrained: no session, install or load on the server.
+      const onServer = async (): Promise<TextModel> => bsideModelOff();
       const words = async (): Promise<TextModel> => claude?.words ?? onServer();
       const sound = async (): Promise<TextModel> => claude?.text ?? onServer();
       const plans = batches(count);

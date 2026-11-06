@@ -57,7 +57,29 @@ function fakeServer(failLyricsAt: number | null = null) {
   return { sent, client };
 }
 
-function fakeAlbum(ask: AlbumAsk, server: ReturnType<typeof fakeServer>, claude: { text: TextModel | null; words?: TextModel | null; lyricist: Lyricist | null } | null = null) {
+/**
+ * B-Sides' own model is off while it is retrained (bsideModelOff), so the writer a test leaves out
+ * is a stand-in on the Claude side: the fake server's canned answers under MODEL's name, each call
+ * recorded in `server.sent` as before. The server's own chat is never reached by the album.
+ */
+function standIn(server: ReturnType<typeof fakeServer>): TextModel {
+  return {
+    name: MODEL,
+    ask: async (request) => {
+      const answer = await (server.client as unknown as { chat: (o: unknown) => Promise<{ content: string; finishReason: string }> }).chat({
+        model: MODEL, responseFormat: { json_schema: { schema: request.schema } },
+        messages: [{ role: 'system', content: request.system }, { role: 'user', content: `${request.tag}
+${request.user}` }],
+      });
+      return { content: answer.content, truncated: answer.finishReason === 'length' };
+    },
+  };
+}
+
+/** `claude` 'none': no writer at all (a phone), which B-Sides' model being off leaves refused. */
+function fakeAlbum(ask: AlbumAsk, server: ReturnType<typeof fakeServer>, given: { text: TextModel | null; words?: TextModel | null; lyricist: Lyricist | null } | null | 'none' = null) {
+  const stand = standIn(server);
+  const claude = given === 'none' ? null : { text: given?.text ?? stand, words: given?.words ?? stand, lyricist: given?.lyricist ?? null };
   let stored: AlbumMeta = {
     artist: '', blurb: '', cover: null, ask, plan: null, stage: 'planning', sent: 0, madeS: 0,
     refusal: null, server: 'pc', writer: null,
@@ -93,7 +115,7 @@ async function settle(maker: AlbumMaker, id: string): Promise<void> {
   for (let i = 0; i < 200 && maker.writing(id); i += 1) await new Promise((rest) => setTimeout(rest, 2));
 }
 
-test('a 90-minute sung album on the server alone: the words, then the sound, then the cover, then [lyrics] per track', async () => {
+test('a 90-minute sung album from one writer: the words, then the sound, then the cover, then [lyrics] per track', async () => {
   const server = fakeServer();
   const album = fakeAlbum({ description: 'sad songs about bananas', tags: [], minutes: 90, sung: true, lyrics: 'a banana going brown' }, server);
   album.maker.start('a');
@@ -238,7 +260,7 @@ test('with Claude writing both the words and the sound, the server is never aske
   expect(album.meta().stage).toBe('making');
 });
 
-test('Claude writes the words and the server the sound (Owen, 2026-10-11)', async () => {
+test('two writers: the words from one, the sound from the other (Owen, 2026-10-11)', async () => {
   const server = fakeServer();
   const texts: string[] = [];
   const asked: SongToWrite[] = [];
@@ -248,7 +270,7 @@ test('Claude writes the words and the server the sound (Owen, 2026-10-11)', asyn
   album.maker.start('s');
   await settle(album.maker, 's');
   expect(texts).toEqual(['[concept]', '[ideas]']);
-  // Claude's calls go through the fake too, under model "x": the server's own are the sound.
+  // Both go through the fake: the words under model "x", the sound's stand-in under MODEL.
   expect(server.sent.filter((call) => call.model === MODEL).map((call) => call.tag)).toEqual(['[core]', '[turns]', '[cover]']);
   expect(asked.length).toBe(15);
   expect(album.meta().writer).toBe('claude-sonnet-5-5');
@@ -428,4 +450,17 @@ test("an album in the person's own words: sung exactly, no lyricist, named by th
   expect(album.meta().plan!.trackCount).toBe(2);
   expect(album.meta().stage).toBe('making');
   await expect(album.maker.extend('a')).rejects.toThrow('your own words');
+});
+
+test("no Claude (a phone): B-Sides' own model is off, so the album refuses by name and the server is never asked", async () => {
+  const server = fakeServer();
+  let sessions = 0;
+  (server.client as { session: () => Promise<unknown> }).session = async () => { sessions += 1; return {}; };
+  const album = fakeAlbum({ description: 'x', tags: [], minutes: 30, sung: true }, server, 'none');
+  album.maker.start('off');
+  await settle(album.maker, 'off');
+  expect(album.meta().stage).toBe('failed');
+  expect(album.meta().refusal).toMatchObject({ code: 'bside_model_off' });
+  expect(server.sent).toEqual([]);
+  expect(sessions).toBe(0);
 });

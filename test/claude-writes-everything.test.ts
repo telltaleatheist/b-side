@@ -117,7 +117,8 @@ beforeEach(() => {
   spyOn(crucible, 'songPage').mockImplementation(async () => page);
   // Anything that would load or ask the server's text model is counted, and answers like Claude would.
   serverInstall = spyOn(crucible, 'startInstall').mockImplementation(async () => null);
-  serverText = spyOn(textModel, 'crucibleText').mockImplementation(() => fakeClaudeText([]));
+  // Counted, not answered: B-Sides' own model is off (bsideModelOff), so nothing reaches it.
+  serverText = spyOn(textModel, 'crucibleText');
   spyOn(crucible, 'installModel').mockImplementation(async () => undefined as never);
   spyOn(crucible, 'clientFor').mockImplementation(() => ({
     session: async () => { serverSessions += 1; throw new Error('the album opened a session on the server'); },
@@ -185,12 +186,13 @@ test('a saved lyricist on the server moves too, so nothing there loads a text mo
   expect(movedLines()[0]).toContain('from bside/bside');
 });
 
-test('someone who picks the server\'s model again afterwards keeps it: the move is once', async () => {
-  store({ writer: 'bside', lyricist: 'claude', textSplit: 2 });
+test("B-Sides' own model cannot be picked while it is retrained, and a file that names it moves on every start", async () => {
+  store({ writer: 'bside', lyricist: 'claude', textSplit: 3 });
   const core = await hub('desktop');
-  await call(core, 'PUT', '/api/preferences', { writer: 'bside' });
-  const again = await preferences(await hub('desktop'));
-  expect(again.writer).toBe('bside');
+  expect((await preferences(core)).writer).toBe('claude');
+  await expect(call(core, 'PUT', '/api/preferences', { writer: 'bside' })).rejects.toMatchObject({ code: 'bside_model_off' });
+  await expect(call(core, 'PUT', '/api/preferences', { lyricist: 'bside' })).rejects.toMatchObject({ code: 'bside_model_off' });
+  expect((await preferences(await hub('desktop'))).writer).toBe('claude');
   expect(movedLines().length).toBe(1);
 });
 
@@ -202,22 +204,11 @@ test('a desktop already on Claude has nothing to move, and says nothing', async 
   expect(fs.readFileSync(preferencesFile(), 'utf8')).toBe(before);
 });
 
-test('the phone is as it was: the server\'s model writes, saved choices stand, and nothing moves', async () => {
-  const fresh = await preferences(await hub('phone'));
-  expect([fresh.writer, fresh.lyricist]).toEqual(['bside', 'bside']);
-
-  store({ writer: 'bside', lyricist: 'bside', textSplit: 2 });
-  const before = fs.readFileSync(preferencesFile(), 'utf8');
+test("the phone: no Claude Code, and B-Sides' own model is off, so describe refuses by name and the server is never asked", async () => {
   const core = await hub('phone');
-  const stored = await preferences(core);
-  expect([stored.writer, stored.lyricist]).toEqual(['bside', 'bside']);
-  expect(movedLines()).toEqual([]);
-  expect(fs.readFileSync(preferencesFile(), 'utf8')).toBe(before);
-
-  // And describing there still goes to the server's model.
-  await call(core, 'POST', '/api/describe', { text: 'a warm folk song' });
-  expect(serverText).toHaveBeenCalledTimes(1);
+  await expect(call(core, 'POST', '/api/describe', { text: 'a warm folk song' })).rejects.toMatchObject({ code: 'bside_model_off' });
   expect(claudeTags).toEqual([]);
+  expectServerUntouched();
 });
 
 test('a phone cannot be switched to Claude: refused by name', async () => {

@@ -114,14 +114,14 @@ import { StudioService } from '../../core/studio.service';
             <span><strong>Claude Sonnet 5.5</strong> (<span class="mono">claude -p</span>), through Claude Code on this computer; its sign-in pays. A story in each song, every song standing on its own.</span>
           </label>
           <label class="toggle">
-            <input type="radio" name="lyricist" [checked]="preferences()?.lyricist !== 'claude'" (change)="setLyricist('bside')" />
-            <span><strong>The server's model</strong>, on the Crucible server.</span>
+            <input type="radio" name="lyricist" [checked]="preferences()?.lyricist !== 'claude'" disabled />
+            <span><strong>The server's model</strong>, on the Crucible server. Off while it is retrained.</span>
           </label>
           <h3 class="card-sub">Sound</h3>
           <p class="detail">What YuE2 is told to make: a song's tags, an album's sound and each track's, and the cover description for the image model.</p>
           <label class="toggle">
-            <input type="radio" name="writer" [checked]="preferences()?.writer !== 'claude'" (change)="setWriter('bside')" />
-            <span><strong>The server's model</strong>, on the Crucible server, told YuE2's own guidance for its tags.</span>
+            <input type="radio" name="writer" [checked]="preferences()?.writer !== 'claude'" disabled />
+            <span><strong>The server's model</strong>, on the Crucible server. Off while it is retrained.</span>
           </label>
           <label class="toggle">
             <input type="radio" name="writer" [checked]="preferences()?.writer === 'claude'" (change)="setWriter('claude')" />

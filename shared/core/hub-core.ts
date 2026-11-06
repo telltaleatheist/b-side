@@ -36,7 +36,7 @@ async function enableDenoise(server: StoredServer): Promise<void> {
   });
   if (!response.ok) throw new Error(`the server would not turn the separator on (${response.status})`);
 }
-import { clientFor, clientName, probe, serverPresets, setClientName, songPage, startInstall } from './crucible';
+import { clientFor, clientName, probe, serverPresets, setClientName, songPage } from './crucible';
 import { PresetStore } from './presets';
 import { describe, layLyrics, lyricsBrief, MAX_LYRICS_BRIEF } from './describe';
 import { describeSound, nameSong } from './split-text';
@@ -44,7 +44,7 @@ import { OWN_TRACKS_MAX, OWN_WORDS_MAX, ownTracks, withSections } from '../own-w
 import { freshLine } from './fresh-names';
 import { voiceCheck } from './voice-check';
 import type { Lyricist } from './lyricist';
-import { crucibleText, WRITERS, type TextModel, type Writer } from './text-model';
+import { bsideModelOff, WRITERS, type TextModel, type Writer } from './text-model';
 import { join, type Disk } from './disk';
 import { JobRunner, SCORE_MAX, type AudioFetcher } from './jobs';
 import { Library, type ImportedAlbum } from './library';
@@ -392,8 +392,9 @@ export class HubCore {
     this.sink = options.sink;
     // A computer with Claude Code writes everything through it, so nothing there loads a server text
     // model (Owen, 2026-11-05: "we should switch fully over to claude -p for now until i retrain the
-    // model"; this supersedes his 2026-10-11 split, where the server's model wrote the sound). A phone,
-    // without Claude Code, has the server's model write both. The radios stay for after the retrain.
+    // model"; this supersedes his 2026-10-11 split, where the server's model wrote the sound). Since
+    // 2026-11-06 the server's model is off entirely (bsideModelOff): a phone, without Claude Code,
+    // cannot write and is refused by name. The radios stay, disabled, for after the retrain.
     if (options.claude !== undefined) this.preferences = { ...DEFAULT_PREFERENCES, writer: 'claude', lyricist: 'claude', textSplit: TEXT_SPLIT };
     this.registry = new ServerRegistry(options.vault);
     setClientName(options.clientName);
@@ -1129,10 +1130,9 @@ export class HubCore {
         albumOrder: ALBUM_ORDERS.includes(stored.albumOrder as never) ? (stored.albumOrder as AlbumOrder) : DEFAULT_PREFERENCES.albumOrder,
         singles: SINGLES_ORDERS.includes(stored.singles as never) ? (stored.singles as SinglesOrder) : DEFAULT_PREFERENCES.singles,
       };
-      // Owen, 2026-11-05: fully over to `claude -p` until the model is retrained. Applied to a
-      // choice saved before that, once: the file then says 3, and someone who picks the server's
-      // model again afterwards keeps it.
-      if (this.options.claude !== undefined && stored.textSplit !== TEXT_SPLIT
+      // Owen, 2026-11-05: fully over to `claude -p` until the model is retrained; 2026-11-06: B-Sides'
+      // own model is off (bsideModelOff), so any saved choice of it moves to Claude, every start.
+      if (this.options.claude !== undefined
         && (this.preferences.writer !== 'claude' || this.preferences.lyricist !== 'claude')) {
         moved = { from: `${this.preferences.writer}/${this.preferences.lyricist}` };
         this.preferences = { ...this.preferences, writer: 'claude', lyricist: 'claude' };
@@ -1142,7 +1142,7 @@ export class HubCore {
       return;
     }
     if (moved !== null) {
-      console.log(`[hub] Writing moved to Claude Code, sound and words, from ${moved.from}: nothing here loads a server text model until it is switched back in Settings.`);
+      console.log(`[hub] Writing moved to Claude Code, sound and words, from ${moved.from}: B-Sides' own model is off while it is retrained.`);
       // Optional: the choice is already in force, and a file left old simply moves again next start.
       try {
         await this.options.disk.writeText(this.preferencesFile, `${JSON.stringify(this.preferences, null, 2)}
@@ -1178,6 +1178,8 @@ export class HubCore {
     if (singles !== undefined && !SINGLES_ORDERS.includes(singles as never)) {
       throw new Refusal('body_invalid', `singles is one of ${SINGLES_ORDERS.join(', ')}.`);
     }
+    // B-Sides' own model is off while it is retrained (text-model.ts): it cannot be chosen.
+    if (writer === 'bside' || lyricist === 'bside') bsideModelOff();
     const toClaude = (writer === 'claude' && this.preferences.writer !== 'claude') || (lyricist === 'claude' && this.preferences.lyricist !== 'claude');
     if (toClaude && this.options.claude === undefined) {
       throw new Refusal('claude_unavailable', 'Claude writes only on a B-Sides computer, through its Claude Code.');
@@ -1257,15 +1259,8 @@ export class HubCore {
       const claude = this.claude();
       const about = text(body['text'], 'text');
       const instrumental = body['instrumental'] === true;
-      const serverText = async (): Promise<TextModel> => {
-        if (page.tagModel === null) throw new Refusal('no_tag_model', page.tagModelReason ?? 'This server has no tag model.');
-        // A chat never installs a model: a server without the tag model starts installing it here,
-        // and the person is told so (the Studio says to describe again once it is done).
-        const client = clientFor(server);
-        const installing = await startInstall(client, page.tagModel);
-        if (installing !== null) throw new Refusal('describe_installing', `The tag model is being set up on the server first: ${installing.message}`, 409);
-        return crucibleText(client, page.tagModel);
-      };
+      // B-Sides' own model is off while it is retrained: refused before the server is asked.
+      const serverText = async (): Promise<TextModel> => bsideModelOff();
       const sound = claude?.text ?? await serverText();
       const lyricist = claude?.lyricist ?? null;
       // The person's own name (Victoria, 2026-10-11): kept, and the words written to it.

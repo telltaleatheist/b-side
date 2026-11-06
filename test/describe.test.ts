@@ -87,20 +87,15 @@ test('lyrics with double spaces for line breaks come out one line per line, sect
 });
 
 import { describe as describeMusic } from '../shared/core/describe';
-import { crucibleText, type TextModel } from '../shared/core/text-model';
+import type { TextModel } from '../shared/core/text-model';
 
 test('what the lyrics are about rides after the description, and never on an instrumental', async () => {
   const sent: string[] = [];
-  const client = {
-    models: async () => [{ id: 'qwen3.5-4b-bside', installed: true }],
-    chat: async (options: { messages: { role: string; content: string }[] }) => {
-      sent.push(options.messages[options.messages.length - 1]?.content ?? '');
-      return { content: JSON.stringify(fields), finishReason: 'stop' };
-    },
-  } as never;
-  const writer = crucibleText(client, 'qwen3.5-4b-bside');
+  const writer: TextModel = {
+    name: 'claude-sonnet-5-5',
+    ask: async (request) => { sent.push(`${request.tag}\n${request.user}`); return { content: JSON.stringify(fields), truncated: false }; },
+  };
   await describeMusic(writer, page, 'retro soul ballad', false, 'a banana going brown, bittersweet');
-  // v2: the task tag is the user message's first line.
   expect(sent[0]).toBe('[describe]\nretro soul ballad\nThe lyrics: a banana going brown, bittersweet');
   const answer = await describeMusic(writer, page, 'retro soul ballad', true, 'a banana going brown');
   expect(sent[1]).toBe('[describe]\nretro soul ballad');
