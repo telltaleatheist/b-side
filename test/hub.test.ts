@@ -409,9 +409,10 @@ test('Make this track again: refused by name; asked for, the album makes it; fai
     const nothing = await api('/api/albums/thousand-ships/tracks/1/remake', { method: 'DELETE' });
     expect([nothing.status, await code(nothing)]).toEqual([409, 'track_not_remaking']);
 
-    // The server refuses it: the new take fails, the old one stays where it was.
+    // The server refuses it: the new take fails, the old one stays where it was. The refusal is
+    // written a step before the album settles (remakeLost, then next), so wait for both.
     let after = (await libraryNow()).playlists.find((p) => p.id === 'thousand-ships')!;
-    for (let i = 0; i < 100 && after.album?.remakeRefusal == null; i += 1) {
+    for (let i = 0; i < 100 && (after.album?.remakeRefusal == null || after.album?.remakeOnly != null); i += 1) {
       await new Promise((rest) => setTimeout(rest, 100));
       after = (await libraryNow()).playlists.find((p) => p.id === 'thousand-ships')!;
     }
